@@ -1,0 +1,5 @@
+{
+  "cmake.preferredGenerators": ["Ninja"],
+  "cmake.configurePreset": "msvc",
+  "cmake.buildPreset": "msvc"
+}

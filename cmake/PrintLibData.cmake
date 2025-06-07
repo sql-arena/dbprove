@@ -1,0 +1,26 @@
+function(print_target_info TARGET_NAME)
+    if(NOT TARGET ${TARGET_NAME})
+        message(FATAL_ERROR "Target '${TARGET_NAME}' not found.")
+    endif()
+
+    get_target_property(INCLUDES ${TARGET_NAME} INTERFACE_INCLUDE_DIRECTORIES)
+    message(STATUS "Target: ${TARGET_NAME}")
+    if(INCLUDES)
+        message(STATUS "  Include dirs: ${INCLUDES}")
+    else()
+        message(STATUS "  Include dirs: <none>")
+    endif()
+
+    foreach(config IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        get_target_property(loc_${config} ${TARGET_NAME} IMPORTED_LOCATION_${config})
+        if(loc_${config})
+            message(STATUS "  Library file [${config}]: ${loc_${config}}")
+        endif()
+    endforeach()
+
+    # Also try unqualified IMPORTED_LOCATION
+    get_target_property(loc ${TARGET_NAME} IMPORTED_LOCATION)
+    if(loc)
+        message(STATUS "  Library file [default]: ${loc}")
+    endif()
+endfunction()

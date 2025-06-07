@@ -1,0 +1,10 @@
+INSERT INTO seed10 VALUES (1 , 1, 0, 'odd', 'common');
+INSERT INTO seed10 VALUES (2 , 0, 0, 'even', 'common');
+INSERT INTO seed10 VALUES (3 , 1, 0, 'odd', 'common');
+INSERT INTO seed10 VALUES (4 , 0, 0, 'even', 'common');
+INSERT INTO seed10 VALUES (5 , 1, 0, 'odd', 'common');
+INSERT INTO seed10 VALUES (6 , 0, 0, 'even', 'common');
+INSERT INTO seed10 VALUES (7 , 1, 0, 'odd', 'common');
+INSERT INTO seed10 VALUES (8 , 0, 0, 'even', 'common');
+INSERT INTO seed10 VALUES (9 , 1, 0, 'odd', 'common');
+INSERT INTO seed10 VALUES (10, 0, 1, 'even', 'rare');

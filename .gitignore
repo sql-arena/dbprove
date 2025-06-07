@@ -30,3 +30,16 @@
 *.exe
 *.out
 *.app
+
+# All build artifacts
+**/build/
+build/
+*/build/
+*/*/build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+cmake-build-debug/
+vcpkg_installed/

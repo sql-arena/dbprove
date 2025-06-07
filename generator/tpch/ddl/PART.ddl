@@ -1,0 +1,12 @@
+CREATE TABLE PART
+(
+    P_PARTKEY     INT PRIMARY KEY,
+    P_NAME        STRING(25),
+    P_MFGR        STRING(25),
+    P_BRAND       STRING(10),
+    P_TYPE        STRING(25),
+    P_SIZE        INT,
+    P_CONTAINER   STRING(10),
+    P_RETAILPRICE DECIMAL,
+    P_COMMENT     STRING(23),
+);

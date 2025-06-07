@@ -1,0 +1,19 @@
+---
+Language: Cpp
+BasedOnStyle: Google
+# You can customize specific aspects of the Google style if needed:
+# AccessModifierOffset: -1
+# AlignAfterOpenBracket: Align
+# AlignConsecutiveAssignments: false
+# AlignConsecutiveDeclarations: false
+# AlignEscapedNewlines: Left
+# AlignOperands: true
+# AlignTrailingComments: true
+# AllowAllParametersOfDeclarationOnNextLine: true
+# AllowShortBlocksOnASingleLine: false
+# AllowShortCaseLabelsOnASingleLine: false
+# AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+ColumnLimit: 120
+---

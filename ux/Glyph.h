@@ -1,0 +1,19 @@
+
+#pragma once
+
+// Drawing boxes
+constexpr const char* BOX_TOP_RIGHT = "┐";
+constexpr const char* BOX_TOP_LEFT = "┌";
+constexpr const char* BOX_BOTTOM_RIGHT = "┘";
+constexpr const char* BOX_BOTTOM_LEFT = "└";
+constexpr const char* BOX_VERTICAL = "│";
+constexpr const char* BOX_HORIZONTAL = "─";
+
+// Theorem outcomes
+constexpr const char* PASS = "✅";
+constexpr const char* FAIL = "❌";
+constexpr const char* WARN = "⚠️";
+constexpr const char* SKIP = "∅";
+constexpr const char* NOPE = "🚫";
+constexpr const char* SHIT = "💩";
+

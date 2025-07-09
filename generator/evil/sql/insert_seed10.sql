@@ -8,3 +8,5 @@ INSERT INTO seed10 VALUES (7 , 1, 0, 'odd', 'common');
 INSERT INTO seed10 VALUES (8 , 0, 0, 'even', 'common');
 INSERT INTO seed10 VALUES (9 , 1, 0, 'odd', 'common');
 INSERT INTO seed10 VALUES (10, 0, 1, 'even', 'rare');
+
+

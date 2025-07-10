@@ -14,7 +14,7 @@ void cli_1(const std::string &theorem, sql::Engine engine, const sql::Credential
     sql::ConnectionFactory factory(engine, credentials);
     auto sql = Query("SELECT 1", theorem.c_str());
     Runner runner(factory);
-    runner.Serial(sql, 1000);
+    runner.serial(sql, 1000);
 }
 
 

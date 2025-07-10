@@ -21,7 +21,7 @@ std::string join(const Container& strings, const std::string& delimiter) {
 }
 
 
-inline std::string to_lower(std::string_view sv) {
+inline std::string to_lower(const std::string_view sv) {
     std::string s(sv);
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
     return s;

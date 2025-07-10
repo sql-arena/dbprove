@@ -2,30 +2,30 @@
 
 
 ## Supported Data Types
-Support for the following data types will be added in phase 1:
+Support for the following data types and their aliases will be added in phase 1:
 
-- 64-bit `DOUBLE` with all its aliases
+- 64-bit `DOUBLE` 
 - `VARCHAR` and `TEXT`
 - `BIGINT`, `INT`, `SMALLINT`, `TINYINT`
-- `DECIMAL`
+- `DECIMAL` 
 
-## Generator Library
-The following datasets and the utility classes needed to generate them will be
+## Generator Lib
+The following datasets and the utility classes needed to generate datasets will be
 implemented:
 
 - TPC-H SF1
 - The "evil" dataset
 
 ### TPC-H
-We will use small, fast generated datasets. The goal of DBProve is not to benchmark
-the speed of TPC-H (at least not initially) it is to check if the plans and rewrites
-needed for TPC-H are present in the tested database.
+We will use small, fast generated datasets so many theorems can be proven quickly. Initially, the goal of DBProve is not 
+to benchmark the speed of TPC-H, it is to check if the plans and rewrites needed for TPC-H are present in the tested 
+database.
 
 ### The Evil Dataset
 This database contains ... one... Billion... Rows...
 
-These rows represent uniform, zipfian and skewed variants of supported data types.
-This allows us to test estimation quality of the database.
+These rows represent uniform, zipfian, bi-model and extremely skewed variants of supported data types.
+This allows us to test estimation quality of database optimisers.
 
 The dataset also contains the interesting outliers for each data type, such as:
 
@@ -42,10 +42,10 @@ The dataset also contains the interesting outliers for each data type, such as:
 - Etc
 
 These values allow us to validate if the types behave correct in terms of IEEE
-standards and `DECIMAL` arithmetic and to test edge caess of optimiser behaviour.
+standards and `DECIMAL` arithmetic and to test edge cases of optimiser behaviour.
 
-# SQL library
-The SQL Library will have support for the following engines:
+# SQL libr
+The SQL Library will have support for the following drivers and their associated engines:
 
 
 | Driver     | Third Party Source            | Linking | Engines Enabled                                                                           |
@@ -58,7 +58,8 @@ The SQL Library will have support for the following engines:
 | DuckDB     | DuckDB source                 | Static  | DuckDB                                                                                    | 
 | Utopia     | None                          | Static  | A special Driver that returns theoretically optimal values (controlled via configuration) |
 
-Drivers can be updated without changing the basic interface that the Theorem consumes.
+Drivers can be updated without changing the basic interface that the Theorem consumes. The initial phase of `dbprove`
+establishes the basic API that `sql lib` provides to the world.
 
 Driver support implements a thin wrapper on top of whatever native driver the 
 target database supports. Drivers use a zero copy abstraction to iterate over rows
@@ -70,7 +71,7 @@ we will run.
 
 | Interface             | What is it?                                                                               |
 |-----------------------|-------------------------------------------------------------------------------------------|
-| `bulkLoad`            | Use fast load interface to move CSV into database.                                        |
+| `bulkLoad`            | Use fast load interface to move CSV into database. Fall back to `INSERT` if unavailable.  |
 | `execute`             | Run a SQL command                                                                         |
 | `fetchAll`            | Runs a SQL command and returns a `Result` object that can be iterated                     |
 | `translateDialectDdl` | Given a DDL statement, turn this into a into the driver/engine specific syntax            |
@@ -80,47 +81,69 @@ we will run.
 These interfaces are defined in `connection_base.h`. Every driver must inherit this
 interface.
 
+### Driver Exceptions
+Drivers must throw typed exceptions that inherit from `sql::Exception`. The exact exceptions we will need to throw
+will be fleshed out during development and discussed as needed with the contributors. 
+
+Drivers are never allowed to throw an exception directly from the driver infrastructure, it must always translate the
+driver thrown exception to a more generic, cross driver subclass of `sql::Exception`.
+
+For example, `libpq` (the connector for PostgreSQL) may send this error code back to the calller:
+
+```42601 syntax_error```
+
+This error must be handled in the driver and the following must occur to the outside caller:
+
+```c++
+throw sql::SyntaxErrorException(...);
+```
+
+
 # Runner Library
 The runner library will support these operations:
 
-- `serial` - execute a list of queries in sequence
-- `single` - execute one query
-- `parallelTogether` - have `n` threads coordinate on execution a set of queries
+- `serial` - execute a list of queries in sequence and generate aggregated instrumentation
+- `single` - execute and measure one query
+- `parallelTogether` - have `n` threads coordinate on the execution a set of queries
 - `parallelApart` - have `n` threads each execute the same set of queries
 
 The following measurements will be support
 
-- **Runtimes** -  Microsecond precision measure of query runtimes
-- **Avg / stddev** - For sets of queries, report avg / stdev
+- **Runtimes** -  Microsecond precision measures of query runtimes
+- **Avg / stddev** - For sets of queries, report avg / stddev
 - **Percentile** - for set of queries, report 0.1, 1, 10, 20, ... 90, 99, 99.9 percentile runtimes
 - **Result validation** - Check that the query matches the results returned by `utopia`. 
-  nicely report back what the differences are if it does not
+  nicely report, in human readable form, the differences if it doesn't.
 
 # Theorems
 These theorems will be supported:
 
 | Theorem Category | Theorem                                                                                                |
 |------------------|--------------------------------------------------------------------------------------------------------|
-| LOAD             | Load TPC-H (measure rough speed)                                                                       |
+| LOAD             | Load TPC-H (measure rough speed, check for bulk capability)                                            |
 | CORRECT          | Check that the 22 TPC-H queries returns correct results                                                |
-| REWRITE          | Validate (via runtimes) that transitive closure of pushdown works                                      |
+| REWRITE          | Validate (via runtimes) that transitive closure of pushdown equalities and inequality works            |
 | EE               | Validate (via runtimes) that bloom filters work                                                        |
 | EE               | Join scale curve: Validate that non spilling join scale curve is linear                                |
-| CLIENT           | Fetch Latency - check how many ms it takes to fetch empty result sets that do not need to touch tables |
-| CLIENT           | Full roundtrip touching minimalist table                                                               |
+| CLI              | Fetch Latency - check how many ms it takes to fetch empty result sets that do not need to touch tables |
+| CLI              | Full roundtrip touching minimalist table                                                               |
 | SE               | Haystack access - check how fast a single row can be fished out of a perfectly sorted dataset          |
 
 
 In a later phase, we will support a generic plan AST parser than can create a common
 query plan AST from any of the support engines. When that feature is present, we can 
-do a deeper level validation to more interesting facts about rewrites and plan shapes.
+do a deeper level validation of rewrites and plan shapes.
 
 # Docs
-The methods in all libraries will be documented with Doxygen doc strings.
+Public facing methods in all libraries will be documented with Doxygen doc strings and phase1 is not 
+completely without this.
 
-All public facing method will be documented and `README.md` files provided
-describing how to extend each of the library that make up `dbprove`.
+All public facing method will be documented and `README.md` files provided describing how to extend each of the library 
+that make up `dbprove`.
 
-For the initial drop, we will *not* auto generate documentation to websites.
+For phase1, we will *not* auto generate documentation to websites.
 
 
+# `main.cpp`
+The basic command line interface will be established in Phase1. See `/main.cpp`, specifically the `CLI` parsing
+for details.

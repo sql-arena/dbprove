@@ -14,7 +14,6 @@ namespace sql
         const uint16_t port;
         const std::string username;
         const std::string password;
-        const std::string database_;
 
         Credential(std::string host,
                    std::string database,
@@ -26,7 +25,6 @@ namespace sql
             , port(port)
             , username(std::move(username))
             , password(std::move(password))
-            , database_(database)
         {
         }
     };

@@ -4,7 +4,6 @@
 #include <thread>
 #include <vector>
 
-#include "Spinner.h"
 
 void do_threads(size_t threadCount, std::function<void()> thread_work) {
   std::vector<std::thread> threads;
@@ -18,26 +17,24 @@ void do_threads(size_t threadCount, std::function<void()> thread_work) {
   }
 }
 
-
-void Runner::Serial(const std::span<Query>& queries, size_t iterations) const {
+void Runner::serial(const std::span<Query>& queries, size_t iterations) const {
   const auto connection = factory_.create();
   for (size_t i = 0; i < iterations; ++i) {
     for (auto& query : queries) {
       auto qs = query.start();
       connection->execute(query.textTagged());
       query.stop(qs);
-      ux::Spin();
       query.summariseThread();
     }
   }
   connection->close();
 }
 
-void Runner::Serial(Query& query, size_t iterations) const {
-  return Serial(std::span(&query, 1), iterations);
+void Runner::serial(Query& query, size_t iterations) const {
+  return serial(std::span(&query, 1), iterations);
 }
 
-void Runner::ParallelApart(size_t threadCount, std::span<Query>& queries) const {
+void Runner::parallelApart(size_t threadCount, std::span<Query>& queries) const {
   auto thread_work = [this, &queries]() {
     const auto connection = factory_.create();
 
@@ -45,7 +42,6 @@ void Runner::ParallelApart(size_t threadCount, std::span<Query>& queries) const 
       auto qs = query.start();
       connection->execute(query.textTagged());
       query.stop(qs);
-      ux::Spin();
       query.summariseThread();
     }
     connection->close();
@@ -53,7 +49,7 @@ void Runner::ParallelApart(size_t threadCount, std::span<Query>& queries) const 
   do_threads(threadCount, thread_work);
 }
 
-void Runner::ParallelTogether(size_t threadCount, std::span<Query>& queries) const {
+void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) const {
   std::atomic<size_t> query_index{0};
   auto thread_work = [this, &queries, &query_index]() {
     auto connection = factory_.create();
@@ -66,7 +62,6 @@ void Runner::ParallelTogether(size_t threadCount, std::span<Query>& queries) con
     auto qs = query.start();
     connection->execute(query.textTagged());
     query.stop(qs);
-    ux::Spin();
     query.summariseThread();
     connection->close();
   };

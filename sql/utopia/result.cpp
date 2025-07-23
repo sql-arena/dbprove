@@ -3,7 +3,7 @@
 #include "row.h"
 
 
-namespace utopia {
+namespace sql::utopia {
     size_t Result::rowCount() const {
         switch (data) {
             case UtopiaData::EMPTY:

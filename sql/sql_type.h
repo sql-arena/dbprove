@@ -3,6 +3,12 @@
 #include <variant>
 #include <string>
 
+
+namespace sql {
+
+using RowCount = uint64_t;
+using ColumnCount = uint64_t;
+
 class SqlType {
 public:
   virtual ~SqlType() = default;
@@ -125,3 +131,4 @@ public:
     return std::get<T>(data);
   }
 };
+}

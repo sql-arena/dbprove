@@ -36,7 +36,7 @@ std::unique_ptr<sql::RowBase> sql::msodbc::Connection::fetchRow(std::string_view
   return nullptr;
 }
 
-SqlVariant sql::msodbc::Connection::fetchValue(std::string_view statement) {
+sql::SqlVariant sql::msodbc::Connection::fetchValue(std::string_view statement) {
   return SqlVariant(42);
 }
 

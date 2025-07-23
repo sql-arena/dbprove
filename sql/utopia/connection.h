@@ -6,7 +6,7 @@
 #include "sql_type.h"
 #include "row.h"
 
-namespace utopia {
+namespace sql::utopia {
 class Connection final : public sql::ConnectionBase {
 public:
   explicit Connection(const sql::Credential& credential);

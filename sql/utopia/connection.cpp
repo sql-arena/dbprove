@@ -4,7 +4,7 @@
 #include <thread>
 #include <regex>
 #include <map>
-
+using namespace sql;
 static std::map<std::string_view, std::vector<std::filesystem::path>> bulk_loader_tables = {};
 static const std::regex comment_pattern("/\\*(.*?)\\*/");
 
@@ -34,7 +34,7 @@ const utopia::UtopiaConfig& getConfig(std::string_view statement) {
     return data.at(comment_text);
 }
 
-utopia::Connection::Connection(const sql::Credential &credential): sql::ConnectionBase(credential) {
+utopia::Connection::Connection(const Credential &credential): ConnectionBase(credential) {
 }
 
 void utopia::Connection::execute(std::string_view statement) {
@@ -42,19 +42,19 @@ void utopia::Connection::execute(std::string_view statement) {
     sleep_us(config.runtime_us);
 }
 
-std::unique_ptr<sql::ResultBase> utopia::Connection::fetchAll(std::string_view statement) {
+std::unique_ptr<ResultBase> utopia::Connection::fetchAll(std::string_view statement) {
     const auto& c = getConfig(statement);
     sleep_us(c.runtime_us);
     return std::make_unique<Result>(c.data);
 }
 
-std::unique_ptr<sql::ResultBase> utopia::Connection::fetchMany(std::string_view statement) {
+std::unique_ptr<ResultBase> utopia::Connection::fetchMany(std::string_view statement) {
     const auto& c = getConfig(statement);
     sleep_us(c.runtime_us);
     return std::make_unique<Result>();
 }
 
-std::unique_ptr<sql::RowBase> utopia::Connection::fetchRow(const std::string_view statement) {
+std::unique_ptr<RowBase> utopia::Connection::fetchRow(const std::string_view statement) {
     const auto& c = getConfig(statement);
     sleep_us(c.runtime_us);
     return std::make_unique<Row>();

@@ -2,7 +2,7 @@
 #include "row_base.h"
 #include <vector>
 
-namespace utopia {
+namespace sql::utopia {
     class Result;
 
     class Row final : public sql::RowBase {

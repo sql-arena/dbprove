@@ -8,6 +8,7 @@
 #include "sql_type.h"
 #include "result_base.h"
 #include "row_base.h"
+#include "explain/node.h"
 
 
 namespace sql {
@@ -33,6 +34,12 @@ public:
   virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement) = 0;
   /// @brief Fetches a single value from the database.
   virtual SqlVariant fetchValue(std::string_view statement) = 0;
+
+
+  /**
+   * @brief Run the query, discarding results and returning the query plan
+   */
+  virtual std::unique_ptr<const explain::Node> explain(std::string_view statement) { return nullptr; }
 
   /** @brief If bulk load API is availble, use that to load file.
    * @note If no bulk load API is available, the implementation must fall back to INSERT

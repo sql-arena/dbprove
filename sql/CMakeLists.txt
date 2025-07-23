@@ -3,8 +3,10 @@ add_library(sql_interface INTERFACE)
 
 
 target_include_directories(sql_interface INTERFACE
+        ${CMAKE_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/sql
+
 )
 target_sources(sql_interface INTERFACE
         connection_base.h
@@ -23,6 +25,16 @@ add_library(sql STATIC
         Query.h
         Query.cpp
         sql_exceptions.h
+        explain/node.h
+        explain/join.h
+        explain/node_type.h
+        explain/scan.h
+        explain/group_by.h
+        explain/sort.h
+        explain/column.h
+        explain/expression.h
+        explain/distribution.h
+        explain/select.h
 )
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}

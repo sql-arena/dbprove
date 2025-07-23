@@ -13,8 +13,8 @@ class ColumnIterator;
 class ResultBase : public std::enable_shared_from_this<ResultBase> {
 public:
   virtual ~ResultBase() = default;
-  virtual size_t rowCount() const = 0;
-  virtual size_t columnCount() const = 0;
+  virtual RowCount rowCount() const = 0;
+  virtual ColumnCount columnCount() const = 0;
   RowIterable rows();
 
 protected:

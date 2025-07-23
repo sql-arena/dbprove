@@ -48,7 +48,7 @@ std::unique_ptr<sql::RowBase> sql::postgres::Connection::fetchRow(std::string_vi
   return nullptr;
 }
 
-SqlVariant sql::postgres::Connection::fetchValue(std::string_view statement) {
+sql::SqlVariant sql::postgres::Connection::fetchValue(std::string_view statement) {
   return SqlVariant(42);
 }
 

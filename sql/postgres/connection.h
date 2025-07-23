@@ -2,7 +2,7 @@
 #include "../connection_base.h"
 
 namespace sql::postgres {
-class Connection : public ConnectionBase {
+class Connection final : public ConnectionBase {
   /**
    * @note: Use the Pimpl Pattern here to avoid polluting the main namespace and to keep all
    * engine specific noise in the implementation files

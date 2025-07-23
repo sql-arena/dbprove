@@ -3,7 +3,7 @@
 #include <cstddef>
 #include "row_base.h"
 
-namespace utopia {
+namespace sql::utopia {
 
     enum class UtopiaData {
         EMPTY,

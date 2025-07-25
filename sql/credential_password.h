@@ -2,29 +2,29 @@
 #include <string>
 #include <utility>
 #include <cstdint>
+#include "credential_base.h"
 
 namespace sql
 {
     /// @brief Represents the credentials required to connect to a database.
-    class Credential
+    class CredentialPassword: public CredentialBase
     {
     public:
         const std::string host;
-        const std::string database;
         const uint16_t port;
         const std::string username;
         const std::string password;
 
-        Credential(std::string host,
-                   std::string database,
+        CredentialPassword(const std::string& host,
+                   const std::string& database,
                    const uint16_t port,
-                   std::string username,
-                   std::string password)
-            : host(std::move(host))
-            , database(std::move(database))
+                   const std::string& username,
+                   const std::string& password)
+            : CredentialBase(database)
+            , host(host)
             , port(port)
-            , username(std::move(username))
-            , password(std::move(password))
+            , username(username)
+            , password(password)
         {
         }
     };

@@ -12,6 +12,7 @@
 
 
 namespace sql {
+class CredentialBase;
 class Credential;
 
 class ConnectionBase {
@@ -20,7 +21,7 @@ class ConnectionBase {
 public:
   virtual ~ConnectionBase() = default;
 
-  explicit ConnectionBase(const Credential& credential)
+  explicit ConnectionBase(const CredentialBase& credential)
     : credential(credential) {
   };
 
@@ -71,7 +72,7 @@ public:
     return std::string(ddl);
   }
 
-  const Credential& credential;
+  const CredentialBase& credential;
 
   void close() { closed_ = true; };
 };

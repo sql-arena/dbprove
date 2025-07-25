@@ -1,14 +1,14 @@
 #include "connection.h"
 #include "libpq-fe.h"
-#include "../credential.h"
+#include "../credential_password.h"
 #include "../sql_exceptions.h"
 
 class sql::postgres::Connection::Pimpl {
 public:
   Connection& connection;
-  const Credential& credential;
+  const CredentialPassword& credential;
   PGconn* conn;
-  explicit Pimpl(Connection& connection): connection(connection), credential(connection.credential) {
+  explicit Pimpl(Connection& connection, const CredentialPassword& credential): connection(connection), credential(credential) {
 
     std::string conninfo =
       "dbname=" + credential.database +
@@ -25,9 +25,9 @@ public:
   }
 };
 
-sql::postgres::Connection::Connection(const Credential& credential):
+sql::postgres::Connection::Connection(const CredentialPassword& credential):
 ConnectionBase(credential)
-, impl_(std::make_unique<Pimpl>(*this))
+, impl_(std::make_unique<Pimpl>(*this, credential))
 {
 }
 

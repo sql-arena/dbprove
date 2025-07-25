@@ -3,7 +3,7 @@
 #include "Engine.h"
 #include "utopia/connection.h"
 #include "msodbc/connection.h"
-#include "Credential.h"
+#include "credential_base.h"
 #include <atomic>
 
 #include "postgres/connection.h"
@@ -12,12 +12,12 @@ namespace sql {
 /// @brief Factory class for creating connections using a specific engine
 /// New driver implementors of engines must extend this factory class and the `Engine` enum
 class ConnectionFactory {
-  const Credential& credential_;
+  const CredentialBase& credential_;
   const Engine engine_;
   std::atomic<size_t> connectionCount_{0};
 
 public:
-  ConnectionFactory(Engine engine, const Credential& credential)
+  ConnectionFactory(Engine engine, const CredentialBase& credential)
     : credential_(credential)
     , engine_(engine) {
   }
@@ -31,9 +31,9 @@ public:
     connectionCount_.fetch_add(1);
     switch (engine_.type()) {
       case Engine::Type::Utopia:
-        return std::make_unique<utopia::Connection>(credential_);
+        return std::make_unique<utopia::Connection>();
       case Engine::Type::Postgres:
-        return std::make_unique<postgres::Connection>(credential_);
+        return std::make_unique<postgres::Connection>(*dynamic_cast<const CredentialPassword*>(&credential_));
       case Engine::Type::SQLServer:
         return std::make_unique<msodbc::Connection>(credential_);
       default:

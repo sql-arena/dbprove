@@ -8,7 +8,7 @@
 - [theorems](#theorems) - the things that dbprove about the target database
 
 # Project Planing
-Planning of new `dbprove` release are done by timeboxing features to meet certain deadlines. 
+Planning of new `dbprove` release are done by time-boxing features to meet certain deadlines. 
 
 - A phase starts with the writing of a spec for the new functionality that is to be added.
 - Specs source their requirements from stakeholders as well as feature requests file on GitHub.

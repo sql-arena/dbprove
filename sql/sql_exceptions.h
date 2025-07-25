@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "Credential.h"
+#include "credential_base.h"
 
 namespace sql {
 /**
@@ -28,9 +28,9 @@ public:
 class ConnectionException final : public Exception {
 public:
   explicit ConnectionException(
-      const Credential& credential,
+      const CredentialBase& credential,
       const std::string& message)
-    : Exception("When trying to access" + credential.host + " the connector threw: " + message) {
+    : Exception("When trying to access" + credential.database + " the connector threw: " + message) {
   }
 };
 

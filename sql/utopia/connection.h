@@ -1,5 +1,4 @@
 #pragma once
-#include "Credential.h"
 #include "connection_base.h"
 #include "result_base.h"
 #include "row_base.h"
@@ -9,7 +8,7 @@
 namespace sql::utopia {
 class Connection final : public sql::ConnectionBase {
 public:
-  explicit Connection(const sql::Credential& credential);
+  explicit Connection();
   void execute(std::string_view statement) override;
   std::unique_ptr<sql::ResultBase> fetchAll(std::string_view statement) override;
   std::unique_ptr<sql::ResultBase> fetchMany(std::string_view statement) override;
@@ -17,4 +16,7 @@ public:
   SqlVariant fetchValue(std::string_view statement) override;
   void bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) override;
 };
+
+/// @Brief To satisfy the need for connections to have credentials
+const CredentialBase& fake_credential();
 }

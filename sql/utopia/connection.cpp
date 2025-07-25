@@ -4,6 +4,9 @@
 #include <thread>
 #include <regex>
 #include <map>
+
+#include "credential_base.h"
+#include "credential_file.h"
 using namespace sql;
 static std::map<std::string_view, std::vector<std::filesystem::path>> bulk_loader_tables = {};
 static const std::regex comment_pattern("/\\*(.*?)\\*/");
@@ -34,7 +37,8 @@ const utopia::UtopiaConfig& getConfig(std::string_view statement) {
     return data.at(comment_text);
 }
 
-utopia::Connection::Connection(const Credential &credential): ConnectionBase(credential) {
+
+utopia::Connection::Connection(): ConnectionBase(fake_credential()) {
 }
 
 void utopia::Connection::execute(std::string_view statement) {
@@ -68,4 +72,9 @@ SqlVariant utopia::Connection::fetchValue(const std::string_view statement) {
 
 void utopia::Connection::bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) {
   bulk_loader_tables[table] = source_paths;
+}
+
+const CredentialBase& utopia::fake_credential() {
+  static auto instance = std::make_unique<CredentialBase>("UTOPIA");
+  return *instance;
 }

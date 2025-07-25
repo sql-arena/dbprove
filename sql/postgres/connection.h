@@ -1,5 +1,6 @@
 #pragma once
-#include "../connection_base.h"
+#include "connection_base.h"
+#include "credential_password.h"
 
 namespace sql::postgres {
 class Connection final : public ConnectionBase {
@@ -10,7 +11,7 @@ class Connection final : public ConnectionBase {
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
 public:
-  explicit Connection(const Credential& credential);
+  explicit Connection(const CredentialPassword& credential);
 
   ~Connection() override;
 

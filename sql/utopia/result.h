@@ -2,39 +2,37 @@
 #include <result_base.h>
 #include <cstddef>
 #include "row_base.h"
+#include "utopia_data.h"
 
 namespace sql::utopia {
 
-    enum class UtopiaData {
-        EMPTY,
-        N10,
-        NOOP
-    };
-
-    struct UtopiaConfig { utopia::
-        UtopiaData data;
-        uint32_t runtime_us;
-    };
+struct UtopiaConfig {
+  utopia::
+  UtopiaData data;
+  uint32_t runtime_us;
+};
 
 
-    class Result : public sql::ResultBase {
-    public:
-        explicit Result(const UtopiaData data = UtopiaData::EMPTY): data(data) {};
+class Result : public ResultBase {
+public:
+  explicit Result(const UtopiaData data = UtopiaData::EMPTY)
+    : data(data) {
+  };
 
-        ~Result() override {
-        };
+  ~Result() override {
+  };
 
-        size_t rowCount() const override;
-        size_t columnCount() const override;
+  size_t rowCount() const override;
+  size_t columnCount() const override;
 
-    protected:
-        void reset() override {
-        };
+protected:
+  void reset() override {
+  };
 
-        std::unique_ptr<sql::RowBase> nextRow() override;
+  std::unique_ptr<sql::RowBase> nextRow() override;
 
-    private:
-        const UtopiaData data;
-        size_t rowNumber = 0;
-    };
+private:
+  const UtopiaData data;
+  size_t rowNumber = 0;
+};
 }

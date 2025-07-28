@@ -17,6 +17,4 @@ public:
   void bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) override;
 };
 
-/// @Brief To satisfy the need for connections to have credentials
-const CredentialBase& fake_credential();
 }

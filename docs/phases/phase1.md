@@ -15,7 +15,7 @@ Support for the following data types and their aliases will be added in phase 1:
 
 - 64-bit `DOUBLE` 
 - `VARCHAR` and `TEXT`
-- `BIGINT`, `INT`, `SMALLINT`, `TINYINT`
+- `BIGINT`, `INT`, `SMALLINT`
 - `DECIMAL` 
 - `FLOAT4` and `FLOAT8` along with their aliases
 

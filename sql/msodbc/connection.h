@@ -10,7 +10,7 @@ class Connection final : public ConnectionBase {
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
 public:
-  explicit Connection(const CredentialBase& credential);
+  explicit Connection(const Credential& credential);
   ~Connection() override;
 
   void execute(std::string_view statement) override;

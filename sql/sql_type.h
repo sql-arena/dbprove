@@ -3,9 +3,7 @@
 #include <variant>
 #include <string>
 
-
 namespace sql {
-
 using RowCount = uint64_t;
 using ColumnCount = uint64_t;
 
@@ -65,16 +63,11 @@ struct SqlTextTag {
   static constexpr std::string_view name = "TEXT";
 };
 
-struct SqlVarcharTag {
-  static constexpr std::string_view name = "VARCHAR";
-};
-
 struct SqlFloatTag {
   static constexpr std::string_view name = "FLOAT";
 };
 
 struct SqlDoubleTag {
-
   static constexpr std::string_view name = "DOUBLE";
 };
 
@@ -87,8 +80,23 @@ using SqlBigInt = SqlTypeDef<std::int64_t, SqlBigIntTag>;
 using SqlFloat = SqlTypeDef<float, SqlFloatTag>;
 using SqlDouble = SqlTypeDef<double, SqlDoubleTag>;
 
-using SqlVarchar = SqlTypeDef<std::string, SqlVarcharTag>;
 using SqlText = SqlTypeDef<std::string, SqlTextTag>;
+
+class SqlVariant;
+
+class SqlDecimal {
+  using decimal = std::string;
+  const decimal value_;
+
+public:
+  static constexpr std::string_view name = "DECIMAL";
+
+  explicit SqlDecimal(const std::string_view value)
+    : value_(value) {
+  }
+
+};
+
 
 class SqlVariant {
   using variant_type = std::variant<SqlTinyInt,
@@ -97,7 +105,7 @@ class SqlVariant {
                                     SqlBigInt,
                                     SqlFloat,
                                     SqlDouble,
-                                    SqlVarchar,
+                                    SqlDecimal,
                                     SqlText>;
   variant_type data;
 
@@ -110,12 +118,28 @@ public:
     : data(SqlBigInt(v)) {
   }
 
+  explicit SqlVariant(const int64_t v)
+    : data(SqlBigInt(v)) {
+  }
+
   explicit SqlVariant(const int32_t v)
     : data(SqlInt(v)) {
   }
 
   explicit SqlVariant(const double v)
     : data(SqlDouble(v)) {
+  }
+
+  explicit SqlVariant(const std::string_view s)
+    : data(SqlText(std::string(s))) {
+  }
+
+  explicit SqlVariant(const char* s)
+  : data(SqlText(std::string(s))) {
+  }
+
+  explicit SqlVariant(std::string s)
+    : data(SqlText(s)) {
   }
 
 
@@ -131,4 +155,6 @@ public:
     return std::get<T>(data);
   }
 };
+
+
 }

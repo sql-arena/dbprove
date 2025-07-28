@@ -1,6 +1,5 @@
 #pragma once
 #include "connection_base.h"
-#include "credential_password.h"
 
 namespace sql::postgres {
 class Connection final : public ConnectionBase {
@@ -13,6 +12,7 @@ class Connection final : public ConnectionBase {
 public:
   explicit Connection(const CredentialPassword& credential);
 
+  const TypeMap& typeMap() const override;
   ~Connection() override;
 
   void execute(std::string_view statement) override;

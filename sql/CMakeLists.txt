@@ -1,6 +1,9 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
 add_library(sql_interface INTERFACE)
 
+find_package(cnl CONFIG REQUIRED)
+add_library(cnl INTERFACE)
+target_include_directories(cnl INTERFACE ${CNL_INCLUDE_DIR})
 
 target_include_directories(sql_interface INTERFACE
         ${CMAKE_SOURCE_DIR}
@@ -35,13 +38,15 @@ add_library(sql STATIC
         explain/expression.h
         explain/distribution.h
         explain/select.h
-        credential_file.h
-        credential_base.h
+        credential.h
+        connection_base.cpp
 )
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}
 )
+
+target_link_libraries(sql PRIVATE cnl)
 
 # Drivers
 add_subdirectory("mariadb")

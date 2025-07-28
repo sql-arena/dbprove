@@ -1,12 +1,12 @@
 #include "connection.h"
-#include "../credential_base.h"
+#include "../credential.h"
 #include "../sql_exceptions.h"
 #include "../connection_base.h"
 
 class sql::msodbc::Connection::Pimpl {
 public:
   Connection& connection;
-  const CredentialBase& credential;
+  const Credential& credential;
 
   explicit Pimpl(Connection& connection)
     : connection(connection)
@@ -14,7 +14,7 @@ public:
   }
 };
 
-sql::msodbc::Connection::Connection(const CredentialBase& credential)
+sql::msodbc::Connection::Connection(const Credential& credential)
   : ConnectionBase(credential)
   , impl_(std::make_unique<Pimpl>(*this)) {
 }

@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <map>
 
+#include "credential.h"
 #include "sql_type.h"
 #include "result_base.h"
 #include "row_base.h"
@@ -12,18 +14,19 @@
 
 
 namespace sql {
-class CredentialBase;
-class Credential;
 
 class ConnectionBase {
   bool closed_ = false;
-
 public:
+  using TypeMap = std::map<std::string_view, std::string_view>;
   virtual ~ConnectionBase() = default;
 
-  explicit ConnectionBase(const CredentialBase& credential)
+  explicit ConnectionBase(const Credential& credential)
     : credential(credential) {
   };
+
+  /// @brief Used to map type names specific to the engine before executing DDL/SQL
+  virtual const TypeMap& typeMap() const;
 
   /// @brief Run statement and return
   virtual void execute(std::string_view statement) = 0;
@@ -72,8 +75,12 @@ public:
     return std::string(ddl);
   }
 
-  const CredentialBase& credential;
+  const Credential& credential;
 
   void close() { closed_ = true; };
+
+  std::string mapTypes(std::string_view statement) const;
 };
+
+
 }

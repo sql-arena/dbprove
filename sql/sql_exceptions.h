@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "credential_base.h"
+#include "credential.h"
 
 namespace sql {
 /**
@@ -22,15 +22,28 @@ public:
   }
 };
 
+/// @brief userfriendly message from credential info
+static constexpr std::string render_credential(const Credential& credential) {
+  if (std::holds_alternative<CredentialPassword>(credential)) {
+    const auto cred_password = std::get<CredentialPassword>(credential);
+    return "database: " + cred_password.database + " as user " + cred_password.username;
+  }
+  if (std::holds_alternative<CredentialFile>(credential)) {
+    const auto cred_file = std::get<CredentialFile>(credential);
+    return "file path: " + cred_file.path;
+  }
+  return "Unknown credential";
+}
+
 /**
  * @brief Exception thrown when a connection to the database cannot be established
  */
 class ConnectionException final : public Exception {
 public:
   explicit ConnectionException(
-      const CredentialBase& credential,
+      const Credential& credential,
       const std::string& message)
-    : Exception("When trying to access" + credential.database + " the connector threw: " + message) {
+    : Exception("When trying to access" + render_credential(credential) + " the connector threw: " + message) {
   }
 };
 
@@ -61,6 +74,23 @@ class ConnectionTimeoutException final : public Exception {
 public:
   explicit ConnectionTimeoutException(const std::string& message = "Query execution timed out")
     : Exception(message) {
+  }
+};
+
+/**
+ * @brief Thrown when the user expected to get data, but got nothing
+ */
+class EmptyResultException final : public Exception {
+public:
+  explicit EmptyResultException(const std::string_view query)
+    : Exception("Expected to get data from query: " + std::string(query) + ", but got nothing") {
+  }
+};
+
+class InvalidTypeException final : public Exception {
+public:
+  explicit InvalidTypeException(const std::string& error)
+    : Exception("Di not recognise type with name: " + error) {
   }
 };
 }

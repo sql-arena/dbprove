@@ -35,20 +35,20 @@ const utopia::UtopiaConfig& getConfig(std::string_view statement) {
   static const std::map<std::string_view, UtopiaConfig> data = {
       {"n10", {UtopiaData::N10, 0}},
       {"CLI-1", {UtopiaData::NOOP, 10}},
-      {"test_value", {UtopiaData::TEST_VALUE, 0}},
+      {"test_scalar", {UtopiaData::TEST_VALUE, 0}},
       {"test_row", {UtopiaData::TEST_ROW, 0}},
       {"test_result", {UtopiaData::TEST_RESULT, 0}}
   };
 
   if (!data.contains(comment_text)) {
-    throw std::runtime_error("Utopia cannot match requested result" + comment_text);
+    throw std::runtime_error("Utopia cannot match requested result: " + comment_text);
   }
   return data.at(comment_text);
 }
 
 
 utopia::Connection::Connection()
-  : ConnectionBase(CredentialNone("UTOPIA")) {
+  : ConnectionBase(CredentialNone("UTOPIA"), Engine(Engine::Type::Utopia)) {
 }
 
 void utopia::Connection::execute(std::string_view statement) {
@@ -74,7 +74,7 @@ std::unique_ptr<RowBase> utopia::Connection::fetchRow(const std::string_view sta
   return std::make_unique<Row>(data);
 }
 
-SqlVariant utopia::Connection::fetchValue(const std::string_view statement) {
+SqlVariant utopia::Connection::fetchScalar(const std::string_view statement) {
   const auto& [data, runtime_us] = getConfig(statement);
   sleep_us(runtime_us);
   if (data == UtopiaData::TEST_VALUE) {

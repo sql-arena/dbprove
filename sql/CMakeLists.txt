@@ -35,11 +35,16 @@ add_library(sql STATIC
         explain/group_by.h
         explain/sort.h
         explain/column.h
-        explain/expression.h
+        explain/projection.h
         explain/distribution.h
         explain/select.h
         credential.h
         connection_base.cpp
+        explain/plan.h
+        explain/plan.cpp
+        explain/node.cpp
+        explain/group_by.cpp
+        explain/union.h
 )
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}

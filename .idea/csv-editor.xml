@@ -10,10 +10,24 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\data\csv\real\imdb_movie_info_escaped.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\.github\config\uncovered_files.csv">
           <value>
             <Attribute>
               <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\data\csv\real\imdb_movie_info_escaped.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>

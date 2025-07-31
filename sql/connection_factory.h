@@ -28,18 +28,24 @@ public:
   , connectionCount_(other.connectionCount_.load()) {
   }
 
+
+
+  ConnectionFactory() = delete;
+
+
   std::unique_ptr<ConnectionBase> create() {
     connectionCount_.fetch_add(1);
-    switch (engine_.type()) {
+    auto type = engine_.type();
+    switch (type) {
       case Engine::Type::Utopia:
         return std::make_unique<utopia::Connection>();
       case Engine::Type::Postgres:
         if (!std::holds_alternative<CredentialPassword>(credential_)) {
           throw std::invalid_argument("Postgres engine requires a password credential");
         }
-        return std::make_unique<postgres::Connection>(std::get<CredentialPassword>(credential_));
+        return std::make_unique<postgres::Connection>(std::get<CredentialPassword>(credential_), engine_);
       case Engine::Type::SQLServer:
-        return std::make_unique<msodbc::Connection>(credential_);
+        return std::make_unique<msodbc::Connection>(credential_, engine_);
       default:
         throw std::invalid_argument("Unsupported engine type: " + engine_.name());
     }

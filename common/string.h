@@ -26,3 +26,15 @@ inline std::string to_lower(const std::string_view sv) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
     return s;
 }
+
+inline std::string to_upper(const std::string_view sv) {
+  std::string s(sv);
+  std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+  return s;
+}
+
+
+template<typename T>
+inline std::u8string to_u8string(const T s) {
+  return std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size());
+}

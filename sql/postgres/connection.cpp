@@ -1,23 +1,37 @@
 #include "connection.h"
 
 #include <cassert>
+#include <unordered_set>
+
 #include "row.h"
 #include "libpq-fe.h"
+#include "result.h"
 #include "../credential.h"
 #include "../sql_exceptions.h"
+#include <nlohmann/json.hpp>
+
+#include "explain/group_by.h"
+#include "explain/join.h"
+#include "explain/scan.h"
+#include "explain/sort.h"
+#include "explain/limit.h"
+#include "explain/select.h"
+#include "explain/union.h"
 
 class sql::postgres::Connection::Pimpl {
 public:
   Connection& connection;
-  const CredentialPassword& credential;
+  const CredentialPassword credential;
   PGconn* conn;
-  explicit Pimpl(Connection& connection, const CredentialPassword& credential): connection(connection), credential(credential) {
 
+  explicit Pimpl(Connection& connection, const CredentialPassword& credential)
+    : connection(connection)
+    , credential(credential) {
     std::string conninfo =
-      "dbname=" + credential.database +
-      " user=" + credential.username +
-      " password=" + credential.password +
-      " port=" + std::to_string(credential.port);
+        "dbname=" + credential.database +
+        " user=" + credential.username +
+        " password=" + credential.password +
+        " port=" + std::to_string(credential.port);
     conn = PQconnectdb(conninfo.c_str());
 
     if (PQstatus(conn) != CONNECTION_OK) {
@@ -39,68 +53,333 @@ public:
       case PGRES_SINGLE_TUPLE:
         /* Legit and harmless status code */
         return;
+
       default:
         std::string error_msg = PQerrorMessage(this->conn);
-        assert( error_msg.size() > 0 );
+        assert(error_msg.size() > 0);
+        const char* sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+        std::string state;
+        if (sqlstate == nullptr) {
+          state = "UNKNOWN";
+        } else {
+          state = sqlstate;
+        }
         PQclear(result);
-        throw sql::ConnectionException(this->credential, error_msg);
+
+        if (state.starts_with("42")) {
+          throw sql::SyntaxException(error_msg);
+        }
+        throw sql::ConnectionException(credential, error_msg);
     }
+  }
+
+  PGresult* execute(const std::string_view statement) const {
+    const auto mapped_statement = connection.mapTypes(statement);
+    PGresult* result = PQexecParams(conn,
+                                    mapped_statement.c_str(),
+                                    0,
+                                    nullptr,
+                                    nullptr,
+                                    nullptr,
+                                    nullptr,
+                                    1);
+    check_return(result);
+    return result;
+  }
+
+  void executeRaw(const std::string_view statement) const {
+    const auto mapped_statement = connection.mapTypes(statement);
+    PGresult* result = PQexec(conn, mapped_statement.data());
+    check_return(result);
+    PQclear(result);
   }
 };
 
-
-sql::postgres::Connection::Connection(const CredentialPassword& credential):
-ConnectionBase(credential)
-, impl_(std::make_unique<Pimpl>(*this, credential))
-{
+sql::postgres::Connection::Connection(const CredentialPassword& credential, const Engine& engine)
+  : ConnectionBase(credential, engine)
+  , impl_(std::make_unique<Pimpl>(*this, credential)) {
 }
 
 const sql::ConnectionBase::TypeMap& sql::postgres::Connection::typeMap() const {
-  static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "TEXT"} };
+  static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "TEXT"}};
   return map;
 }
 
 sql::postgres::Connection::~Connection() = default;
 
-void sql::postgres::Connection::execute(std::string_view statement) {\
-  PGresult* result = PQexec(impl_->conn, std::string(statement).c_str());
-  impl_->check_return(result);
-  PQclear(result);
+void sql::postgres::Connection::execute(const std::string_view statement) {
+  impl_->executeRaw(statement);
 }
 
-std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchAll(std::string_view statement) {
-  return nullptr;
+std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchAll(const std::string_view statement) {
+  PGresult* result = impl_->execute(statement);
+  return std::make_unique<Result>(result);
 }
 
 
-std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchMany(std::string_view statement) {
-  return nullptr;
+std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchMany(const std::string_view statement) {
+  PGresult* result = impl_->execute(statement);
+  // TODO: Figure out how multi result protocol works, for now, grab first result
+  return std::make_unique<Result>(result);
 }
 
-std::unique_ptr<sql::RowBase> sql::postgres::Connection::fetchRow(std::string_view statement) {
-  const auto mapped_statement = mapTypes(statement);
-  PGresult* result = PQexecParams(impl_->conn,
-    mapped_statement.c_str(),
-    0,
-    nullptr,
-    nullptr,
-    nullptr,
-    nullptr,
-    1);
-  impl_->check_return(result);
-  int rows = PQntuples(result);
-  if (rows == 0) {
+std::unique_ptr<sql::RowBase> sql::postgres::Connection::fetchRow(const std::string_view statement) {
+  PGresult* result = impl_->execute(statement);
+  const auto row_count = PQntuples(result);
+  if (row_count == 0) {
     PQclear(result);
     throw EmptyResultException(statement);
+  }
+  if (row_count > 1) {
+    PQclear(result);
+    throw InvalidRowsException("Expected to find a single row in the data, but found: " + std::to_string(row_count),
+                               statement);
   }
   return std::make_unique<Row>(result);
 }
 
-sql::SqlVariant sql::postgres::Connection::fetchValue(std::string_view statement) {
-  return SqlVariant(42);
+sql::SqlVariant sql::postgres::Connection::fetchScalar(const std::string_view statement) {
+  const auto row = fetchRow(statement);
+  if (row->columnCount() != 1) {
+    throw InvalidColumnsException("Expected to find a single column in the data", statement);
+  }
+  return row->asVariant(0);
 }
 
 void sql::postgres::Connection::bulkLoad(
-  std::string_view table,
-  const std::vector<std::filesystem::path>& source_paths) {
+    std::string_view table,
+    const std::vector<std::filesystem::path>& source_paths) {
+  // TODO: Implement me
+}
+
+using namespace sql::explain;
+using namespace nlohmann;
+/**
+ * Create the appropriate node type based on PostgreSQL node type
+ * Skip past nodes we currently don't care about.
+ */
+std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) {
+  const auto pg_node_type = node_json["Node Type"].get<std::string>();
+  std::unique_ptr<Node> node;
+
+  if (pg_node_type == "Seq Scan" || pg_node_type == "Index Scan" || pg_node_type == "Index Only Scan") {
+    std::string relation_name;
+    if (node_json.contains("Relation Name")) {
+      relation_name = node_json["Relation Name"].get<std::string>();
+    }
+    if (node_json.contains("Alias")) {
+      relation_name = node_json["Alias"].get<std::string>();
+    }
+
+    node = std::make_unique<Scan>(relation_name);
+  } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
+    std::string join_condition;
+
+    Join::Strategy join_strategy;
+    if (pg_node_type == "Hash Join") {
+      join_strategy = Join::Strategy::HASH;
+    } else if (pg_node_type == "Nested Loop") {
+      join_strategy = Join::Strategy::LOOP;
+    } else if (pg_node_type == "Merge Join") {
+      join_strategy = Join::Strategy::MERGE;
+      join_condition = node_json["Merge Cond"].get<std::string>();
+    }
+
+    auto join_type = Join::Type::INNER;
+    if (node_json.contains("Join Type")) {
+      // TODO: Parse the strategy into the enum
+      auto join_type = node_json["Join Type"].get<std::string>();
+    }
+    if (node_json.contains("Join Filter")) {
+      join_condition = node_json["Join Filter"].get<std::string>();
+    }
+    if (node_json.contains("Hash Cond")) {
+      join_condition = node_json["Hash Cond"].get<std::string>();
+    }
+    if (!join_condition.empty() &&
+        join_condition.front() == '(' &&
+        join_condition.back() == ')') {
+      join_condition = join_condition.substr(1, join_condition.length() - 2);
+    }
+
+    node = std::make_unique<Join>(join_type, join_strategy, join_condition);
+  } else if (pg_node_type == "Sort") {
+    std::vector<Column> sort_keys;
+    for (const auto& col : node_json["Sort Key"]) {
+      const std::string desc_suffix = " DESC";
+      auto sort_order = Column::Sorting::ASC;
+      auto name = col.get<std::string>();
+      if (name.size() >= desc_suffix.size() &&
+          name.substr(name.size() - desc_suffix.size()) == desc_suffix) {
+        // Sort keys end with DESC (yeah, a string) if they are descending
+        name = name.substr(0, name.size() - desc_suffix.size());
+        sort_order = Column::Sorting::DESC;
+      }
+      Column c(name, sort_order);
+      sort_keys.push_back(c);
+    }
+    node = std::make_unique<Sort>(sort_keys);
+  } else if (pg_node_type == "Limit") {
+    int64_t limit_count = -1;
+    if (node_json.contains("Plan Rows")) {
+      limit_count = node_json["Plan Rows"].get<int64_t>();
+    }
+    node = std::make_unique<Limit>(limit_count);
+  } else if (pg_node_type == "Aggregate") {
+    std::vector<Column> group_keys;
+
+    auto group_strategy = GroupBy::Strategy::SIMPLE;
+    if (node_json.contains("Strategy")) {
+      const auto strategy = node_json["Strategy"].get<std::string>();
+      if (strategy == "Hashed") {
+        group_strategy = GroupBy::Strategy::HASH;
+      } else if (strategy == "Sorted") {
+        group_strategy = GroupBy::Strategy::SORT_MERGE;
+      } else {
+        throw std::runtime_error("Did not know GROUP BY strategy " + strategy);
+      }
+    } else if (node_json.contains("Group Key")) {
+      // The strategy field is only present if the strategy is Hash or if there is an aggregate
+      // value
+      group_strategy = GroupBy::Strategy::SORT_MERGE;
+    }
+
+    if (node_json.contains("Group Key")) {
+      for (const auto& key : node_json["Group Key"]) {
+        group_keys.push_back(Column(key.get<std::string>()));
+      }
+    }
+    std::vector<Column> aggregates;
+    if (node_json.contains("Output")) {
+      std::vector<Column> out;
+      for (const auto& key : node_json["Output"]) {
+        out.push_back(Column(key.get<std::string>()));
+      }
+      std::unordered_set<Column> group_keys_set(group_keys.begin(), group_keys.end());
+      for (const auto& column : out) {
+        // If the column is not found in group_keys_set, add it to non_group_keys
+        if (!group_keys_set.contains(column)) {
+          aggregates.push_back(column);
+        }
+      }
+    }
+    node = std::make_unique<GroupBy>(group_strategy, group_keys, aggregates);
+  } else if (pg_node_type == "Result") {
+    node = std::make_unique<Select>();
+  } else if (pg_node_type == "Append") {
+    node = std::make_unique<Union>(Union::Type::ALL);
+  } else if (pg_node_type == "Merge Append") {
+    /* PG has a special node for distinct unions when the input is sorted */
+    node = std::make_unique<Union>(Union::Type::DISTINCT);
+  } else {
+    return nullptr;
+  }
+
+  /* Cost and estimation information */
+  if (node_json.contains("Total Cost")) {
+    node->cost = node_json["Total Cost"].get<double>();
+  }
+
+  /* Row estimates and actuals */
+  if (node_json.contains("Plan Rows")) {
+    node->rows_estimated = node_json["Plan Rows"].get<double>();
+  }
+  if (node_json.contains("Actual Rows")) {
+    node->rows_actual = node_json["Actual Rows"].get<double>();
+  }
+
+  // Filter conditions
+  if (node_json.contains("Filter")) {
+    node->filter_condition = node_json["Filter"].get<std::string>();
+  }
+
+  // Output columns
+  if (node_json.contains("Output") && node_json["Output"].is_array()) {
+    for (const auto& col : node_json["Output"]) {
+      node->columns_output.push_back(col.get<std::string>());
+    }
+  }
+
+  return node;
+}
+
+
+std::unique_ptr<sql::explain::Node> buildExplainNode(nlohmann::json& node_json) {
+  // Determine the node type from "Node Type" field
+  if (!node_json.contains("Node Type")) {
+    throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
+  }
+
+  auto node = createNodeFromPgType(node_json);
+  while (node == nullptr) {
+    if (!node_json.contains("Plans")) {
+      throw std::runtime_error(
+          "EXPLAIN tries to skip past a node that has no children. You must handle all leaf nodes");
+    }
+    if (node_json["Plans"].size() > 1) {
+      throw std::runtime_error(
+          "EXPLAIN parsing Tried to skip past a node with >1 children. You have to deal with this case");
+    }
+    node_json = node_json["Plans"][0];
+    node = createNodeFromPgType(node_json);
+  }
+
+  if (node_json.contains("Plans") && node_json["Plans"].is_array()) {
+    for (auto& child_json : node_json["Plans"]) {
+      auto child_node = buildExplainNode(child_json);
+      node->addChild(std::move(child_node));
+    }
+  }
+
+  return node;
+}
+
+
+std::unique_ptr<sql::explain::Plan> buildExplainPlan(nlohmann::json& json) {
+  if (!json.is_array() || json.empty() || !json[0].contains("Plan")) {
+    throw std::runtime_error("Invalid EXPLAIN JSON format");
+  }
+
+  /* High lever stats about the query */
+  double planning_time = 0.0;
+  double execution_time = 0.0;
+
+  if (json[0].contains("Planning Time")) {
+    planning_time = json[0]["Planning Time"].get<double>();
+  }
+  if (json[0].contains("Execution Time")) {
+    execution_time = json[0]["Execution Time"].get<double>();
+  }
+
+  auto& plan_json = json[0]["Plan"];
+
+  /* Construct the tree*/
+  auto root_node = buildExplainNode(plan_json);
+
+  if (!root_node) {
+    // TODO: Add the plan here
+    throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan from ");
+  }
+
+  //  auto root_select = std::make_unique<Select>();
+  //  root_select->addChild(std::move(root_node));
+
+  // Create and return the plan object with timing information
+  auto plan = std::make_unique<Plan>(std::move(root_node));
+  plan->planning_time = planning_time;
+  plan->execution_time = execution_time;
+  return plan;
+}
+
+
+std::unique_ptr<Plan> sql::postgres::Connection::explain(const std::string_view statement) {
+  const std::string explain_modded = "EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON)\n" + std::string(statement);
+
+  const auto result = fetchScalar(explain_modded);
+  assert(result.is<SqlString>());
+
+  auto explain_string = result.get<SqlString>().get();
+  auto explain_json = json::parse(explain_string);
+
+  return buildExplainPlan(explain_json);
 }

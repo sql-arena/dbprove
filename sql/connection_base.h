@@ -1,4 +1,6 @@
 #pragma once
+#include <Engine.h>
+
 #include <memory>
 #include <span>
 #include <string>
@@ -10,23 +12,25 @@
 #include "sql_type.h"
 #include "result_base.h"
 #include "row_base.h"
-#include "explain/node.h"
+#include "explain/plan.h"
 
 
 namespace sql {
 
 class ConnectionBase {
   bool closed_ = false;
+  const Engine engine_;
 public:
   using TypeMap = std::map<std::string_view, std::string_view>;
   virtual ~ConnectionBase() = default;
 
-  explicit ConnectionBase(const Credential& credential)
-    : credential(credential) {
+  explicit ConnectionBase(const Credential& credential, const Engine& engine)
+    : engine_(engine), credential(credential) {
   };
 
   /// @brief Used to map type names specific to the engine before executing DDL/SQL
   virtual const TypeMap& typeMap() const;
+  const Engine& engine() const { return engine_; }
 
   /// @brief Run statement and return
   virtual void execute(std::string_view statement) = 0;
@@ -35,17 +39,18 @@ public:
   /// @brief Fetches multiple results from the data
   virtual std::unique_ptr<ResultBase> fetchMany(std::string_view statement) = 0;
   /// @brief Fetches a single row from the data.
+  /// @throw If the statement does not return a single row
   virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement) = 0;
-  /// @brief Fetches a single value from the database.
-  virtual SqlVariant fetchValue(std::string_view statement) = 0;
-
+  /// @brief Fetches a single, scalar value from the database.
+  /// @throw If the statement does not return a single row with a single column
+  virtual SqlVariant fetchScalar(std::string_view statement) = 0;
 
   /**
    * @brief Run the query, discarding results and returning the query plan
    */
-  virtual std::unique_ptr<const explain::Node> explain(std::string_view statement) { return nullptr; }
+  virtual std::unique_ptr<explain::Plan> explain(std::string_view statement) { return nullptr; }
 
-  /** @brief If bulk load API is availble, use that to load file.
+  /** @brief If bulk load API is available, use that to load file.
    * @note If no bulk load API is available, the implementation must fall back to INSERT
    * and read the file manually
    * @param table to load

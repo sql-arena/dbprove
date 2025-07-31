@@ -15,12 +15,12 @@ namespace ux {
             std::cout << BOX_HORIZONTAL;
         }
         std::cout << BOX_TOP_RIGHT << std::endl;
-        std::cout << BOX_VERTICAL << " ";
+        std::cout << VERTICAL_LINE << " ";
         std::cout << rang::fg::yellow << title ;
         auto padding = Terminal::SCREEN_WIDTH - 4 - title.length();
         std::cout << std::string(padding, ' ');
-        std::cout << rang::fg::gray << " " << BOX_VERTICAL << std::endl;
-        std::cout << BOX_BOTTOM_LEFT;
+        std::cout << rang::fg::gray << " " << VERTICAL_LINE << std::endl;
+        std::cout << HASH_BUILD_CHILD;
         for (auto i = 0; i < Terminal::SCREEN_WIDTH - 2; i++) {
             std::cout << BOX_HORIZONTAL;
         }

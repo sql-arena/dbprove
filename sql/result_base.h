@@ -1,7 +1,7 @@
 #pragma once
 #include <memory>
-
 #include "row_iterator.h"
+#include "row_base.h"
 
 
 namespace sql {
@@ -19,7 +19,7 @@ public:
 
 protected:
   /// @brief return the next row or nullptr if no more rows
-  virtual std::unique_ptr<RowBase> nextRow() = 0;
+  virtual const RowBase& nextRow() = 0;
   /// @brief Reset result cursor
   virtual void reset() {
   };
@@ -30,10 +30,10 @@ protected:
 
 
 /// @brief Sentinel to mark end of row iteration
-class SentinelResult : public ResultBase {
+class SentinelResult final : public ResultBase {
 protected:
-  std::unique_ptr<RowBase> nextRow() override {
-    return nullptr;
+  const RowBase& nextRow() override {
+    return SentinelRow::instance();
   }
 
   size_t rowCount() const override {

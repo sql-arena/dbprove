@@ -1,6 +1,8 @@
 #pragma once
 #include <result_base.h>
 #include <cstddef>
+
+#include "row.h"
 #include "row_base.h"
 #include "utopia_data.h"
 
@@ -13,7 +15,7 @@ struct UtopiaConfig {
 };
 
 
-class Result : public ResultBase {
+class Result final : public ResultBase {
 public:
   explicit Result(const UtopiaData data = UtopiaData::EMPTY)
     : data(data) {
@@ -29,10 +31,11 @@ protected:
   void reset() override {
   };
 
-  std::unique_ptr<sql::RowBase> nextRow() override;
+  const RowBase& nextRow() override;
 
 private:
   const UtopiaData data;
   size_t rowNumber = 0;
+  Row currentRow_{};
 };
 }

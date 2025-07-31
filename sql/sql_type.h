@@ -14,7 +14,7 @@ public:
 
 /// @brief SQL Types definition made so that we cannot mix up types by accident
 template <typename T, typename Tag>
-class SqlTypeDef final : SqlType {
+class SqlTypeDef final : public SqlType {
   T value_;
 
 public:
@@ -79,14 +79,13 @@ using SqlBigInt = SqlTypeDef<std::int64_t, SqlBigIntTag>;
 
 using SqlFloat = SqlTypeDef<float, SqlFloatTag>;
 using SqlDouble = SqlTypeDef<double, SqlDoubleTag>;
-
-using SqlText = SqlTypeDef<std::string, SqlTextTag>;
+using SqlString = SqlTypeDef<std::string, SqlTextTag>;
 
 class SqlVariant;
 
 class SqlDecimal {
   using decimal = std::string;
-  const decimal value_;
+  decimal value_;
 
 public:
   static constexpr std::string_view name = "DECIMAL";
@@ -95,8 +94,24 @@ public:
     : value_(value) {
   }
 
+  SqlDecimal(const SqlDecimal& other)
+    : value_(other.value_) {
+  }
+
+  SqlDecimal& operator=(const SqlDecimal& other) {
+    if (this != &other) {
+      value_ = other.value_;
+    }
+    return *this;
+  }
 };
 
+
+
+class SqlNull {
+public:
+  static constexpr std::string_view name = "NULL";
+};
 
 class SqlVariant {
   using variant_type = std::variant<SqlTinyInt,
@@ -106,8 +121,21 @@ class SqlVariant {
                                     SqlFloat,
                                     SqlDouble,
                                     SqlDecimal,
-                                    SqlText>;
+                                    SqlNull,
+                                    SqlString>;
   variant_type data;
+
+public:
+  SqlVariant(const SqlVariant& other)
+    : data(other.data) {
+  }
+
+  SqlVariant& operator=(const SqlVariant& other) {
+    if (this != &other) {
+      data = other.data;
+    }
+    return *this;
+  }
 
 public:
   explicit SqlVariant(const variant_type& v)
@@ -131,17 +159,20 @@ public:
   }
 
   explicit SqlVariant(const std::string_view s)
-    : data(SqlText(std::string(s))) {
+    : data(SqlString(std::string(s))) {
   }
 
   explicit SqlVariant(const char* s)
-  : data(SqlText(std::string(s))) {
+    : data(SqlString(std::string(s))) {
   }
 
   explicit SqlVariant(std::string s)
-    : data(SqlText(s)) {
+    : data(SqlString(s)) {
   }
 
+  SqlVariant()
+    : data(SqlNull()) {
+  }
 
   /// @brief Is the value of the templated type?
   template <typename T>
@@ -155,6 +186,4 @@ public:
     return std::get<T>(data);
   }
 };
-
-
 }

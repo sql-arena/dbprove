@@ -21,6 +21,8 @@ namespace sql
             Utopia
         };
 
+        explicit Engine(const Type type): type_(type) {
+        }
         explicit Engine(const std::string_view name)
         {
             const std::string name_lower = to_lower(name);

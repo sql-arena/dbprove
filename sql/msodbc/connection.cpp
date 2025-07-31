@@ -14,8 +14,8 @@ public:
   }
 };
 
-sql::msodbc::Connection::Connection(const Credential& credential)
-  : ConnectionBase(credential)
+sql::msodbc::Connection::Connection(const Credential& credential, const Engine& engine_type)
+  : ConnectionBase(credential, engine_type)
   , impl_(std::make_unique<Pimpl>(*this)) {
 }
 
@@ -36,7 +36,7 @@ std::unique_ptr<sql::RowBase> sql::msodbc::Connection::fetchRow(std::string_view
   return nullptr;
 }
 
-sql::SqlVariant sql::msodbc::Connection::fetchValue(std::string_view statement) {
+sql::SqlVariant sql::msodbc::Connection::fetchScalar(std::string_view statement) {
   return SqlVariant(42);
 }
 

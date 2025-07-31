@@ -13,6 +13,7 @@ target_link_libraries(sql_msodbc PUBLIC
 )
 
 
+
 # For Linux: we may need to link dl for dynamic loading
 if(UNIX)
     target_link_libraries(AzureFabricODBC PRIVATE dl)

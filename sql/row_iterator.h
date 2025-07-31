@@ -22,7 +22,7 @@ namespace sql
         // Begin iterator constructor
         explicit RowIterator(ResultBase& result);
 
-        const RowBase& operator*();
+        const RowBase& operator*() const;
         RowIterator& operator++();
         RowIterator operator++(int);
 
@@ -31,7 +31,7 @@ namespace sql
 
     private:
         ResultBase& result_;
-        std::shared_ptr<RowBase> currentRow_;
+        const RowBase* currentRow_;
         bool is_end_;
     };
 

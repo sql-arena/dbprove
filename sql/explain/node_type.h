@@ -8,7 +8,10 @@ enum class NodeType {
   SORT,
   SELECT,
   SCAN,
-  EXPRESSION,
-  DISTRIBUTE
+  UNION,
+  PROJECTION,
+  DISTRIBUTE,
+  LIMIT,
+  UNKNOWN
 };
 }  // namespace sql::explain

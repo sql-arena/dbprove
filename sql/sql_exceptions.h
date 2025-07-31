@@ -12,13 +12,29 @@ namespace sql {
  * connector code
  */
 class Exception : public std::runtime_error {
+  static constexpr const char* kDatabaseError = "Database error";
+
 public:
+  const std::string statement = "";
+  const std::string full_message = "";
+
   explicit Exception(const std::string& message)
-    : std::runtime_error(message) {
+    : std::runtime_error(kDatabaseError)
+    , full_message(std::string(message)) {
+  }
+
+  explicit Exception(const std::string& message, const std::string_view statement)
+    : std::runtime_error(kDatabaseError)
+    , statement(statement) {
   }
 
   explicit Exception(std::string_view message)
-    : std::runtime_error(std::string(message)) {
+    : std::runtime_error(kDatabaseError)
+    , full_message(std::string(message)) {
+  }
+
+  const char* what() const noexcept override {
+    return full_message.c_str();
   }
 };
 
@@ -43,7 +59,7 @@ public:
   explicit ConnectionException(
       const Credential& credential,
       const std::string& message)
-    : Exception("When trying to access" + render_credential(credential) + " the connector threw: " + message) {
+    : Exception("When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
   }
 };
 
@@ -90,7 +106,30 @@ public:
 class InvalidTypeException final : public Exception {
 public:
   explicit InvalidTypeException(const std::string& error)
-    : Exception("Di not recognise type with name: " + error) {
+    : Exception("Did not recognise type with name: " + error) {
+  }
+};
+
+
+class InvalidPlanException final : public Exception {
+public:
+  explicit InvalidPlanException(const std::string& error)
+    : Exception(error) {
+  }
+};
+
+
+class InvalidColumnsException final : public Exception {
+public:
+  explicit InvalidColumnsException(const std::string& error, const std::string_view statement)
+    : Exception(error, statement) {
+  }
+};
+
+class InvalidRowsException final : public Exception {
+public:
+  explicit InvalidRowsException(const std::string& error, const std::string_view statement)
+    : Exception(error, statement) {
   }
 };
 }

@@ -1,28 +1,24 @@
 #pragma once
 #include "node.h"
-#include "node_type.h"
 
 namespace sql::explain {
-class Select : public Node {
-  static constexpr const char* symbol_ = "π";
+class Projection : public Node {
+  const constexpr char* symbol_ = "π";
 public:
-  Select()
-    : Node(NodeType::SELECT) {
+  Projection()
+    : Node(NodeType::PROJECTION) {
   }
 
   std::string compactSymbolic() const override {
     std::string result;
     result+=symbol_;
     result+="{";
-    for (auto& column: columns_output) {
-      result+=column;
-      result+=", ";
-    }
+    // TODO: add the actual projection here
     result+="}";
     return result;
   }
   std::string renderMuggle() const override {
-    std::string result = "SELECT";
+    std::string result = "PROJECT ";
     return result;
   }
 };

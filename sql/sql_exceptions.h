@@ -124,6 +124,9 @@ public:
   explicit InvalidColumnsException(const std::string& error, const std::string_view statement)
     : Exception(error, statement) {
   }
+  explicit InvalidColumnsException(const std::string& error)
+    : Exception(error) {
+  }
 };
 
 class InvalidRowsException final : public Exception {

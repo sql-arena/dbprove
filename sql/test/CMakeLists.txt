@@ -9,6 +9,7 @@ target_link_libraries(test_connectivity
         utopia
         sql_postgres
         sql_msodbc
+        sql_duckdb
 )
 
 target_embed_sql(test_connectivity

@@ -6,7 +6,7 @@ class Connection final : public ConnectionBase {
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
 public:
-  explicit Connection(const CredentialPassword& credential, const Engine& engine);
+  explicit Connection(const CredentialFile& credential, const Engine& engine);
 
   const TypeMap& typeMap() const override;
   ~Connection() override;

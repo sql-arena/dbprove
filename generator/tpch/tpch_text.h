@@ -11,8 +11,8 @@
 namespace generator {
 /// @brief Random text following a grammar as defined by clause 4.2.2.10-14 of the TPC-H spec
 class TpchText : GeneratorObject {
-  const uint32_t minLength_;
-  const uint32_t maxLength_;
+  const size_t minLength_;
+  const size_t maxLength_;
   static std::string generatedText_;
 
   static void addWord(std::string_view word);

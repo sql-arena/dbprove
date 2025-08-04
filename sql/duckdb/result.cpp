@@ -5,8 +5,7 @@
 
 namespace sql::duckdb {
 Result::Result(std::unique_ptr<::duckdb::QueryResult> duckResult)
-  : columnCount_(static_cast<ColumnCount>(duckResult->ColumnCount())
-      )
+  : columnCount_(static_cast<ColumnCount>(duckResult->ColumnCount()))
   , rowNumber_(0)
   , result_(std::move(duckResult)) {
 }
@@ -23,13 +22,12 @@ const RowBase& Result::nextRow() {
     currentChunk_ = result_->Fetch();
     currentChunkIndex_ = 0;
 
-    // If no more chunks available, return an empty row or throw
     if (!currentChunk_ || currentChunk_->size() == 0) {
-      throw std::runtime_error("No more rows available");
+      return SentinelRow::instance();
     }
   }
-
   currentRow_ = Row(currentChunk_.get(), currentChunkIndex_, rowNumber_++);
+  ++currentChunkIndex_;
   return currentRow_;
 }
 }

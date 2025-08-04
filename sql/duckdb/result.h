@@ -2,17 +2,14 @@
 #include <result_base.h>
 #include <cstddef>
 #include <atomic>
+#include <duckdb/main/query_result.hpp>
+
 #include "row_base.h"
 #include "row.h"
 
-namespace duckdb
-{
-  class QueryResult;
-  class DataChunk;
-}
 
 namespace sql::duckdb {
-
+class Connection;
 
 class Result final : public ResultBase {
   const ColumnCount columnCount_;
@@ -20,7 +17,6 @@ class Result final : public ResultBase {
   std::unique_ptr<::duckdb::DataChunk> currentChunk_;
   size_t currentChunkIndex_;
   Row currentRow_;
-
   std::atomic<int> rowNumber_;
 public:
   explicit Result(std::unique_ptr<::duckdb::QueryResult> duckResult);;
@@ -31,14 +27,12 @@ public:
   size_t rowCount() const override;;
   size_t columnCount() const override { return columnCount_; };
 
-
+  friend class Connection;
 protected:
   void reset() override {
   };
 
-  virtual const RowBase& nextRow();;
-
-
+  const RowBase& nextRow() override;
 };
 
 }

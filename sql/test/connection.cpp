@@ -35,11 +35,10 @@ auto factories(std::string_view find = "") {
       sql::Engine("DuckDB"),
       sql::CredentialFile("quick.duckdb"));
 
-
   static std::vector factories = {
       utopiaFactory,
       postgresFactory,
-         duckdbFactory};
+      duckdbFactory};
 
   static std::map<std::string_view, sql::ConnectionFactory*> factories_map =
   {{"PostgreSQL", &postgresFactory}
@@ -166,4 +165,3 @@ TEST_CASE("Explain Two Join", "[Connection Explain]") {
 TEST_CASE("Explain Union All", "[Connection Explain]") {
   explainAndRenderPlan(resource::union_and_join_sql);
 }
-

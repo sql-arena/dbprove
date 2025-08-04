@@ -5,9 +5,7 @@
 #include "Credential.h"
 #include "utopia/connection.h"
 
-sql::Credential credentials = sql::Credential("test", 0, "test", "test");
-
 TEST_CASE("Connectivity Works", "[Connection]") {
-  utopia::Connection connection(credentials);
+  sql::utopia::Connection connection;
   CHECK_NOTHROW(connection.execute(";"));
 }

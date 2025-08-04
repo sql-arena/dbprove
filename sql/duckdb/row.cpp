@@ -1,11 +1,23 @@
 #include "row.h"
 #include <bit>
-#include <vector>
+#include <duckdb/common/types/data_chunk.hpp>
 #include <duckdb/common/types/hugeint.hpp>
 
 #include "sql_exceptions.h"
+#include "result.h"
 
 namespace sql::duckdb {
+Row::Row(const Row& row, Result* owningResult)
+  : dataChunk_(row.dataChunk_)
+  , ownsResult_(owningResult) {
+  assert(row.dataChunk_);
+}
+
+
+Row::~Row()
+{
+  delete ownsResult_;
+}
 ColumnCount Row::columnCount() const {
   return dataChunk_->ColumnCount();
 }

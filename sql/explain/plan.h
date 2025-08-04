@@ -20,6 +20,9 @@ public:
   double planning_time = 0.0;
   double execution_time = 0.0;
 
+  Node& planTree() const {
+    return *plan_tree;
+  }
 
   /// @brief Render the plan as symbolic, relational algebra like, representation
   std::string render(RenderMode mode = RenderMode::MUGGLE) const;;

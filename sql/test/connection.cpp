@@ -7,6 +7,8 @@
 #include "postgres/connection.h"
 
 #include <iostream>
+#include <set>
+#include <unordered_map>
 #include <catch2/matchers/catch_matchers.hpp>
 
 #include "connection_factory.h"
@@ -33,15 +35,16 @@ auto factories(std::string_view find = "") {
 
   static sql::ConnectionFactory duckdbFactory(
       sql::Engine("DuckDB"),
-      sql::CredentialFile("quick.duckdb"));
+      sql::CredentialFile("C:/temp/quick.duckdb"));
 
   static std::vector factories = {
       utopiaFactory,
       postgresFactory,
       duckdbFactory};
 
-  static std::map<std::string_view, sql::ConnectionFactory*> factories_map =
-  {{"PostgreSQL", &postgresFactory}
+  static std::map<std::string_view, sql::ConnectionFactory*> factories_map = {
+      {"PostgreSQL", &postgresFactory},
+      {"DuckDb", &duckdbFactory}
   };
 
   if (find.length() == 0) {
@@ -122,32 +125,38 @@ TEST_CASE("Fetch Result", "[Connection]") {
   }
 }
 
-auto make_explain() {
-  static bool did_it = false;
-  auto pg = factories("PostgreSQL");
+auto make_explain(std::string_view driver = "PostgreSQL") {
+  static std::set<std::string_view> did_it;
+  auto pg = factories(driver);
   auto connection = pg[0].create();
-  if (did_it) {
+  if (did_it.contains(driver)) {
     return connection;
   }
   connection->execute(resource::explain_sql);
-  did_it = true;
+  did_it.insert(driver);
   return connection;
 }
 
-TEST_CASE("Explain Scan", "[Connection Explain]") {
-  const auto connection = make_explain();
-  const auto plan = connection->explain("SELECT * FROM test");
-  CAPTURE(plan->render());
-  REQUIRE(plan != nullptr);
-}
+constexpr std::string_view explain_drivers[] = {"PostgreSQL", "DuckDb"};
 
 auto explainAndRenderPlan(const std::string_view statement) {
-  const auto connection = make_explain();
-  const auto plan = connection->explain(statement);
-  const auto symbolic = plan->render(Plan::RenderMode::MUGGLE);
-  std::cout << symbolic << std::endl;
-  CAPTURE(symbolic);
-  REQUIRE(plan != nullptr);
+  for (auto& driver : explain_drivers) {
+    const auto connection = make_explain(driver);
+    const auto plan = connection->explain(statement);
+    const auto symbolic = plan->render(Plan::RenderMode::MUGGLE);
+    std::cout << symbolic << std::endl;
+    CAPTURE(symbolic);
+    CAPTURE(driver);
+    REQUIRE(plan != nullptr);
+  }
+}
+
+TEST_CASE("Explain Top N", "[Connection Explain]") {
+  explainAndRenderPlan(resource::topn_sql);
+}
+
+TEST_CASE("Explain Scan", "[Connection Explain]") {
+  explainAndRenderPlan("SELECT * FROM fact");
 }
 
 TEST_CASE("Explain Bushy", "[Connection Explain]") {
@@ -155,11 +164,11 @@ TEST_CASE("Explain Bushy", "[Connection Explain]") {
 }
 
 TEST_CASE("Explain Simple Join", "[Connection Explain]") {
-  explainAndRenderPlan(resource::two_join_sql);
+  explainAndRenderPlan(resource::simple_join_sql);
 }
 
 TEST_CASE("Explain Two Join", "[Connection Explain]") {
-  explainAndRenderPlan(resource::simple_join_sql);
+  explainAndRenderPlan(resource::two_join_sql);
 }
 
 TEST_CASE("Explain Union All", "[Connection Explain]") {

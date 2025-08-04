@@ -19,8 +19,8 @@ protected:
 
 public:
   const NodeType type;
-  double rows_estimated = 0;
-  double rows_actual = 0;
+  double rows_estimated = 0.0;
+  double rows_actual = 0.0;
   double cost;
   std::string filter_condition;
   std::vector<std::string> columns_input;

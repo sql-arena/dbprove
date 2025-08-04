@@ -8,8 +8,10 @@ enum class NodeType {
   SORT,
   SELECT,
   SCAN,
+  SCAN_EMPTY,
   UNION,
   PROJECTION,
+  SELECTION,
   DISTRIBUTE,
   LIMIT,
   UNKNOWN

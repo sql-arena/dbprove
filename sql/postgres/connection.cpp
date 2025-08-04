@@ -361,9 +361,6 @@ std::unique_ptr<sql::explain::Plan> buildExplainPlan(nlohmann::json& json) {
     throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan from ");
   }
 
-  //  auto root_select = std::make_unique<Select>();
-  //  root_select->addChild(std::move(root_node));
-
   // Create and return the plan object with timing information
   auto plan = std::make_unique<Plan>(std::move(root_node));
   plan->planning_time = planning_time;

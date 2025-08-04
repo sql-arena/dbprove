@@ -11,26 +11,48 @@ namespace sql {
  * @note: In general, already throw things that inherit from SqlException inside
  * connector code
  */
+
+/**
+ * The ANSI SQL standard prescribes a series of error codes that database should adopt.
+ *
+ * Postgres generally does a good job at this, but others are lacking. Hence, as part of our
+ * error handling, we map to a common set of SqlState errors so the caller no longer has to
+ * worry about the intricasies of individual databases.
+ */
+enum class SqlState {
+  SUCCESS_00,
+  WARNING_01,
+  NO_DATA_02,
+  CONNECTION_08,
+  DATA_EXCEPTION_22,
+  INVALID_CURSOR_24,
+  NOT_IMPLEMENTED_0A,
+  TRANSACTION_ERROR_40,
+  SYNTAX_ERROR_42,
+  PRODUCT_ERROR_56,
+  RESOURCE_UNAVAILABLE_57,
+};
+
 class Exception : public std::runtime_error {
-  static constexpr const char* kDatabaseError = "Database error";
+  static constexpr auto kDatabaseError = "Database error";
 
 public:
   const std::string statement = "";
   const std::string full_message = "";
-
-  explicit Exception(const std::string& message)
+  const SqlState sql_state_class;
+  explicit Exception(SqlState sql_state_class, const std::string& message)
     : std::runtime_error(kDatabaseError)
-    , full_message(std::string(message)) {
+    , full_message(std::string(message)), sql_state_class(sql_state_class) {
   }
 
-  explicit Exception(const std::string& message, const std::string_view statement)
+  explicit Exception(SqlState sql_state_class, const std::string& message, const std::string_view statement)
     : std::runtime_error(kDatabaseError)
-    , statement(statement) {
+    , statement(statement), sql_state_class(sql_state_class) {
   }
 
-  explicit Exception(std::string_view message)
+  explicit Exception(const SqlState sql_state_class, const std::string_view message)
     : std::runtime_error(kDatabaseError)
-    , full_message(std::string(message)) {
+    , full_message(std::string(message)), sql_state_class(sql_state_class) {
   }
 
   const char* what() const noexcept override {
@@ -59,7 +81,7 @@ public:
   explicit ConnectionException(
       const Credential& credential,
       const std::string& message)
-    : Exception("When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
+    : Exception(SqlState::CONNECTION_08, "When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
   }
 };
 
@@ -69,7 +91,7 @@ public:
 class SyntaxException final : public Exception {
 public:
   explicit SyntaxException(const std::string& message)
-    : Exception("SQL syntax error: " + message) {
+    : Exception(SqlState::SYNTAX_ERROR_42, "SQL syntax error: " + message) {
   }
 };
 
@@ -79,7 +101,7 @@ public:
 class StatementTimeoutException final : public Exception {
 public:
   explicit StatementTimeoutException(const std::string& message = "Query execution timed out")
-    : Exception(message) {
+    : Exception(SqlState::RESOURCE_UNAVAILABLE_57,  message) {
   }
 };
 
@@ -89,7 +111,7 @@ public:
 class ConnectionTimeoutException final : public Exception {
 public:
   explicit ConnectionTimeoutException(const std::string& message = "Query execution timed out")
-    : Exception(message) {
+    : Exception(SqlState::CONNECTION_08, message) {
   }
 };
 
@@ -99,14 +121,14 @@ public:
 class EmptyResultException final : public Exception {
 public:
   explicit EmptyResultException(const std::string_view query)
-    : Exception("Expected to get data from query: " + std::string(query) + ", but got nothing") {
+    : Exception(SqlState::NO_DATA_02, "Expected to get data from query: " + std::string(query) + ", but got nothing") {
   }
 };
 
 class InvalidTypeException final : public Exception {
 public:
   explicit InvalidTypeException(const std::string& error)
-    : Exception("Did not recognise type with name: " + error) {
+    : Exception(SqlState::DATA_EXCEPTION_22, "Did not recognise type with name: " + error) {
   }
 };
 
@@ -114,7 +136,10 @@ public:
 class InvalidPlanException final : public Exception {
 public:
   explicit InvalidPlanException(const std::string& error)
-    : Exception(error) {
+    : Exception(SqlState::PRODUCT_ERROR_56, error) {
+  }
+  explicit InvalidPlanException(const std::string& error, std::string statement)
+    : Exception(SqlState::PRODUCT_ERROR_56, error, statement) {
   }
 };
 
@@ -122,17 +147,25 @@ public:
 class InvalidColumnsException final : public Exception {
 public:
   explicit InvalidColumnsException(const std::string& error, const std::string_view statement)
-    : Exception(error, statement) {
+    : Exception(SqlState::INVALID_CURSOR_24, error, statement) {
   }
   explicit InvalidColumnsException(const std::string& error)
-    : Exception(error) {
+    : Exception(SqlState::INVALID_CURSOR_24, error) {
   }
 };
 
 class InvalidRowsException final : public Exception {
 public:
   explicit InvalidRowsException(const std::string& error, const std::string_view statement)
-    : Exception(error, statement) {
+    : Exception(SqlState::INVALID_CURSOR_24, error, statement) {
+  }
+};
+
+
+class TransactionException final : public Exception {
+public:
+  explicit TransactionException(const std::string& error)
+    : Exception(SqlState::TRANSACTION_ERROR_40, error) {
   }
 };
 }

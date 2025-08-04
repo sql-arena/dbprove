@@ -85,6 +85,8 @@ public:
   void close() { closed_ = true; };
 
   std::string mapTypes(std::string_view statement) const;
+protected:
+  static void validateSourcePaths(const std::vector<std::filesystem::path>& source_paths);
 };
 
 

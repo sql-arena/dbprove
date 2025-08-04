@@ -45,6 +45,7 @@ add_library(sql STATIC
         explain/node.cpp
         explain/group_by.cpp
         explain/union.h
+        explain/selection.h
 )
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}

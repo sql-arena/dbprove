@@ -18,6 +18,7 @@ target_embed_sql(test_connectivity
         sql/simple_join.sql
         sql/two_join.sql
         sql/union_and_join.sql
+        sql/topn.sql
 )
 
 message(STATUS ${EMBEDDED_SQL_HEADER})

@@ -184,6 +184,11 @@ public:
     return std::span<T* const>(raw_ptrs);
   }
 
+  void reverseChildren() {
+    std::reverse(children_.begin(), children_.end());
+  }
+
+
   uint64_t id() const { return id_; }
 
   size_t childCount() const { return children_.size(); }

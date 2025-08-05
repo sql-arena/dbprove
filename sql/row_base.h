@@ -1,11 +1,7 @@
 #pragma once
-#include <row_iterator.h>
-
 #include <cstddef>
 #include <stdexcept>
-
 #include "sql_type.h"
-#include <variant>
 
 namespace sql {
 class RowBase {

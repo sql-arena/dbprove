@@ -60,6 +60,7 @@ int main(int argc, char** argv) {
     app.add_option("-p,--port", port, "Port to use")->default_val(0);
     app.add_option("-U,--username", username, "Username ")->default_val("test");
     app.add_option("-P,--password", password, "Password. If omitted, will prompt")->default_val("test");
+    app.add_option("-t,--access-token", password, "Access Token")->default_val("");
     app.add_option("-T,--theorem", all_theorems, "Which theorems to prove")->delimiter(',');
 
 

@@ -80,7 +80,7 @@ public:
     return std::string(ddl);
   }
 
-  const Credential& credential;
+  const Credential credential;
 
   void close() { closed_ = true; };
 

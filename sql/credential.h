@@ -8,8 +8,8 @@ class CredentialFile {
 public:
   const std::string path;
 
-  explicit CredentialFile(const std::string& path)
-    : path(path) {
+  explicit CredentialFile(std::string path)
+    : path(std::move(path)) {
   }
 };
 
@@ -21,31 +21,51 @@ public:
   const std::string username;
   const std::string password;
 
-  CredentialPassword(const std::string& host,
-                     const std::string& database,
+  CredentialPassword(std::string host,
+                     std::string database,
                      const uint16_t port,
-                     const std::string& username,
-                     const std::string& password)
-    : database(database)
-    , host(host)
+                     std::string username,
+                     std::string password)
+    : database(std::move(database))
+    , host(std::move(host))
     , port(port)
-    , username(username)
-    , password(password) {
+    , username(std::move(username))
+    , password(std::move(password)) {
   }
 };
 
+/**
+ * Access without asking for permissions (ex: DuckDb or Trino)
+ */
 class CredentialNone {
 public:
   const std::string name;
 
-  explicit CredentialNone(const std::string& name)
-    : name(name) {
+  explicit CredentialNone(std::string name)
+    : name(std::move(name)) {
   }
+
   CredentialNone()
     : name("(unknown)") {
   }
 };
 
-using Credential = std::variant<CredentialFile, CredentialPassword, CredentialNone>;
+/**
+ * Access token credentials typically passed via HTTP auth headers
+ */
+class CredentialAccessToken {
+public:
+  explicit CredentialAccessToken(std::string token)
+    : token(std::move(token)) {
+  }
+
+  const std::string token;
+};
+
+
+using Credential = std::variant<CredentialFile,
+                                CredentialPassword,
+                                CredentialNone,
+                                CredentialAccessToken>;
 ;
 }

@@ -63,5 +63,8 @@ add_subdirectory("duckdb")
 add_subdirectory("clickhouse")
 add_subdirectory("msodbc")
 
-# Test it all, linking all drivers
+# Make sure boilerplate compiles. These are unmapped in Engine.h
+add_subdirectory("boilerplate")
+
+# Test it all, linking all drivers and running tests across them
 add_subdirectory("test")

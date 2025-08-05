@@ -1,6 +1,5 @@
 #pragma once
 #include <map>
-#include <string_view>
 #include <stdexcept>
 #include "common/string.h"
 
@@ -18,7 +17,8 @@ namespace sql
             SQLServer,
             Oracle,
             DuckDB,
-            Utopia
+            Utopia,
+            Databricks
         };
 
         explicit Engine(const Type type): type_(type) {
@@ -45,6 +45,7 @@ namespace sql
             {"duckdb", Type::DuckDB},
             {"duck", Type::DuckDB},
             {"utopia", Type::Utopia},
+            {"databricks", Type::Databricks},
             {"", Type::Utopia}
         };
 
@@ -63,7 +64,8 @@ namespace sql
             {Type::Postgres, "PostgreSQL"},
             {Type::SQLite, "SQLite"},
             {Type::Utopia, "Utopia"},
-            {Type::DuckDB, "DuckDB"}
+            {Type::DuckDB, "DuckDB"},
+            {Type::Databricks, "Databricks"}
         };
     };
 }

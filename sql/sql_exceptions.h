@@ -17,7 +17,7 @@ namespace sql {
  *
  * Postgres generally does a good job at this, but others are lacking. Hence, as part of our
  * error handling, we map to a common set of SqlState errors so the caller no longer has to
- * worry about the intricasies of individual databases.
+ * worry about the intricacies of individual databases.
  */
 enum class SqlState {
   SUCCESS_00,
@@ -40,19 +40,23 @@ public:
   const std::string statement = "";
   const std::string full_message = "";
   const SqlState sql_state_class;
+
   explicit Exception(SqlState sql_state_class, const std::string& message)
     : std::runtime_error(kDatabaseError)
-    , full_message(std::string(message)), sql_state_class(sql_state_class) {
+    , full_message(std::string(message))
+    , sql_state_class(sql_state_class) {
   }
 
   explicit Exception(SqlState sql_state_class, const std::string& message, const std::string_view statement)
     : std::runtime_error(kDatabaseError)
-    , statement(statement), sql_state_class(sql_state_class) {
+    , statement(statement)
+    , sql_state_class(sql_state_class) {
   }
 
   explicit Exception(const SqlState sql_state_class, const std::string_view message)
     : std::runtime_error(kDatabaseError)
-    , full_message(std::string(message)), sql_state_class(sql_state_class) {
+    , full_message(std::string(message))
+    , sql_state_class(sql_state_class) {
   }
 
   const char* what() const noexcept override {
@@ -81,7 +85,8 @@ public:
   explicit ConnectionException(
       const Credential& credential,
       const std::string& message)
-    : Exception(SqlState::CONNECTION_08, "When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
+    : Exception(SqlState::CONNECTION_08,
+                "When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
   }
 };
 
@@ -101,7 +106,7 @@ public:
 class StatementTimeoutException final : public Exception {
 public:
   explicit StatementTimeoutException(const std::string& message = "Query execution timed out")
-    : Exception(SqlState::RESOURCE_UNAVAILABLE_57,  message) {
+    : Exception(SqlState::RESOURCE_UNAVAILABLE_57, message) {
   }
 };
 
@@ -138,6 +143,7 @@ public:
   explicit InvalidPlanException(const std::string& error)
     : Exception(SqlState::PRODUCT_ERROR_56, error) {
   }
+
   explicit InvalidPlanException(const std::string& error, std::string statement)
     : Exception(SqlState::PRODUCT_ERROR_56, error, statement) {
   }
@@ -149,6 +155,7 @@ public:
   explicit InvalidColumnsException(const std::string& error, const std::string_view statement)
     : Exception(SqlState::INVALID_CURSOR_24, error, statement) {
   }
+
   explicit InvalidColumnsException(const std::string& error)
     : Exception(SqlState::INVALID_CURSOR_24, error) {
   }

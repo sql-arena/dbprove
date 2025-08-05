@@ -18,7 +18,7 @@ class ConnectionFactory {
   std::atomic<size_t> connectionCount_{0};
 
 public:
-  ConnectionFactory(Engine engine, const Credential& credential)
+  ConnectionFactory(const Engine& engine, const Credential& credential)
     : credential_(credential)
     , engine_(engine) {
   }
@@ -28,14 +28,11 @@ public:
   , connectionCount_(other.connectionCount_.load()) {
   }
 
-
-
   ConnectionFactory() = delete;
-
 
   std::unique_ptr<ConnectionBase> create() {
     connectionCount_.fetch_add(1);
-    auto type = engine_.type();
+    const auto type = engine_.type();
     switch (type) {
       case Engine::Type::Utopia:
         return std::make_unique<utopia::Connection>();

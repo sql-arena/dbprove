@@ -17,6 +17,55 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\data\csv\unquoted_escape\human_eval.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\extension\tpcds\dsdgen\answers\sf1\12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\extension\tpcds\dsdgen\answers\sf1\65.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\extension\tpcds\dsdgen\answers\sf1\98.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\test\sakila\data\film.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\test\sakila\data\film_list.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\tools\pythonpkg\tests\fast\data\stress_test.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\.github\config\uncovered_files.csv">
           <value>
             <Attribute>
@@ -25,6 +74,55 @@
           </value>
         </entry>
         <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\data\csv\real\imdb_movie_info_escaped.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\data\csv\unquoted_escape\human_eval.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\65.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\98.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\test\sakila\data\film.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\test\sakila\data\film_list.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\tools\pythonpkg\tests\fast\data\stress_test.csv">
           <value>
             <Attribute>
               <option name="separator" value="," />

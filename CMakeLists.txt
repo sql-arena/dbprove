@@ -1,10 +1,12 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.24)
+
+project(dbprove VERSION 0.1.0 LANGUAGES CXX)
+
 
 message(STATUS "Detected compiler: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "System name      : ${CMAKE_SYSTEM_NAME}")
 message(STATUS "Triplet          : ${VCPKG_TARGET_TRIPLET}")
 
-project(dbprove VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +14,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(PrintLibData)
 include(cmake/EmbedSQL.cmake)
+
+add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/MP>")
 
 add_subdirectory(sql)
 add_subdirectory(generator)

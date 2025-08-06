@@ -2,12 +2,10 @@ include(CMakeParseArguments)
 
 # Function to embed SQL files into a target
 function(target_embed_sql TARGET)
-    # Parse arguments - everything after the target name is treated as SQL files
-    set(SQL_FILES ${ARGN})
+    cmake_parse_arguments("ARG" "" "" "SQL_FILES" ${ARGN})
 
-    if(NOT SQL_FILES)
+    if(NOT ARG_SQL_FILES)
         message(FATAL "No SQL files specified for ${TARGET}")
-        return()
     endif()
 
     # Create a unique output directory for this target
@@ -15,40 +13,29 @@ function(target_embed_sql TARGET)
     set(OUTPUT_HEADER "${OUTPUT_DIR}/embedded_sql.h")
     file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 
-    # Create target names
-    set(GEN_TARGET "${TARGET}_sql_gen")
 
     # Get the embed script path (in the same directory as this file)
     set(EMBED_SCRIPT "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/embed_sql_files.cmake")
 
     # Full paths for all SQL files
-    set(SQL_FILES_FULL)
-    foreach(SQL_FILE ${SQL_FILES})
-        if(IS_ABSOLUTE "${SQL_FILE}")
-            list(APPEND SQL_FILES_FULL "${SQL_FILE}")
-        else()
-            list(APPEND SQL_FILES_FULL "${CMAKE_CURRENT_SOURCE_DIR}/${SQL_FILE}")
-        endif()
-    endforeach()
+    set(SQL_FILES_FULL "$<PATH:ABSOLUTE_PATH,NORMALIZE,${ARG_SQL_FILES},${CMAKE_CURRENT_LIST_DIR}>")
+
+    set(_tmpfile "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}_embed_sql_file_list.txt")
+    file(GENERATE OUTPUT ${_tmpfile} CONTENT "${SQL_FILES_FULL}")
 
     # Generate header file on build
     add_custom_command(
-            OUTPUT "${OUTPUT_HEADER}"
-            COMMAND "${CMAKE_COMMAND}"
-            -DOUTPUT=${OUTPUT_HEADER}
-            -DSQL_FILES="${SQL_FILES_FULL}"
+            OUTPUT ${OUTPUT_HEADER}
+            COMMAND ${CMAKE_COMMAND}
+            -D OUTPUT=${OUTPUT_HEADER}
+            -D SQL_FILE_LIST_FILE=${_tmpfile}
             -P ${EMBED_SCRIPT}
-            DEPENDS ${SQL_FILES_FULL} ${EMBED_SCRIPT}
+            DEPENDS "${SQL_FILES_FULL}" ${EMBED_SCRIPT} ${_tmpfile}
             COMMENT "Embedding SQL files for target ${TARGET}"
+            VERBATIM
     )
 
-    # Custom target that depends on the header
-    add_custom_target(${GEN_TARGET} DEPENDS "${OUTPUT_HEADER}")
-
-    # Add the dependency and includes to the main target
-    message(STATUS "Adding target ${OUTPUT_DIR}")
-
-    add_dependencies(${TARGET} ${GEN_TARGET})
+    target_sources(${TARGET} PRIVATE ${OUTPUT_HEADER})
     target_include_directories(${TARGET} PRIVATE ${OUTPUT_DIR})
 
     # Export information about the embedded SQL

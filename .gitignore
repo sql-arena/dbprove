@@ -43,3 +43,4 @@ Makefile
 compile_commands.json
 cmake-build-debug/
 vcpkg_installed/
+.vs/

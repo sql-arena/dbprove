@@ -26,6 +26,7 @@ enum class SqlState {
   CONNECTION_08,
   DATA_EXCEPTION_22,
   INVALID_CURSOR_24,
+  INVALID_AUTHORIZATION_SPECIFICATION_28,
   NOT_IMPLEMENTED_0A,
   TRANSACTION_ERROR_40,
   SYNTAX_ERROR_42,
@@ -150,6 +151,13 @@ public:
 };
 
 
+class PermissionDeniedException final : public Exception {
+  public:
+  explicit PermissionDeniedException(const std::string& error)
+    : Exception(SqlState::INVALID_AUTHORIZATION_SPECIFICATION_28, error) {
+  }
+};
+
 class InvalidColumnsException final : public Exception {
 public:
   explicit InvalidColumnsException(const std::string& error, const std::string_view statement)
@@ -175,4 +183,13 @@ public:
     : Exception(SqlState::TRANSACTION_ERROR_40, error) {
   }
 };
+
+
+class ProtocolException final : public Exception {
+public:
+  explicit ProtocolException(const std::string& error)
+    : Exception(SqlState::CONNECTION_08, error) {
+  }
+};
+
 }

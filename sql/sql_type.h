@@ -7,6 +7,19 @@ namespace sql {
 using RowCount = uint64_t;
 using ColumnCount = uint64_t;
 
+
+enum class SqlTypeKind {
+  TINYINT,
+  SMALLINT,
+  INT,
+  BIGINT,
+  REAL,
+  DOUBLE,
+  DECIMAL,
+  STRING,
+  SQL_NULL
+};
+
 class SqlType {
 public:
   virtual ~SqlType() = default;
@@ -45,30 +58,37 @@ public:
 
 struct SqlTinyIntTag {
   static constexpr std::string_view name = "TINYINT";
+  static constexpr auto kind = SqlTypeKind::TINYINT;
 };
 
 struct SqlSmallIntTag {
   static constexpr std::string_view name = "SMALLINT";
+  static constexpr auto kind = SqlTypeKind::SMALLINT;
 };
 
 struct SqlIntTag {
   static constexpr std::string_view name = "INT";
+  static constexpr auto kind = SqlTypeKind::INT;
 };
 
 struct SqlBigIntTag {
   static constexpr std::string_view name = "BIGINT";
+  static constexpr auto kind = SqlTypeKind::BIGINT;
 };
 
-struct SqlTextTag {
-  static constexpr std::string_view name = "TEXT";
+struct SqlStringTag {
+  static constexpr std::string_view name = "STRING";
+  static constexpr auto kind = SqlTypeKind::STRING;
 };
 
 struct SqlFloatTag {
   static constexpr std::string_view name = "FLOAT";
+  static constexpr auto kind = SqlTypeKind::REAL;
 };
 
 struct SqlDoubleTag {
   static constexpr std::string_view name = "DOUBLE";
+  static constexpr auto kind = SqlTypeKind::DOUBLE;
 };
 
 
@@ -79,7 +99,7 @@ using SqlBigInt = SqlTypeDef<std::int64_t, SqlBigIntTag>;
 
 using SqlFloat = SqlTypeDef<float, SqlFloatTag>;
 using SqlDouble = SqlTypeDef<double, SqlDoubleTag>;
-using SqlString = SqlTypeDef<std::string, SqlTextTag>;
+using SqlString = SqlTypeDef<std::string, SqlStringTag>;
 
 class SqlVariant;
 
@@ -89,6 +109,7 @@ class SqlDecimal {
 
 public:
   static constexpr std::string_view name = "DECIMAL";
+  static constexpr auto kind = SqlTypeKind::DECIMAL;
 
   explicit SqlDecimal(const std::string_view value)
     : value_(value) {
@@ -111,6 +132,7 @@ public:
 class SqlNull {
 public:
   static constexpr std::string_view name = "NULL";
+  static constexpr auto kind = SqlTypeKind::SQL_NULL;
 };
 
 class SqlVariant {

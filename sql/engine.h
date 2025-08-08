@@ -32,6 +32,21 @@ namespace sql
             type_ = known_names[name_lower];
         }
 
+        /**
+         * @brief When no endpoint or database connectivity is supplied, this is the default
+         */
+        std::string defaultHost() const;
+
+
+        /**
+         * @brief Default database if none supplied
+         */
+        std::string defaultDatabase() const;
+        /**
+         * @brief If username is not supplied for this engine, this is the default.
+         * Also return default access token from environment if the engine uses one of those
+         */
+        std::string defaultUsernameOrToken() const;
         /// @brief  Provide entries here for friendly names of engines. These must be lowercase as we string match them
         inline static std::map<std::string_view, Type> known_names = {
             {"mariadb", Type::MariaDB},

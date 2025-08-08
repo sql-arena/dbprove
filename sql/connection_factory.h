@@ -3,11 +3,11 @@
 #include "Engine.h"
 #include "credential.h"
 #include <atomic>
-#include <cassert>
 #include "duckdb/connection.h"
 #include "postgres/connection.h"
 #include "utopia/connection.h"
 #include "msodbc/connection.h"
+#include "databricks/connection.h"
 
 namespace sql {
 /// @brief Factory class for creating connections using a specific engine
@@ -45,6 +45,8 @@ public:
         return std::make_unique<msodbc::Connection>(credential_, engine_);
       case Engine::Type::DuckDB:
         return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_);
+      case Engine::Type::Databricks:
+        return std::make_unique<databricks::Connection>(std::get<CredentialAccessToken>(credential_), engine_);
       default:
         throw std::invalid_argument("Unsupported engine type: " + engine_.name());
     }

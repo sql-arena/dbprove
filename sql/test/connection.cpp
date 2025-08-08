@@ -37,14 +37,19 @@ auto factories(std::string_view find = "") {
       sql::Engine("DuckDB"),
       sql::CredentialFile("C:/temp/quick.duckdb"));
 
+  static sql::ConnectionFactory databricksFactory(sql::Engine("Databricks"),
+                                                  sql::CredentialAccessToken(sql::Engine("Databricks")));
+
   static std::vector factories = {
       utopiaFactory,
       postgresFactory,
-      duckdbFactory};
+      duckdbFactory,
+      databricksFactory};
 
   static std::map<std::string_view, sql::ConnectionFactory*> factories_map = {
-      {"PostgreSQL", &postgresFactory},
-      {"DuckDb", &duckdbFactory}
+//      {"PostgreSQL", &postgresFactory},
+//      {"DuckDb", &duckdbFactory},
+      {"Databricks", &databricksFactory}
   };
 
   if (find.length() == 0) {

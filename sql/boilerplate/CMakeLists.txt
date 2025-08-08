@@ -1,7 +1,6 @@
 add_library(sql_boilerplate STATIC
         result.cpp
         connection.cpp
-        connection.h
         row.cpp)
 target_include_directories(sql_boilerplate PRIVATE
         ${CMAKE_SOURCE_DIR}/sql)

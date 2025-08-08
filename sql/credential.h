@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Engine.h>
+
 #include <string>
 #include <variant>
 
@@ -55,11 +57,12 @@ public:
  */
 class CredentialAccessToken {
 public:
-  explicit CredentialAccessToken(std::string token)
-    : token(std::move(token)) {
-  }
-
+  explicit CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database, std::string token);
+  CredentialAccessToken(Engine engine);
   const std::string token;
+  const std::string database;
+  const std::string endpoint_url;
+  const Engine engine;
 };
 
 

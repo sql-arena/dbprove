@@ -46,6 +46,8 @@ add_library(sql STATIC
         explain/group_by.cpp
         explain/union.h
         explain/selection.h
+        credential.cpp
+        engine.cpp
 )
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -62,6 +64,7 @@ add_subdirectory("sqlite")
 add_subdirectory("duckdb")
 add_subdirectory("clickhouse")
 add_subdirectory("msodbc")
+add_subdirectory("databricks")
 
 # Make sure boilerplate compiles. These are unmapped in Engine.h
 add_subdirectory("boilerplate")

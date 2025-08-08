@@ -10,6 +10,7 @@ target_link_libraries(test_connectivity
         sql_postgres
         sql_msodbc
         sql_duckdb
+        sql_databricks
 )
 
 target_embed_sql(test_connectivity

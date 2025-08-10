@@ -5,23 +5,22 @@
 #include <fstream>
 #include <iostream>
 
-#include "date_range.h"
-#include "double_range.h"
-#include "foreign_key.h"
-#include "formatter.h"
-#include "integer_range.h"
-#include "key.h"
-#include "set.h"
+#include "generator/date_range.h"
+#include "generator/double_range.h"
+#include "generator/foreign_key.h"
+#include "generator/formatter.h"
+#include "generator/integer_range.h"
+#include "generator/key.h"
+#include "generator/set.h"
 #include "tpch_container.h"
 #include "tpch_nation.h"
 #include "tpch_phone.h"
 #include "tpch_types.h"
-#include "v_string.h"
+#include "generator/v_string.h"
 
-#include "generator_state.h"
+#include "generator/generator_state.h"
 #include "common/string.h"
 #include "generator/generated_table.h"
-#include "generator/generator_state.h"
 
 using namespace std::chrono;
 using namespace generator;
@@ -34,12 +33,12 @@ constexpr auto STARTDATE = sys_days(1992y / January / 1);
 constexpr auto CURRENTDATE = sys_days(1995y / June / 17);
 constexpr auto ENDDATE = sys_days(1998y / December / 31);
 
-uint64_t supplier_for_part(const uint32_t part_key, const uint64_t i) {
+uint64_t supplier_for_part(const uint64_t part_key, const uint64_t i) {
   constexpr size_t S = TPCH_SF * 10000;
   return (part_key + (i * ((S / 4) + (part_key - 1) / S))) % (S + 1);
 }
 
-double price_for_part(const uint32_t part_key) {
+double price_for_part(const uint64_t part_key) {
   return (90000.0 + ((part_key / 10) % 20001) + 100.0 * (part_key % 1000)) /
          100.0;
 }

@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include "integer_range.h"
+#include "generator/integer_range.h"
 
 namespace generator
 {

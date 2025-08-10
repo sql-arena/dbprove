@@ -1,6 +1,7 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
 add_library(sql_interface INTERFACE)
 
+
 find_package(cnl CONFIG REQUIRED)
 add_library(cnl INTERFACE)
 target_include_directories(cnl INTERFACE ${CNL_INCLUDE_DIR})
@@ -59,15 +60,22 @@ target_link_libraries(sql PRIVATE cnl)
 # Drivers
 add_subdirectory("mariadb")
 add_subdirectory("postgres")
+target_link_libraries(sql PUBLIC sql_postgres)
 add_subdirectory("utopia")
+target_link_libraries(sql PUBLIC sql_utopia)
 add_subdirectory("sqlite")
 add_subdirectory("duckdb")
+target_link_libraries(sql PUBLIC sql_duckdb)
 add_subdirectory("clickhouse")
 add_subdirectory("msodbc")
+target_link_libraries(sql PUBLIC sql_msodbc)
 add_subdirectory("databricks")
+target_link_libraries(sql PUBLIC sql_databricks)
+
 
 # Make sure boilerplate compiles. These are unmapped in Engine.h
 add_subdirectory("boilerplate")
 
 # Test it all, linking all drivers and running tests across them
 add_subdirectory("test")
+

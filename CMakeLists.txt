@@ -10,8 +10,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
+add_compile_definitions(dbprove NOMINMAX)
+add_compile_definitions(DUCKDB_STATIC_LINK)
+
 include(PrintLibData)
 include(cmake/EmbedSQL.cmake)
+find_package(CLI11 CONFIG REQUIRED)
+
 
 add_subdirectory(sql)
 add_subdirectory(generator)
@@ -40,11 +45,11 @@ add_executable(dbprove main.cpp
         runner/Runner.cpp
         ${THEOREM_SOURCES}
 )
-target_link_libraries(dbprove PRIVATE cli11)
-target_link_libraries(dbprove PRIVATE rang)
 target_link_libraries(dbprove PRIVATE sql)
 target_link_libraries(dbprove PRIVATE generator)
+target_link_libraries(dbprove PRIVATE CLI11::CLI11)
+
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR})
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR}/ux)
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR}/sql)
-
+target_include_directories(dbprove PUBLIC ${RANG_INC_DIR})

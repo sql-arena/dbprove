@@ -5,11 +5,11 @@
 #include "common/config.h"
 
 namespace sql {
-
-CredentialAccessToken::CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database, std::string token)
+CredentialAccessToken::CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database,
+                                             std::string token)
   : token(std::move(token))
-  , endpoint_url(std::move(endpoint_url))
   , database(std::move(database))
+  , endpoint_url(std::move(endpoint_url))
   , engine(engine) {
 }
 

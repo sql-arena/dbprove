@@ -112,7 +112,7 @@ class TreeNode {
 
   explicit TreeNode(bool _)
     : parent_(nullptr)
-    , id_(std::numeric_limits<uint64_t>::max()) {
+    , id_((std::numeric_limits<uint64_t>::max)()) {
 
   }
 

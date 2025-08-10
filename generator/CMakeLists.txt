@@ -17,6 +17,7 @@ target_sources(generator_interface INTERFACE
 )
 target_include_directories(generator_interface INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/generator
 )
 
 add_library(generator STATIC tpch/tpch_text.cpp

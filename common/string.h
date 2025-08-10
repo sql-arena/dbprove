@@ -11,10 +11,10 @@ std::string join(const Container& strings, const std::string& delimiter) {
     }
 
     std::string result;
-    result.append(*strings[0]);
+    result.append(strings[0]);
     for (size_t i = 1; i < strings.size(); ++i) {
         result.append(delimiter);
-        result.append(*strings[i]);
+        result.append(strings[i]);
     }
 
     return result;

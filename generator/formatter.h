@@ -10,14 +10,15 @@ namespace generator
 
     public:
         explicit Formatter(std::string pattern)
-            : pattern_(pattern)
+            : pattern_(std::move(pattern))
         {
         }
 
         template <typename... Args>
         std::string next(Args&&... args)
         {
-            return std::vformat(pattern_, std::make_format_args(std::forward<Args>(args)...));
+            return std::vformat(pattern_,
+                std::make_format_args<std::format_context>(std::forward<const Args&>(args)...));
         }
     };
 }

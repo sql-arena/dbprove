@@ -19,7 +19,7 @@ class VString : GeneratorObject {
   const uint32_t minLength_;
   const uint32_t maxLength_;
   std::uniform_int_distribution<uint32_t> lengthDistribution_;
-  std::uniform_int_distribution<char> charDistribution_;
+  std::uniform_int_distribution<int16_t> charDistribution_;
   std::mt19937 genChar_;
 
 public:
@@ -31,7 +31,7 @@ public:
       throw std::invalid_argument("minLength must be <= maxLength");
     }
     lengthDistribution_ = std::uniform_int_distribution(minLength_, maxLength_);
-    charDistribution_ = std::uniform_int_distribution<char>(0, sizeof(alpha_num) - 1);
+    charDistribution_ = std::uniform_int_distribution<int16_t>(0, sizeof(alpha_num) - 1);
   }
 
   std::string next() {

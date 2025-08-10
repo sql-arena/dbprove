@@ -40,6 +40,28 @@ void parseTheorems( std::map<TheoremType, std::vector<std::string>>& theoremMap,
     }
 }
 
+sql::Credential parseCredentials(
+  const sql::Engine& engine,
+  const std::string& host,
+  uint16_t port,
+  const std::string& database,
+  const std::string& username,
+  const std::string& password,
+  const std::string& token) {
+  port = engine.defaultPort(port);
+  switch (engine.type()) {
+    case sql::Engine::Type::MariaDB:
+    case sql::Engine::Type::Postgres:
+    case sql::Engine::Type::SQLServer:
+    case sql::Engine::Type::Oracle:
+      return sql::CredentialPassword(host, database, port, username, password);
+    case sql::Engine::Type::Utopia:
+      return sql::CredentialNone();
+    case sql::Engine::Type::Databricks:
+      return sql::CredentialAccessToken(engine, host, database, token);
+  }
+  throw std::invalid_argument("Cannot generate credentials for engine: " + engine.name());
+}
 
 int main(int argc, char** argv) {
     CLI::App app{"dbprove"};
@@ -48,6 +70,8 @@ int main(int argc, char** argv) {
     std::string database;
     std::string username;
     std::string password;
+    std::string host;
+  std::string token;
     std::vector<std::string> all_theorems;
     std::string engine_arg;
     uint32_t port;
@@ -56,22 +80,26 @@ int main(int argc, char** argv) {
         "-e, --engine",
         engine_arg,
         "Database Engine to use")->transform(CLI::CheckedTransformer(sql::Engine::known_names));
-    app.add_option("-d,--database", database, "Database to use")->default_val("test");
+    app.add_option("-h,--host", host, "Host or endpoint")->default_val("test");
     app.add_option("-p,--port", port, "Port to use")->default_val(0);
+    app.add_option("-d,--database", database, "Database to use")->default_val("test");
     app.add_option("-U,--username", username, "Username ")->default_val("test");
     app.add_option("-P,--password", password, "Password. If omitted, will prompt")->default_val("test");
-    app.add_option("-t,--access-token", password, "Access Token")->default_val("");
+    app.add_option("-t,--access-token", token, "Access Token")->default_val("");
     app.add_option("-T,--theorem", all_theorems, "Which theorems to prove")->delimiter(',');
-
-
-    sql::Engine engine(engine_arg);
 
     CLI11_PARSE(app, argc, argv);
 
-
+    sql::Engine engine(engine_arg);
     Terminal::configure();
 
-    auto credentials = sql::Credential(database, port, username, password);
+    auto credentials = parseCredentials(engine,
+      host,
+      port,
+      database,
+      username,
+      password,
+      token);
 
     std::map<TheoremType, std::vector<std::string>> theoremMap;
     parseTheorems(theoremMap, all_theorems);

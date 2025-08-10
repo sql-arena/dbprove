@@ -37,6 +37,10 @@ namespace sql
          */
         std::string defaultHost() const;
 
+        /**
+         * @brief Default port (or 0 if no port needed) if not provided
+         */
+        uint16_t defaultPort(uint16_t port) const;
 
         /**
          * @brief Default database if none supplied

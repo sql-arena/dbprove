@@ -5,8 +5,8 @@
 #include <random>
 #include <string>
 
-#include "variable_integer.h"
-#include "weighted_select.h"
+#include "generator/variable_integer.h"
+#include "generator/weighted_select.h"
 
 namespace generator {
 /// @brief Random text following a grammar as defined by clause 4.2.2.10-14 of the TPC-H spec

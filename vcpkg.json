@@ -1,12 +1,33 @@
 {
-  "name" : "dbprove",
-  "version" : "0.1.0",
-  "dependencies" : [ "libmariadb", "libpq", "sqlite3", "catch2", "rang", "tabulate", "cli11", "openssl", "clickhouse-cpp", "duckdb", "azure-identity-cpp", "curl", "jwt-cpp", "nlohmann-json", "zlib", {
-    "name" : "unixodbc",
-    "platform" : "!windows"
-  }, "grpc", "protobuf", {
-    "name" : "icu"
-  }, {
-    "name" : "cnl"
-  } ]
+  "name": "dbprove",
+  "version": "0.1.0",
+  "dependencies": [
+    "libmariadb",
+    "libpq",
+    "sqlite3",
+    "catch2",
+    "rang",
+    "tabulate",
+    "cli11",
+    "openssl",
+    "clickhouse-cpp",
+    "duckdb",
+    "azure-identity-cpp",
+    "curl",
+    "jwt-cpp",
+    "nlohmann-json",
+    "zlib",
+    {
+      "name": "unixodbc",
+      "platform": "!windows"
+    },
+    "grpc",
+    "protobuf",
+    {
+      "name": "icu"
+    },
+    {
+      "name": "cnl"
+    }
+  ]
 }

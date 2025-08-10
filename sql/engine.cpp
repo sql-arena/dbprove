@@ -48,6 +48,17 @@ std::string Engine::defaultHost() const {
   throw std::invalid_argument("No default host or endpoint found");
 }
 
+uint16_t Engine::defaultPort(const uint16_t port) const {
+  if (port > 0) {
+    return port;
+  }
+  switch (type()) {
+    case Type::Postgres: return 5432;
+    case Type::SQLServer: return 1433;
+    default: return 0;
+  }
+}
+
 
 std::string Engine::defaultUsernameOrToken() const {
   std::optional<std::string> v;

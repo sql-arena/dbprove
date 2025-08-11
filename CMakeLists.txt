@@ -33,6 +33,7 @@ set(THEOREM_SOURCES
         theorem/cli/prove.cpp
         generator/tpch/tpch_table_gen.cpp
         common/tree_node.h
+        theorem/run_theorems.h
 )
 
 add_executable(dbprove main.cpp

@@ -28,12 +28,13 @@ public:
                      const uint16_t port,
                      std::string username,
                      std::string password)
-    : database(std::move(database))
-    , host(std::move(host))
+    : host(std::move(host))
     , port(port)
+    , database(std::move(database))
     , username(std::move(username))
     , password(std::move(password)) {
   }
+
 };
 
 /**

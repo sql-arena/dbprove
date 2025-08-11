@@ -3,8 +3,10 @@
 #include <common/config.h>
 
 namespace sql {
-std::string Engine::defaultDatabase() const {
-  std::optional<std::string> r;
+std::string Engine::defaultDatabase(std::optional<std::string> database) const {
+  if (database.has_value()) {
+    return database.value();
+  }
   switch (type()) {
     case Type::Databricks: {
       auto warehouse_id = getEnvVar("DATABRICKS_WAREHOUSE_ID");
@@ -21,29 +23,31 @@ std::string Engine::defaultDatabase() const {
   throw std::invalid_argument("No default database found");
 }
 
-std::string Engine::defaultHost() const {
-  std::optional<std::string> v;
+std::string Engine::defaultHost(std::optional<std::string> host) const {
+  if (host.has_value()) {
+    return host.value();
+  }
   switch (type()) {
     case Type::Databricks: {
-      auto host = getEnvVar("DATABRICKS_HOST");
-      if (host.has_value()) {
-        if (host.value().ends_with("/")) {
-          host = host.value().substr(0, host.value().size() - 1);
+      auto env_host = getEnvVar("DATABRICKS_HOST");
+      if (env_host.has_value()) {
+        if (env_host.value().ends_with("/")) {
+          env_host = env_host.value().substr(0, env_host.value().size() - 1);
         }
-        v = host.value() + "/api/2.0/sql/statements";
+        host = env_host.value() + "/api/2.0/sql/statements";
       }
       break;
     }
     default:
-      v = getEnvVar("BASE_URL",
-                    "API_URL",
-                    "ENDPOINT",
-                    "SERVICE_URL",
-                    "API_HOST");
+      host = getEnvVar("BASE_URL",
+                       "API_URL",
+                       "ENDPOINT",
+                       "SERVICE_URL",
+                       "API_HOST");
       break;
   }
-  if (v.has_value()) {
-    return v.value();
+  if (host.has_value()) {
+    return host.value();
   }
   throw std::invalid_argument("No default host or endpoint found");
 }
@@ -53,9 +57,18 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
     return port;
   }
   switch (type()) {
-    case Type::Postgres: return 5432;
-    case Type::SQLServer: return 1433;
-    default: return 0;
+    case Type::Postgres:
+      return 5432;
+    case Type::SQLServer:
+      return 1433;
+    case Type::Databricks:
+      return 443;
+    case Type::Oracle:
+      return 1521;
+    case Type::ClickHouse:
+      return 9000;
+    default:
+      return 0;
   }
 }
 
@@ -65,6 +78,12 @@ std::string Engine::defaultUsernameOrToken() const {
   switch (type()) {
     case Type::Databricks:
       v = getEnvVar("DATABRICKS_TOKEN");
+      break;
+    case Type::Postgres:
+      v = getEnvVar("PGUSER");
+      if (!v) {
+        v = "postgres";
+      }
       break;
     default:
       v = getEnvVar("TOKEN", "API_TOKEN", "API_KEY", "API_SECRET");

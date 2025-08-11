@@ -18,7 +18,8 @@ namespace sql
             Oracle,
             DuckDB,
             Utopia,
-            Databricks
+            Databricks,
+            ClickHouse
         };
 
         explicit Engine(const Type type): type_(type) {
@@ -35,7 +36,7 @@ namespace sql
         /**
          * @brief When no endpoint or database connectivity is supplied, this is the default
          */
-        std::string defaultHost() const;
+        std::string defaultHost(std::optional<std::string> host = std::nullopt) const;
 
         /**
          * @brief Default port (or 0 if no port needed) if not provided
@@ -45,7 +46,7 @@ namespace sql
         /**
          * @brief Default database if none supplied
          */
-        std::string defaultDatabase() const;
+        std::string defaultDatabase(std::optional<std::string> database = std::nullopt) const;
         /**
          * @brief If username is not supplied for this engine, this is the default.
          * Also return default access token from environment if the engine uses one of those
@@ -65,7 +66,7 @@ namespace sql
             {"duck", Type::DuckDB},
             {"utopia", Type::Utopia},
             {"databricks", Type::Databricks},
-            {"", Type::Utopia}
+            {"utopia", Type::Utopia}
         };
 
         [[nodiscard]] std::string name() const

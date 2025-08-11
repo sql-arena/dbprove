@@ -23,11 +23,7 @@
     },
     "grpc",
     "protobuf",
-    {
-      "name": "icu"
-    },
-    {
-      "name": "cnl"
-    }
+    "icu",
+    "cnl"
   ]
 }

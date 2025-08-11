@@ -73,25 +73,41 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
 }
 
 
-std::string Engine::defaultUsernameOrToken() const {
-  std::optional<std::string> v;
+std::string Engine::defaultUsername(std::optional<std::string> username) const {
   switch (type()) {
-    case Type::Databricks:
-      v = getEnvVar("DATABRICKS_TOKEN");
-      break;
     case Type::Postgres:
-      v = getEnvVar("PGUSER");
-      if (!v) {
-        v = "postgres";
+      username = getEnvVar("PGUSER");
+      if (!username) {
+        username = "postgres";
       }
       break;
+    case Type::Yellowbrick:
+      username = getEnvVar("YB_USER");
+    if (!username) {
+      username = "yellowbrick";
+    }
+    break;
+  }
+  return username.value_or("");
+
+}
+
+std::string Engine::defaultToken(std::optional<std::string> token) const {
+  if (token.has_value()) {
+    return token.value();
+  }
+
+  switch (type()) {
+    case Type::Databricks:
+      token = getEnvVar("DATABRICKS_TOKEN");
+    break;
     default:
-      v = getEnvVar("TOKEN", "API_TOKEN", "API_KEY", "API_SECRET");
-      break;
+      token = getEnvVar("TOKEN", "API_TOKEN", "API_KEY", "API_SECRET");
+    break;
   }
-  if (v.has_value()) {
-    return v.value();
+  if (token.has_value()) {
+    return token.value();
   }
-  throw std::invalid_argument("No default token or username found");
+  return token.value_or("");
 }
 }

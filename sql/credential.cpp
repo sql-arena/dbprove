@@ -14,7 +14,7 @@ CredentialAccessToken::CredentialAccessToken(Engine engine, std::string endpoint
 }
 
 CredentialAccessToken::CredentialAccessToken(const Engine engine)
-  : token(engine.defaultUsernameOrToken())
+  : token(engine.defaultToken())
   , endpoint_url(engine.defaultHost())
   , database(engine.defaultDatabase())
   , engine(engine) {

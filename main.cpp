@@ -130,6 +130,8 @@ int main(int argc, char** argv) {
   database = engine.defaultDatabase(database);
   host = engine.defaultHost(database);
   port = engine.defaultPort(port);
+  username = engine.defaultUsername(username);
+  token = engine.defaultToken(token);
 
   auto credentials =
       parseCredentials(engine,

@@ -19,7 +19,8 @@ namespace sql
             DuckDB,
             Utopia,
             Databricks,
-            ClickHouse
+            ClickHouse,
+            Yellowbrick
         };
 
         explicit Engine(const Type type): type_(type) {
@@ -49,9 +50,12 @@ namespace sql
         std::string defaultDatabase(std::optional<std::string> database = std::nullopt) const;
         /**
          * @brief If username is not supplied for this engine, this is the default.
-         * Also return default access token from environment if the engine uses one of those
          */
-        std::string defaultUsernameOrToken() const;
+        std::string defaultUsername(std::optional<std::string> username = std::nullopt) const;
+        /**
+         * @brief If token is not supplied for this engine, this is the default.
+         */
+        std::string defaultToken(std::optional<std::string> token = std::nullopt) const;
         /// @brief  Provide entries here for friendly names of engines. These must be lowercase as we string match them
         inline static std::map<std::string_view, Type> known_names = {
             {"mariadb", Type::MariaDB},

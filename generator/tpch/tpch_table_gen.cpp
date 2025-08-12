@@ -17,7 +17,7 @@
 #include "tpch_phone.h"
 #include "tpch_types.h"
 #include "generator/v_string.h"
-
+#include "tpch.h"
 #include "generator/generator_state.h"
 #include "common/string.h"
 #include "generator/generated_table.h"
@@ -26,7 +26,6 @@ using namespace std::chrono;
 using namespace generator;
 
 
-constexpr size_t TPCH_SF = 1;
 constexpr size_t part_count = 200000;
 // Named to match the TPC-H spec
 constexpr auto STARTDATE = sys_days(1992y / January / 1);
@@ -56,8 +55,8 @@ void c(std::ostream& out, T value, const bool is_last = false) {
 }
 
 void nation_gen(GeneratorState& state) {
-  constexpr size_t nation_count = std::size(tpch_nations);
-  const auto file_name = state.basePath() / "nation.csv";
+  auto const nation_count = state.table("nation").row_count;
+  const auto file_name = state.csvPath("nation");
   std::ofstream nation(file_name);
   c(nation, "N_NATIONKEY");
   c(nation, "N_NAME");
@@ -69,12 +68,12 @@ void nation_gen(GeneratorState& state) {
     c(nation, tpch_nations[i].first);
     c(nation, tpch_nations[i].second, true);
   }
-  state.registerGeneration("NATION", nation_count, file_name);
+  state.registerGeneration("NATION", file_name);
 }
 
 void region_gen(GeneratorState& state) {
-  size_t region_count = std::size(tpch_regions);
-  auto file_name = state.basePath() / "region.csv";
+  size_t region_count = state.table("region").row_count;
+  auto file_name = state.csvPath("region");
   std::ofstream region(file_name);
   auto col_separator = state.columnSeparator();
   auto row_separator = state.rowSeparator();
@@ -89,14 +88,14 @@ void region_gen(GeneratorState& state) {
     c(region, tpch_regions[i]);
     c(region, r_comment.next(), true);
   }
-  state.registerGeneration("REGION", region_count, file_name);
+  state.registerGeneration("REGION", file_name);
 }
 
 
 void supplier_gen(GeneratorState& state) {
-  auto file_name = state.basePath() / "supplier.csv";
+  const auto supplier_count = state.table("supplier").row_count;
+  const auto file_name = state.csvPath("supplier");
   std::ofstream supplier(file_name);
-  size_t supplier_count = TPCH_SF * 10000;
   Key s_suppkey;
   Formatter s_name("Supplie{:09}r");
   VString s_address(10, 40);
@@ -145,14 +144,14 @@ void supplier_gen(GeneratorState& state) {
     }
     c(supplier, comment, true);
   }
-  state.registerGeneration("SUPPLIER", supplier_count, file_name);
+  state.registerGeneration("SUPPLIER", file_name);
 }
 
 
 void part_gen(GeneratorState& state) {
-  auto file_name = state.basePath() / "supplier.csv";
+  const auto part_count = state.table("part").row_count;
+  auto file_name = state.csvPath("part");
   std::ofstream part(file_name);
-  size_t part_count = TPCH_SF * 200000;
   using namespace generator;
   Key p_partkey;
 
@@ -202,13 +201,13 @@ void part_gen(GeneratorState& state) {
     c(part, p_container.next());
     c(part, p_comment_base.next());
   }
-  state.registerGeneration("PART", part_count, file_name);
+  state.registerGeneration("PART", file_name);
 }
 
 
 void partsupp_gen(GeneratorState& state) {
-  const size_t partsupp_count = TPCH_SF * 150000 * 4;
-  const auto file_name = state.basePath() / "partsupp.csv";
+  const size_t partsupp_count = state.table("partsupp").row_count;
+  const auto file_name =  state.csvPath("partsupp");
   std::ofstream partsupp(file_name);
   c(partsupp, "PS_PARTKEY");
   c(partsupp, "PS_SUPPKEY");
@@ -235,13 +234,13 @@ void partsupp_gen(GeneratorState& state) {
       c(partsupp, ps_comment.next(), true);
     }
   }
-  state.registerGeneration("PARTSUPP", partsupp_count, file_name);
+  state.registerGeneration("PARTSUPP", file_name);
 }
 
 
 void customer_gen(GeneratorState& state) {
-  const size_t customer_count = TPCH_SF * 150000;
-  auto file_name = state.basePath() / "customer.csv";
+  const size_t customer_count = state.table("customer").row_count;
+  auto file_name = state.csvPath("customer");
   std::ofstream customer(file_name);
   c(customer, "C_CUSTKEY");
   c(customer, "C_NAME");
@@ -276,13 +275,13 @@ void customer_gen(GeneratorState& state) {
     c(customer, c_mktsegment.next());
     c(customer, c_comment.next(), true);
   }
-  state.registerGeneration("CUSTOMER", customer_count, file_name);
+  state.registerGeneration("CUSTOMER", file_name);
 }
 
 void orders_lineitem_gen(GeneratorState& state) {
-  constexpr size_t orders_count = TPCH_SF * 150000 * 10;
-  auto orders_file_name = state.basePath() / "orders.csv";
-  auto lineitem_file_name = state.basePath() / "lineitem.csv";
+  const auto orders_count = state.table("orders").row_count;
+  const auto orders_file_name = state.csvPath("orders");
+  const auto lineitem_file_name = state.csvPath("lineitem");
   std::ofstream orders(orders_file_name);
   std::ofstream lineitem(lineitem_file_name);
 
@@ -428,6 +427,7 @@ void orders_lineitem_gen(GeneratorState& state) {
     c(orders, "0"); // O_SHIPPRIORITY is indeed a const
     c(orders, o_comment.next(), true);
   }
-  state.registerGeneration("LINEITEM", lineitem_count, lineitem_file_name);
-  state.registerGeneration("ORDERS", orders_count, orders_file_name);
+  state.registerGeneration("LINEITEM", lineitem_file_name);
+  state.registerGeneration("ORDERS", orders_file_name);
+  state.table("lineitem").row_count = lineitem_count;
 }

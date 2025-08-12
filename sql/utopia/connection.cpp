@@ -83,6 +83,6 @@ SqlVariant utopia::Connection::fetchScalar(const std::string_view statement) {
   return SqlVariant(42);
 }
 
-void utopia::Connection::bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) {
+void utopia::Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   bulk_loader_tables[table] = source_paths;
 }

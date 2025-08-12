@@ -30,6 +30,7 @@ enum class SqlState {
   NOT_IMPLEMENTED_0A,
   TRANSACTION_ERROR_40,
   SYNTAX_ERROR_42,
+  INVALID_TABLE_42P01,
   PRODUCT_ERROR_56,
   RESOURCE_UNAVAILABLE_57,
 };
@@ -138,6 +139,12 @@ public:
   }
 };
 
+class InvalidTableException final : public Exception {
+public:
+  explicit InvalidTableException(const std::string& error)
+    : Exception(SqlState::INVALID_TABLE_42P01, error) {}
+};
+
 
 class InvalidPlanException final : public Exception {
 public:
@@ -145,7 +152,7 @@ public:
     : Exception(SqlState::PRODUCT_ERROR_56, error) {
   }
 
-  explicit InvalidPlanException(const std::string& error, std::string statement)
+  explicit InvalidPlanException(const std::string& error, const std::string& statement)
     : Exception(SqlState::PRODUCT_ERROR_56, error, statement) {
   }
 };

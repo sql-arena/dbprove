@@ -40,5 +40,5 @@ sql::SqlVariant sql::msodbc::Connection::fetchScalar(std::string_view statement)
   return SqlVariant(42);
 }
 
-void sql::msodbc::Connection::bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) {
+void sql::msodbc::Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
 }

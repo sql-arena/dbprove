@@ -1,20 +1,31 @@
 #include "connection_base.h"
 
+#include "sql_exceptions.h"
+
 namespace sql {
 const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
   static const TypeMap empty_map = {};
   return empty_map;
 }
 
+std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view table) {
+  const std::string dumb_row_count = "SELECT COUNT(*) FROM " + std::string(table);
+  try {
+    auto v = fetchScalar(dumb_row_count);
+    return v.get<SqlBigInt>();
+  } catch (InvalidTableException&) {
+    return std::nullopt;
+  }
+}
+
 std::string ConnectionBase::mapTypes(std::string_view statement) const {
   std::string result(statement);
 
   for (const auto& [key, value] : typeMap()) {
-    size_t pos = 0;
-
-    while ((pos = statement.find(key, pos)) != std::string::npos) {
-      result.replace(pos, key.length(), value);
-      pos += value.length();
+    std::size_t pos = 0;
+    while ((pos = result.find(key, pos)) != std::string::npos) {
+      result.replace(pos, key.size(), value);
+      pos += value.size();
     }
   }
   return result;

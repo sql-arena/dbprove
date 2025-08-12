@@ -38,6 +38,13 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       }
       break;
     }
+    case Type::Postgres: {
+      host = getEnvVar("PGHOST");
+      if (!host) {
+        host = "localhost";
+      }
+      break;
+    }
     default:
       host = getEnvVar("BASE_URL",
                        "API_URL",

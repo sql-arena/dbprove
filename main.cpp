@@ -23,6 +23,21 @@
 namespace fs = std::filesystem;
 using namespace generator;
 
+
+void TerminateHandler() {
+  try {
+    auto eptr = std::current_exception();
+    if (eptr) {
+      std::rethrow_exception(eptr);
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "Unhandled C++ exception: " << e.what() << '\n';
+  } catch (...) {
+    std::cerr << "Unhandled unknown exception\n";
+  }
+  std::exit(1);
+}
+
 void parseTheorems(std::map<TheoremType, std::vector<std::string>>& theoremMap,
                    const std::vector<std::string>& theorems) {
   for (const auto& t : theorems) {
@@ -124,6 +139,9 @@ GeneratorState configureDataGeneration() {
 }
 
 int main(int argc, char** argv) {
+
+  std::set_terminate(TerminateHandler);
+
   CLI::App app{"dbprove"};
 
   std::string platform;
@@ -178,14 +196,15 @@ int main(int argc, char** argv) {
   }
 
   database = engine.defaultDatabase(database);
-  host = engine.defaultHost(database);
+  host = engine.defaultHost(host);
   port = engine.defaultPort(port);
   username = engine.defaultUsername(username);
   token = engine.defaultToken(token);
 
   PLOGI << "Using engine: " << engine.name();
-  PLOGI << "  host: " << host.value();
-  PLOGI << "  port: " << port;
+  PLOGI << "  host      : " << host.value();
+  PLOGI << "  port      : " << port;
+  PLOGI << "  database  : " << database.value();
 
   auto credentials =
       parseCredentials(engine,

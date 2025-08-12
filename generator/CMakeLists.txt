@@ -32,10 +32,19 @@ add_library(generator STATIC tpch/tpch_text.cpp
         generated_table.h
         generator_state.h
         generator_state.cpp
-        tpch/tpch.h)
+        tpch/tpch.h
+        generated_table.cpp)
 target_include_directories(generator PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/generator)
 target_link_libraries(generator PUBLIC plog::plog)
 
-target_embed_sql(generator
-        tpch/ddl/customer.ddl)
+target_embed_sql(generator SQL_FILES
+        tpch/ddl/customer.ddl
+        tpch/ddl/lineitem.ddl
+        tpch/ddl/nation.ddl
+        tpch/ddl/orders.ddl
+        tpch/ddl/part.ddl
+        tpch/ddl/partsupp.ddl
+        tpch/ddl/region.ddl
+        tpch/ddl/supplier.ddl
+)
 add_subdirectory("test")

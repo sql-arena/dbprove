@@ -3,37 +3,47 @@
 #include <filesystem>
 #include <map>
 #include <functional>
-#include "generated_table.h"
+#include "sql/connection_base.h"
+#include "sql/sql_type.h"
 
 namespace generator {
 class GeneratorState;
+class GeneratedTable;
 using GeneratorFunc = std::function<void(GeneratorState&)>;
 
 
 class GeneratorState {
   friend struct Registrar;
   const std::filesystem::path basePath_;
-  std::map<std::string_view, std::unique_ptr<GeneratedTable>> tables_{};
   static constexpr std::string_view colSeparator_ = "|";
   static constexpr std::string_view rowSeparator_ = "\n";
-  static std::map<std::string_view, GeneratorFunc>& generators();
-
 public:
-  explicit GeneratorState(const std::filesystem::path& basePath)
-    : basePath_(basePath) {
-  }
+  explicit GeneratorState(const std::filesystem::path& basePath);
+  ~GeneratorState();
+  /// @brief Generate a table input (if not already made) and return the row count
+  sql::RowCount generate(std::string_view name);
 
-  /// @brief Generate a table (if not already made) and return the row count
-  size_t generate(std::string_view name);
-  void registerGeneration(std::string_view name, size_t rowCount, const std::filesystem::path& filePath);
-  const GeneratedTable& table(std::string_view name) const;
+  /**
+   * Load a table
+   * @param name Table to load
+   * @return Number of rows in the table
+   */
+  sql::RowCount load(std::string_view name, sql::ConnectionBase& conn);
+  void registerGeneration(const std::string_view name, const std::filesystem::path& path);
+  GeneratedTable& table(std::string_view name) const;
+  bool contains(std::string_view name) const;
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
+  [[nodiscard]] std::filesystem::path csvPath(const std::string_view table_name) const {
+    const std::string file_name = std::string(table_name) + ".csv";
+    return basePath_ / file_name;
+  }
   static constexpr std::string_view columnSeparator() { return colSeparator_; }
   static constexpr std::string_view rowSeparator() { return rowSeparator_; }
 };
 
+
 struct Registrar {
-  Registrar(std::string_view name, const GeneratorFunc& f);
+  Registrar(std::string_view name, const std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
 };
 }
 
@@ -48,6 +58,6 @@ struct Registrar {
 #define CONCATENATE_DETAIL(x, y) x##y
 #define CONCATENATE(x, y) CONCATENATE_DETAIL(x, y)
 
-#define REGISTER_GENERATOR(NAME, FUNC) \
+#define REGISTER_GENERATOR(NAME, DDL, FUNC, ROWS) \
     extern void FUNC(generator::GeneratorState&); \
-    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, FUNC);
+    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DDL, FUNC, ROWS);

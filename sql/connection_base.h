@@ -1,6 +1,5 @@
 #pragma once
-#include <Engine.h>
-
+#include "engine.h"
 #include <memory>
 #include <span>
 #include <string>
@@ -16,16 +15,17 @@
 
 
 namespace sql {
-
 class ConnectionBase {
   bool closed_ = false;
   const Engine engine_;
+
 public:
   using TypeMap = std::map<std::string_view, std::string_view>;
   virtual ~ConnectionBase() = default;
 
   explicit ConnectionBase(const Credential& credential, const Engine& engine)
-    : engine_(engine), credential(credential) {
+    : engine_(engine)
+    , credential(credential) {
   };
 
   /// @brief Used to map type names specific to the engine before executing DDL/SQL
@@ -56,17 +56,27 @@ public:
    * @param table to load
    * @param source_paths files used to input the load
    */
-  virtual void bulkLoad(std::string_view table,
-                        const std::vector<std::filesystem::path>& source_paths) = 0;
+  virtual void bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) = 0;
   /**
    * @brief Convenience method to bulk load data from a single file.
    * @param table
    * @param source_path
    */
   void bulkLoad(const std::string_view table, const std::filesystem::path& source_path) {
-    const std::vector source_paths = {source_path};
-    bulkLoad(table, source_paths);
+    bulkLoad(table,
+      std::vector({source_path}));
   }
+
+  void executeDdl(const std::string_view ddl) {
+    execute(translateDialectDdl(ddl));
+  }
+
+  /**
+   * Fetch the row count from a table in the most effective way available to the database
+   * @param table To count rows for
+   * @return The count of rows if the table exists, nullopt if the table does not exist
+   */
+  virtual std::optional<RowCount> tableRowCount(const std::string_view table);
 
   /// @brief Creates a foreign key (if available)
   virtual void declareForeignKey(std::string_view fk_table,
@@ -77,7 +87,7 @@ public:
 
   /// @brief Given DDL, updates types to match the engine
   virtual std::string translateDialectDdl(const std::string_view ddl) const {
-    return std::string(ddl);
+    return std::string(mapTypes(ddl));
   }
 
   const Credential credential;
@@ -85,9 +95,8 @@ public:
   void close() { closed_ = true; };
 
   std::string mapTypes(std::string_view statement) const;
+
 protected:
   static void validateSourcePaths(const std::vector<std::filesystem::path>& source_paths);
 };
-
-
 }

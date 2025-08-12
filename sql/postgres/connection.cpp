@@ -1,6 +1,7 @@
 #include "connection.h"
 
 #include <cassert>
+#include <fstream>
 #include <unordered_set>
 
 #include "row.h"
@@ -53,6 +54,7 @@ public:
       case PGRES_COMMAND_OK:
       case PGRES_EMPTY_QUERY:
       case PGRES_SINGLE_TUPLE:
+      case PGRES_COPY_IN: // Ready to receive data on COPY
         /* Legit and harmless status code */
         return;
 
@@ -68,6 +70,9 @@ public:
         }
         PQclear(result);
 
+        if (state.starts_with("42P01")) {
+          throw InvalidTableException(error_msg);
+        }
         if (state.starts_with("42")) {
           throw sql::SyntaxException(error_msg);
         }
@@ -89,11 +94,13 @@ public:
     return result;
   }
 
-  void executeRaw(const std::string_view statement) const {
+  auto executeRaw(const std::string_view statement) const {
     const auto mapped_statement = connection.mapTypes(statement);
     PGresult* result = PQexec(conn, mapped_statement.data());
+    auto status = PQresultStatus(result);
     check_return(result);
     PQclear(result);
+    return status;
   }
 };
 
@@ -103,7 +110,7 @@ sql::postgres::Connection::Connection(const CredentialPassword& credential, cons
 }
 
 const sql::ConnectionBase::TypeMap& sql::postgres::Connection::typeMap() const {
-  static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "TEXT"}};
+  static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "VARCHAR"}};
   return map;
 }
 
@@ -148,10 +155,69 @@ sql::SqlVariant sql::postgres::Connection::fetchScalar(const std::string_view st
   return row->asVariant(0);
 }
 
+void check_bulk_return(int status, PGconn* conn) {
+  if (status != 1) {
+    throw std::runtime_error("Failed to send data to the database " + std::string(PQerrorMessage(conn)));
+  }
+}
+
 void sql::postgres::Connection::bulkLoad(
-    std::string_view table,
-    const std::vector<std::filesystem::path>& source_paths) {
-  // TODO: Implement me
+    const std::string_view table,
+    const std::vector<std::filesystem::path> source_paths) {
+  /*
+   * Copying data into Postgres:
+   *
+   * This interfaces is so obscenely braindead that you simply have to read the code.
+   * Basically, stuff can fail at any time during copy and how you exactly get the error message
+   * and handle it depends on what part of the flow you are in.
+   *
+   * The aim here is to turn the PG errors into subclasses of sql::Exception and give them some
+   * decent error codes and error messages
+   */
+
+  validateSourcePaths(source_paths);
+
+  const auto cn = impl_->conn;
+  for (const auto& path : source_paths) {
+    std::ifstream file(path.string(), std::ios::binary);
+    if (!file.is_open()) {
+      throw std::ios_base::failure("Failed to open source file: " + path.string());
+    }
+
+    // First, we need to tell PG that a copy stream is coming. This puts the server into a special mode
+    std::string copyQuery = "COPY "
+                            + std::string(table)
+                            + " FROM STDIN"
+                            + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
+    const auto ready_status = impl_->executeRaw(copyQuery);
+    assert(ready_status == PGRES_COPY_IN);  // We better have handled this already
+
+    // Chunk file content to the database (synchronously) with 1MB chunks so we can hide latency
+    // There is an "async" interface too - but it requires polling sockets and manually backing off
+    // based on return codes. One day, I will make this work - after I lose my will to live!
+    constexpr size_t buffer_size = 1024 * 1024;
+    auto buf = std::make_unique<char[]>(buffer_size);
+    while (file) {
+      file.read(buf.get(), buffer_size);
+      const std::streamsize n = file.gcount();
+      if (n > 0) {
+        const auto progress_status = PQputCopyData(cn, buf.get(), static_cast<int>(n));
+        check_bulk_return(progress_status, cn);
+      }
+    }
+    const auto end_status = PQputCopyEnd(cn, nullptr);
+    check_bulk_return(end_status, cn);
+
+    // After our final row (which is marked by PQOutCopyEnd we now get a result back telling us if it worked
+    const auto final_result = PQgetResult(cn);
+    impl_->check_return(final_result);
+    PQclear(PQgetResult(cn));
+
+    // Drain the connection - the usual libpq pointless logic
+    while (PGresult* leftover = PQgetResult(cn)) {
+      PQclear(leftover);
+    }
+  }
 }
 
 using namespace sql::explain;

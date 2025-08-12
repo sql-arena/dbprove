@@ -15,8 +15,9 @@
 void tpch_q01(const std::string& theorem,  const TheoremState& state) {
 
   state.generator.generate("REGION");
-
   sql::ConnectionFactory factory(state.engine, state.credentials);
+  auto cn = factory.create();
+  state.generator.load("REGION", *cn);
   auto sql = Query("SELECT * FROM REGION", theorem.c_str());
   Runner runner(factory);
   runner.serial(sql, 1000);

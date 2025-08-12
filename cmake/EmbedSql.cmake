@@ -9,7 +9,8 @@ function(target_embed_sql TARGET)
     endif()
 
     # Create a unique output directory for this target
-    set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/sql_embed/${TARGET}")
+    set(BASE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/sql_embed/")
+    set(OUTPUT_DIR "${BASE_OUTPUT_DIR}/${TARGET}")
     set(OUTPUT_HEADER "${OUTPUT_DIR}/embedded_sql.h")
     file(MAKE_DIRECTORY "${OUTPUT_DIR}")
 
@@ -37,6 +38,7 @@ function(target_embed_sql TARGET)
 
     target_sources(${TARGET} PRIVATE ${OUTPUT_HEADER})
     target_include_directories(${TARGET} PRIVATE ${OUTPUT_DIR})
+    target_include_directories(${TARGET} PUBLIC ${BASE_OUTPUT_DIR})
 
     # Export information about the embedded SQL
     set_property(TARGET ${TARGET} PROPERTY EMBEDDED_SQL_HEADER "${OUTPUT_HEADER}")

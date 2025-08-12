@@ -13,7 +13,7 @@ target_link_libraries(test_connectivity
         sql_databricks
 )
 
-target_embed_sql(test_connectivity
+target_embed_sql(test_connectivity SQL_FILES
         sql/bushy_plan.sql
         sql/explain.sql
         sql/simple_join.sql

@@ -15,7 +15,7 @@
 #include "sql_exceptions.h"
 #include "sql_type.h"
 
-#include "embedded_sql.h"
+#include "test_connectivity/embedded_sql.h"
 
 using namespace sql::explain;
 /**

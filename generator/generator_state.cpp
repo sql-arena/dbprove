@@ -1,5 +1,5 @@
 #include "generator_state.h"
-
+#include <plog/Log.h>
 
 std::map<std::string_view, generator::GeneratorFunc>&
 generator::GeneratorState::generators() {
@@ -9,17 +9,21 @@ generator::GeneratorState::generators() {
 
 size_t generator::GeneratorState::generate(const std::string_view name) {
   if (tables_.contains(name)) {
+    PLOGI << "Table: " << name << " already exists. Reusing it.";
     return tables_.at(name)->rowCount();
   }
   if (!generators().contains(name)) {
     throw std::runtime_error(
         "Generator not found for table: " + std::string(name));
   }
+  PLOGI << "Table: " << name << " is being generated...";
   generators().at(name)(*this);
   if (!tables_.contains(name)) {
     throw std::runtime_error("After generation the table " + std::string(name)
                              + " was not in the map. This likely means the generator forgot to call registerGeneration");
   }
+  PLOGI << "Table: " << name << " successfully generated";
+
   return tables_.at(name)->rowCount();
 }
 

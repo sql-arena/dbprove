@@ -4,19 +4,24 @@
 #include "sql/connection_base.h"
 #include "sql/Credential.h"
 #include "sql/Engine.h"
+#include "log_formatter.h"
 #include <string>
 #include <version>
 #include <map>
 #include <format>
 #include <ranges>
 #include "theorem_type.h"
-#include "theorem/ee/prove.h"
 #include "theorem/cli/prove.h"
-#include "theorem/se/prove.h"
-#include "theorem/wlm/prove.h"
 #include "theorem/plan/prove.h"
 #include "common/string.h"
+#include "generator/generator_state.h"
+#include "theorem/types.h"
 #include "ux/Terminal.h"
+#include <plog/Log.h>
+#include <plog/Initializers/RollingFileInitializer.h>
+
+namespace fs = std::filesystem;
+using namespace generator;
 
 void parseTheorems(std::map<TheoremType, std::vector<std::string>>& theoremMap,
                    const std::vector<std::string>& theorems) {
@@ -61,10 +66,7 @@ sql::Credential parseCredentials(
         if (!username) {
           throw std::invalid_argument("Username is required for " + engine_name);
         }
-        if (!password) {
-          throw std::invalid_argument("Password is required for " + engine_name);
-        }
-        return sql::CredentialPassword(host, database, port, username.value(), password.value());
+        return sql::CredentialPassword(host, database, port, username.value(), password);
       }
       case sql::Engine::Type::Utopia:
         return sql::CredentialNone();
@@ -80,6 +82,45 @@ sql::Credential parseCredentials(
     std::cerr << e.what() << std::endl;
     std::exit(1);
   }
+}
+
+
+
+fs::path make_directory(const std::string& directory) {
+  const auto currentWorkingDir = fs::current_path();
+  const auto directoryToMake = currentWorkingDir / directory;
+
+  if (!fs::exists(directoryToMake)) {
+    try {
+      fs::create_directory(directoryToMake);
+    } catch (const std::filesystem::filesystem_error& e) {
+      throw std::runtime_error(
+          "Failed to create 'table_data' directory: " + std::string(e.what()));
+    }
+  } else {
+    if (!fs::is_directory(directoryToMake)) {
+      throw std::runtime_error("'table_data' exists but is not a directory.");
+    }
+  }
+
+  // We need write permission to put CSV into this directory. Instead of relying on platform specific checks for
+  // that, just try to write
+  const fs::path testFile = directoryToMake / ".test_write_permission";
+  try {
+    std::ofstream testStream(testFile);
+    if (!testStream) {
+      throw std::runtime_error("'table_data' exists, but no write permission.");
+    }
+    testStream.close();
+    fs::remove(testFile);
+  } catch (...) {
+    throw std::runtime_error("'table_data' exists, but no write permission.");
+  }
+  return directoryToMake;
+}
+
+GeneratorState configureDataGeneration() {
+  return GeneratorState("table_data");
 }
 
 int main(int argc, char** argv) {
@@ -117,8 +158,17 @@ int main(int argc, char** argv) {
 
   CLI11_PARSE(app, argc, argv);
 
+
+  const auto log_directory = make_directory("logs");
+  const std::string log_file = log_directory.string() + "/dbprove.log";
+  plog::init<plog::DBProveFormatter>(plog::info, log_file.c_str(), 1000000, 5);
+
   const sql::Engine engine(engine_arg);
   Terminal::configure();
+
+  auto generator_state = configureDataGeneration();
+
+  PLOGI << "Generating into directory: " << generator_state.basePath();
 
   if (all_theorems.size() == 0) {
     /* If user did not supply theorems, default to all of them */
@@ -133,6 +183,10 @@ int main(int argc, char** argv) {
   username = engine.defaultUsername(username);
   token = engine.defaultToken(token);
 
+  PLOGI << "Using engine: " << engine.name();
+  PLOGI << "  host: " << host.value();
+  PLOGI << "  port: " << port;
+
   auto credentials =
       parseCredentials(engine,
                        host.value(),
@@ -145,24 +199,16 @@ int main(int argc, char** argv) {
   std::map<TheoremType, std::vector<std::string>> theoremMap;
   parseTheorems(theoremMap, all_theorems);
 
+  auto input_state = TheoremState{engine, credentials, generator_state};
+
   for (const auto& [type, theorems] : theoremMap) {
     switch (type) {
       case TheoremType::CLI:
-        cli::prove(theorems, engine, credentials);
-        break;
-      case TheoremType::EE:
-        ee::prove(theorems, engine, credentials);
-        break;
-      case TheoremType::SE:
-        se::prove(theorems, engine, credentials);
+        cli::prove(theorems, input_state);
         break;
       case TheoremType::PLAN:
-        plan::prove(theorems, engine, credentials);
-        break;
-      case TheoremType::WLM:
-        wlm::prove(theorems, engine, credentials);
+        plan::prove(theorems, input_state);
         break;
     }
   }
 }
-

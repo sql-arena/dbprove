@@ -1,5 +1,6 @@
 #pragma once
-#include "generator_state.h"
+#include "generator/generator_state.h"
+#include "generator/embedded_sql.h"
 
 REGISTER_GENERATOR("SUPPLIER", supplier_gen);
 REGISTER_GENERATOR("PART", part_gen);

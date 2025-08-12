@@ -2,8 +2,8 @@
 #include <string>
 #include <vector>
 
-namespace plan {
-    void prove(std::vector<std::string> theorems, sql::Engine engine, const sql::Credential credentials) {
+struct TheoremState;
 
-    }
+namespace plan {
+    void prove(const std::vector<std::string>& theorems, const TheoremState& state);
 }

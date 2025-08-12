@@ -3,7 +3,8 @@
 #include <vector>
 #include "sql/Engine.h"
 #include "sql/Credential.h"
+#include "theorem/types.h"
 
 namespace cli {
-    void prove(const std::vector<std::string>&, sql::Engine engine, const sql::Credential& credentials);
+    void prove(const std::vector<std::string>&, const TheoremState& credentials);
 }

@@ -16,7 +16,7 @@ add_compile_definitions(DUCKDB_STATIC_LINK)
 include(PrintLibData)
 include(cmake/EmbedSQL.cmake)
 find_package(CLI11 CONFIG REQUIRED)
-
+find_package(plog CONFIG REQUIRED)
 
 add_subdirectory(sql)
 add_subdirectory(generator)
@@ -34,6 +34,9 @@ set(THEOREM_SOURCES
         generator/tpch/tpch_table_gen.cpp
         common/tree_node.h
         theorem/run_theorems.h
+        theorem/plan/prove.cpp
+        theorem/run_theorems.cpp
+        log_formatter.h
 )
 
 add_executable(dbprove main.cpp

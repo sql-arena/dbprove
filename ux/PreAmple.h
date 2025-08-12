@@ -30,6 +30,6 @@ namespace ux {
 
 
     inline void PreAmpleTheorem(std::string_view theorem) {
-        std::cout << std::format("{:10}", theorem);
+        std::cout << std::format("{:10}", theorem) << std::endl;
     }
 }

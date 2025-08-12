@@ -30,8 +30,10 @@ public:
     std::string conninfo =
         "dbname=" + credential.database +
         " user=" + credential.username +
-        " password=" + credential.password +
         " port=" + std::to_string(credential.port);
+    if (credential.password.has_value()) {
+      conninfo += " password=" + credential.password.value();
+    }
     conn = PQconnectdb(conninfo.c_str());
 
     if (PQstatus(conn) != CONNECTION_OK) {

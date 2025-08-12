@@ -21,13 +21,13 @@ public:
   const uint16_t port;
   const std::string database;
   const std::string username;
-  const std::string password;
+  const std::optional<std::string> password;
 
   CredentialPassword(std::string host,
                      std::string database,
                      const uint16_t port,
                      std::string username,
-                     std::string password)
+                     std::optional<std::string> password)
     : host(std::move(host))
     , port(port)
     , database(std::move(database))

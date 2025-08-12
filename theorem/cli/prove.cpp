@@ -9,8 +9,8 @@
 #include "theorem/run_theorems.h"
 #include "connection_factory.h"
 
-void cli_1(const std::string& theorem, sql::Engine engine, const sql::Credential& credentials) {
-  sql::ConnectionFactory factory(engine, credentials);
+void cli_1(const std::string& theorem, const TheoremState& state) {
+  sql::ConnectionFactory factory(state.engine, state.credentials);
   auto sql = Query("SELECT 1", theorem.c_str());
   Runner runner(factory);
   runner.serial(sql, 1000);
@@ -18,13 +18,12 @@ void cli_1(const std::string& theorem, sql::Engine engine, const sql::Credential
 
 
 namespace cli {
-void prove(const std::vector<std::string>& theorems, sql::Engine engine,
-           const sql::Credential& credentials) {
+void prove(const std::vector<std::string>& theorems, const TheoremState& state) {
   ux::PreAmple("CLI - Client Interface Theorems");
   static TheoremCommandMap cliMap = {
       {"CLI-1", {"Measure roundtrip Time on NOOP", &cli_1}}
   };
 
-  run_theorems("CLI", cliMap, theorems, engine, credentials);
+  run_theorems("CLI", cliMap, theorems, state);
 }
 }

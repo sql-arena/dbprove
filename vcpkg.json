@@ -17,13 +17,14 @@
     "jwt-cpp",
     "nlohmann-json",
     "zlib",
-    {
-      "name": "unixodbc",
-      "platform": "!windows"
-    },
     "grpc",
     "protobuf",
     "icu",
-    "cnl"
+    "cnl",
+    "plog",
+    {
+      "name": "unixodbc",
+      "platform": "!windows"
+    }
   ]
 }

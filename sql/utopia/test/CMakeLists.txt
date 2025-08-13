@@ -3,7 +3,12 @@ enable_testing()
 find_package(Catch2 CONFIG REQUIRED)
 add_executable(test_utopia Connection.cpp
         result.cpp)
-target_link_libraries(test_utopia PRIVATE Catch2::Catch2WithMain sql utopia)
+
+target_link_libraries(test_utopia 
+    PRIVATE 
+        Catch2::Catch2WithMain 
+        sql_utopia
+)
 #include(CTest)
 #include(Catch)
 add_test(NAME test_utopia COMMAND test_utopia)

@@ -1,7 +1,7 @@
 #pragma once
 #include "column.h"
 #include "node.h"
-#include "common/string.h"
+#include <dbprove/common/string.h>
 
 namespace sql::explain {
 class GroupBy : public Node {

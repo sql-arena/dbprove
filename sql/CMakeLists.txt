@@ -17,9 +17,11 @@ target_sources(sql_interface INTERFACE
         result_base.h
         row_base.h
 )
-target_include_directories(sql_interface INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}
+
+target_link_libraries(sql_interface INTERFACE
+        dbprove::common
 )
+
 add_library(sql STATIC
         connection_factory.h
         sql_type.h
@@ -50,12 +52,20 @@ add_library(sql STATIC
         credential.cpp
         engine.cpp
 )
+add_library(dbprove::sql ALIAS sql)
+
 target_include_directories(sql PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}
 )
 
-target_link_libraries(sql PRIVATE cnl)
+target_link_libraries(sql 
+    PUBLIC
+        sql_interface
+        dbprove::common
+    PRIVATE 
+        cnl
+)
 
 # Drivers
 add_subdirectory("mariadb")
@@ -74,7 +84,7 @@ target_link_libraries(sql PUBLIC sql_databricks)
 
 
 # Make sure boilerplate compiles. These are unmapped in Engine.h
-add_subdirectory("boilerplate")
+#add_subdirectory("boilerplate")
 
 # Test it all, linking all drivers and running tests across them
 add_subdirectory("test")

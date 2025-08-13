@@ -30,7 +30,7 @@ std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view stateme
 }
 
 std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-
+  return nullptr;
 }
 
 SqlVariant Connection::fetchScalar(const std::string_view statement) {
@@ -41,7 +41,7 @@ SqlVariant Connection::fetchScalar(const std::string_view statement) {
   return row->asVariant(0);
 }
 
-void Connection::bulkLoad(std::string_view table, const std::vector<std::filesystem::path>& source_paths) {
+void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
 }
 }

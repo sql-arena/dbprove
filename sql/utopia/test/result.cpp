@@ -1,5 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
-#include "utopia/connection.h"
+#include <utopia/connection.h>
 #include "result_base.h"
 
 

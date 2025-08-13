@@ -1,7 +1,9 @@
 #pragma once
+
+#include <dbprove/common/string.h>
+
 #include <map>
 #include <stdexcept>
-#include "common/string.h"
 
 namespace sql
 {

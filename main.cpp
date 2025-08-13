@@ -13,7 +13,7 @@
 #include "theorem_type.h"
 #include "theorem/cli/prove.h"
 #include "theorem/plan/prove.h"
-#include "common/string.h"
+#include <dbprove/common/string.h>
 #include "generator/generator_state.h"
 #include "theorem/types.h"
 #include "ux/Terminal.h"

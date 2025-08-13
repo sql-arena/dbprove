@@ -5,8 +5,8 @@ find_package(Catch2 CONFIG REQUIRED)
 
 target_link_libraries(test_connectivity
         PRIVATE Catch2::Catch2WithMain
-        sql
-        utopia
+        dbprove::sql
+        sql_utopia
         sql_postgres
         sql_msodbc
         sql_duckdb
@@ -21,6 +21,7 @@ target_embed_sql(test_connectivity SQL_FILES
         sql/union_and_join.sql
         sql/topn.sql
 )
+
 
 message(STATUS ${EMBEDDED_SQL_HEADER})
 

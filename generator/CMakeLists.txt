@@ -20,6 +20,10 @@ target_include_directories(generator_interface INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/generator
 )
 
+target_link_libraries(generator_interface INTERFACE
+        dbprove::sql
+)
+
 add_library(generator STATIC tpch/tpch_text.cpp
         tpch/tpch_types.h
         tpch/tpch_types.cpp
@@ -36,7 +40,11 @@ add_library(generator STATIC tpch/tpch_text.cpp
         generated_table.cpp
 )
 target_include_directories(generator PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/generator)
-target_link_libraries(generator PUBLIC plog::plog)
+target_link_libraries(generator 
+    PUBLIC 
+        plog::plog
+        generator_interface
+)
 
 target_embed_sql(generator SQL_FILES
         tpch/ddl/customer.ddl

@@ -1,8 +1,9 @@
-#include "runner.h"
-
 #include <functional>
 #include <thread>
 #include <vector>
+
+#include "runner.h"
+#include "types.h"
 
 
 void do_threads(size_t threadCount, std::function<void()> thread_work) {
@@ -68,3 +69,16 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
 
   do_threads(threadCount, thread_work);
 }
+
+void Runner::serialExplain(std::span<Query>& queries, TheoremProof& state) const {
+  const auto connection = factory_.create();
+  for (auto& query : queries) {
+    auto qs = query.start();
+    auto explain = connection->explain(query.textTagged());
+    query.stop(qs);
+    query.summariseThread();
+    state.data.push_back(TheoremDataExplain(std::move(explain)));
+  }
+  connection->close();
+}
+

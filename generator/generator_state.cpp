@@ -1,6 +1,7 @@
 #include "generator_state.h"
 #include <plog/Log.h>
 #include "generated_table.h"
+#include "sql/connection_factory.h"
 
 namespace generator {
 std::map<std::string_view, GeneratedTable*>&
@@ -16,19 +17,20 @@ GeneratorState::GeneratorState(const std::filesystem::path& basePath)
 GeneratorState::~GeneratorState() {
 }
 
-void GeneratorState::ensure(const std::string_view table_name, sql::ConnectionBase& conn) {
+void GeneratorState::ensure(const std::string_view table_name, sql::ConnectionFactory& conn) {
   std::vector table_names{table_name};
   ensure(std::span(table_names), conn);
 }
 
-void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql::ConnectionBase& conn) {
+void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql::ConnectionFactory& conn) {
+  const auto cn = conn.create();
   for (auto table_name : table_names) {
     sql::checkTableName(table_name);
     if (ready_tables_.contains(table_name)) {
       continue;
     }
     generate(table_name);
-    load(table_name, conn);
+    load(table_name, *cn);
   }
 }
 

@@ -13,8 +13,8 @@ struct QueryStats {
 };
 
 class Query {
-  const std::string text_;
-  const std::string text_tagged_;
+  std::string text_;
+  std::string text_tagged_;
   std::mutex stats_mutex_;
   std::vector<QueryStats> stats_;
   static thread_local std::vector<QueryStats> thread_stats_;
@@ -27,10 +27,35 @@ class Query {
   }
 
 public:
-  explicit Query(std::string&& text, const char* theorem = nullptr)
+  explicit Query(std::string text, const char* theorem = nullptr)
     : text_(std::move(text))
     , text_tagged_(tagSQL(text_, theorem)) {
   };
+  explicit Query(std::string_view text, const char* theorem = nullptr)
+    : text_(std::string(text))
+    , text_tagged_(tagSQL(text_, theorem)) {
+  };
+  explicit Query(const char* text, const char* theorem = nullptr)
+    : text_(text)
+    , text_tagged_(tagSQL(text_, theorem)) {
+  }
+
+  Query(Query&& other) noexcept {
+    text_ = std::move(other.text_);
+    text_tagged_ = std::move(other.text_tagged_);
+    stats_ = std::move(other.stats_);
+    thread_stats_ = std::move(other.thread_stats_);
+  };
+  Query& operator=(Query&& other) noexcept {
+    if (this != &other) {
+      text_ = std::move(other.text_);
+      text_tagged_ = std::move(other.text_tagged_);
+      stats_ = std::move(other.stats_);
+      // No need to move the mutex
+    }
+    return *this;
+  }
+
   const std::string& text() const { return text_; }
   const std::string& textTagged() const { return text_tagged_; }
 

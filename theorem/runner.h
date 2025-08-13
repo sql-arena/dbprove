@@ -1,7 +1,9 @@
 #pragma once
 #include <vector>
-#include "sql/connection_factory.h"
-#include "sql/query.h"
+
+#include "types.h"
+#include "../sql/connection_factory.h"
+#include "../sql/query.h"
 
 
 class Runner {
@@ -38,4 +40,19 @@ public:
   */
 
   void parallelTogether(size_t threadCount, std::span<Query>& queries) const;
+
+  /**
+   * Explain queries and add to proof data
+   * @param queries To run
+   * @param state To update
+   */
+  void serialExplain(std::span<Query>& queries, TheoremProof& state) const ;
+
+  void serialExplain(Query&& query, TheoremProof& state)  const {
+    std::vector<Query> queries;
+    queries.push_back(std::move(query));
+    auto span = std::span(queries);
+    serialExplain(span, state);
+  };
+
 };

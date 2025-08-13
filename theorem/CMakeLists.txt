@@ -5,7 +5,10 @@ add_library(theorem STATIC
         cli/prove.cpp
         run_theorems.h
         run_theorems.cpp
+        runner.cpp
+        runner.h
         types.h
+        types.cpp
 )
 
 target_embed_sql(theorem SQL_FILES

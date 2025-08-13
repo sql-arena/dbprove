@@ -5,5 +5,5 @@
 struct TheoremState;
 
 namespace plan {
-    void prove(const std::vector<std::string>& theorems, const TheoremState& state);
+    void prove(const std::vector<std::string>& theorems, TheoremState& input_state);
 }

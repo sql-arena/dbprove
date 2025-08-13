@@ -8,6 +8,10 @@
 #include "sql/connection_base.h"
 #include "sql/sql_type.h"
 
+namespace sql {
+class ConnectionFactory;
+}
+
 namespace generator {
 class GeneratorState;
 class GeneratedTable;
@@ -30,7 +34,7 @@ public:
    * @param conn Connection to generate the table at
    * @return Rowcount of the generated table
    */
-  void ensure(std::string_view table_name, sql::ConnectionBase& conn);
+  void ensure(std::string_view table_name, sql::ConnectionFactory& conn);
 
   /**
    * Makes sure that a table is availabe on the given connection
@@ -38,7 +42,7 @@ public:
    * @param conn Connection to generate the table at
    * @return Rowcount of the generated table
    */
-  void ensure(const std::span<std::string_view>& table_names, sql::ConnectionBase& conn);
+  void ensure(const std::span<std::string_view>& table_names, sql::ConnectionFactory& conn);
 
   /**
    * Generate a table input (if not already made) and return the row count

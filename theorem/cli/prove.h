@@ -6,5 +6,5 @@
 #include "theorem/types.h"
 
 namespace cli {
-    void prove(const std::vector<std::string>&, const TheoremState& credentials);
+    void prove(const std::vector<std::string>&, TheoremState& credentials);
 }

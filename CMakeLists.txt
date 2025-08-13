@@ -27,24 +27,12 @@ add_subdirectory(sql)
 add_subdirectory(generator)
 add_subdirectory(theorem)
 
-set(THEOREM_SOURCES
-        ux/Glyph.h
-        ux/Terminal.cpp
-        ux/Spinner.h
-        ux/Messages.h
-        ux/ux.h
-        runner/Runner.h
-        runner/Runner.cpp
-        generator/tpch/tpch_table_gen.cpp
-        common/tree_node.h
-        log_formatter.h
-)
 
 add_executable(dbprove main.cpp
         common/string.h
         ux/PreAmple.h
         ux/Terminal.h
-        runner/Runner.cpp
+        ux/Terminal.cpp
         ${THEOREM_SOURCES}
 )
 target_link_libraries(dbprove PRIVATE sql)

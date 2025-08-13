@@ -1,10 +1,9 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
+
+find_package(Cnl CONFIG REQUIRED)
+
 add_library(sql_interface INTERFACE)
 
-
-find_package(cnl CONFIG REQUIRED)
-add_library(cnl INTERFACE)
-target_include_directories(cnl INTERFACE ${CNL_INCLUDE_DIR})
 
 target_include_directories(sql_interface INTERFACE
         ${CMAKE_SOURCE_DIR}
@@ -64,7 +63,7 @@ target_link_libraries(sql
         sql_interface
         dbprove::common
     PRIVATE 
-        cnl
+        Cnl::Cnl
 )
 
 # Drivers

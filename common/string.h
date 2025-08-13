@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <chrono>
+#include <format>
 
 
 template<typename Container>
@@ -37,4 +39,9 @@ inline std::string to_upper(const std::string_view sv) {
 template<typename T>
 inline std::u8string to_u8string(const T s) {
   return std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size());
+}
+
+
+inline std::string to_date_string(std::chrono::system_clock::time_point tp) {
+  return std::format("{:%Y-%m-%d}", tp);
 }

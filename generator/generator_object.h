@@ -4,10 +4,10 @@
 namespace generator {
 class GeneratorObject {
 protected:
-  std::mt19937 gen_;
+  std::ranlux24_base gen_;
 
   explicit GeneratorObject(const uint32_t seed = std::random_device{}())
-    : gen_(std::mt19937(seed)) {
+    : gen_(std::ranlux24_base(seed)) {
   };
 };
 }

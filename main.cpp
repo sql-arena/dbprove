@@ -31,7 +31,7 @@ void TerminateHandler() {
       std::rethrow_exception(eptr);
     }
   } catch (const std::exception& e) {
-    std::cerr << "Unhandled C++ exception: " << e.what() << '\n';
+    std::cerr << "Fatal Error:" << std::endl << e.what() << std::endl;
   } catch (...) {
     std::cerr << "Unhandled unknown exception\n";
   }

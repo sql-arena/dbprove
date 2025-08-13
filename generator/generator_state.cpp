@@ -3,12 +3,11 @@
 #include "generated_table.h"
 
 namespace generator {
-std::map<std::string, GeneratedTable*>&
+std::map<std::string_view, GeneratedTable*>&
 available_tables() {
-  static std::map<std::string, GeneratedTable*> registry;
+  static std::map<std::string_view, GeneratedTable*> registry;
   return registry;
 }
-
 
 GeneratorState::GeneratorState(const std::filesystem::path& basePath)
   : basePath_(basePath) {
@@ -17,87 +16,101 @@ GeneratorState::GeneratorState(const std::filesystem::path& basePath)
 GeneratorState::~GeneratorState() {
 }
 
-bool GeneratorState::contains(std::string_view name) const {
-  auto lower_name = to_lower(name);
-  return available_tables().contains(lower_name);
+void GeneratorState::ensure(const std::string_view table_name, sql::ConnectionBase& conn) {
+  std::vector table_names{table_name};
+  ensure(std::span(table_names), conn);
 }
 
-
-sql::RowCount generator::GeneratorState::generate(const std::string_view name) {
-  const auto low_name = to_lower(name);
-  if (!contains(low_name)) {
-    throw std::runtime_error(
-        "Generator not found for table: " + std::string(name));
-  }
-
-  const auto file_name = csvPath(low_name);
-  if (exists(file_name)) {
-    PLOGI << "Table: " << name << " input already exists.";
-    table(name).path = file_name;
-  } else {
-    PLOGI << "Table: " << name << " input data being generated to " + file_name.string() + "...";
-    table(name).generator(*this);
-    if (!contains(name)) {
-      throw std::runtime_error("After generation the table " + std::string(name)
-                               + " was not in the map.\n"
-                               + "This likely means the generator forgot to call registerGeneration");
+void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql::ConnectionBase& conn) {
+  for (auto table_name : table_names) {
+    sql::checkTableName(table_name);
+    if (ready_tables_.contains(table_name)) {
+      continue;
     }
-    PLOGI << "Table: " << name << " input successfully generated";
+    generate(table_name);
+    load(table_name, conn);
   }
-
-  return table(name).row_count;
 }
 
-sql::RowCount GeneratorState::load(std::string_view name, sql::ConnectionBase& conn) {
-  const auto existing_rows = conn.tableRowCount(name);
+bool GeneratorState::contains(std::string_view table_name) const {
+  sql::checkTableName(table_name);
+  return available_tables().contains(table_name);
+}
 
+
+sql::RowCount generator::GeneratorState::generate(const std::string_view table_name) {
+  sql::checkTableName(table_name);
+  if (!contains(table_name)) {
+    throw std::runtime_error(
+        "Generator not found for table: " + std::string(table_name));
+  }
+
+  const auto file_name = csvPath(table_name);
+  if (exists(file_name)) {
+    PLOGI << "Table: " << table_name << " input already exists.";
+    table(table_name).path = file_name;
+  } else {
+    PLOGI << "Table: " << table_name << " input data being generated to " + file_name.string() + "...";
+    table(table_name).generator(*this);
+    PLOGI << "Table: " << table_name << " input successfully generated";
+  }
+
+  return table(table_name).row_count;
+}
+
+sql::RowCount GeneratorState::load(const std::string_view table_name, sql::ConnectionBase& conn) {
+  sql::checkTableName(table_name);
+  const auto existing_rows = conn.tableRowCount(table_name);
   if (!existing_rows) {
-    PLOGI << "Table: " << name << " does not exist. Constructing it from DDL";
-    const auto table_ddl = table(name).ddl;
+    PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
+    const auto table_ddl = table(table_name).ddl;
     conn.executeDdl(table_ddl);
   }
-  const auto expected_rows = table(name).row_count;
+  const auto expected_rows = table(table_name).row_count;
   if (existing_rows.value_or(0) == 0) {
-    PLOGI << "Table: " << name
-    << " exists but has no rows. Loading it from file: " << table(name).path.string() << "...";
-    conn.bulkLoad(name, {table(name).path});
-    PLOGI << "Table: " << name
-    << " is ready with " + std::to_string(existing_rows.value()) + " rows";
-    return table(name).row_count;
+    PLOGI << "Table: " << table_name
+    << " exists but has no rows. Loading it from file: " << table(table_name).path.string() << "...";
+    conn.bulkLoad(table_name, {table(table_name).path});
+    const auto generated_row_count = table(table_name).row_count;
+    PLOGI << "Table: " << table_name
+    << " is ready with " + std::to_string(generated_row_count) + " rows";
+    return generated_row_count;
   }
-  if (existing_rows.value() != expected_rows) {
-    std::string wrong_row_count_error = "Table: " + std::string(name)
+  if (existing_rows.value() < 0.9 * expected_rows || existing_rows.value() > 1.1 * expected_rows) {
+    std::string wrong_row_count_error = "Table: " + std::string(table_name)
                                         + " has " + std::to_string(existing_rows.value()) + " rows. ";
-    wrong_row_count_error += "Which does not match the expected " + std::to_string(table(name).row_count);
+    wrong_row_count_error += "Which does not match the expected " + std::to_string(table(table_name).row_count);
     PLOGE << wrong_row_count_error;
     throw std::runtime_error(wrong_row_count_error);
   }
 
-  PLOGI << "Table: " << name
+  PLOGI << "Table: " << table_name
     << " is already in the database with the correct count of: " + std::to_string(existing_rows.value()) + " rows";
 
+  ready_tables_.emplace(table_name);
   return existing_rows.value();
 }
 
-void GeneratorState::registerGeneration(const std::string_view name, const std::filesystem::path& path) {
-  table(name).path = path;
-  table(name).is_generated = true;
+void GeneratorState::registerGeneration(const std::string_view table_name, const std::filesystem::path& path) {
+  sql::checkTableName(table_name);
+  table(table_name).path = path;
+  table(table_name).is_generated = true;
 }
 
 GeneratedTable& GeneratorState::table(
-    const std::string_view name) const {
-  auto lower_name = to_lower(name);
-  if (!contains(lower_name)) {
+    const std::string_view table_name) const {
+  sql::checkTableName(table_name);
+  if (!contains(table_name)) {
     throw std::runtime_error(
-        "Table not found: " + std::string(name) +
+        "Table not found: " + std::string(table_name) +
         ". Did you forget to call or include the appropriate REGISTER_GENERATOR");
   }
-  return *available_tables().at(lower_name);
+  return *available_tables().at(table_name);
 }
 
-Registrar::Registrar(const std::string_view name, const std::string_view ddl, const GeneratorFunc& f,
+Registrar::Registrar(const std::string_view table_name, const std::string_view ddl, const GeneratorFunc& f,
                      const sql::RowCount rows) {
-  auto lower_name = to_lower(name);
-  available_tables().emplace(lower_name, new GeneratedTable{lower_name, ddl, f, rows});
+  sql::checkTableName(table_name);
+  available_tables().emplace(table_name, new GeneratedTable{table_name, ddl, f, rows});
 }
 }

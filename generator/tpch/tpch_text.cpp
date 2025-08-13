@@ -1,4 +1,7 @@
 #include "tpch_text.h"
+
+#include <plog/Log.h>
+
 #include "weighted_select.h"
 std::optional<generator::WeightedSelect<std::string_view>> dist_grammar;
 std::optional<generator::WeightedSelect<std::string_view>> dist_noun_phrase;
@@ -13,32 +16,32 @@ std::optional<generator::WeightedSelect<std::string_view>> dist_article;
 std::optional<generator::WeightedSelect<std::string_view>> dist_adjective;
 std::mutex generate_mutex;
 
-using dist = std::pair<std::string_view, double>;
+using dist = std::pair<std::string_view, unsigned>;
 
 // first level grammar.
 // N=noun phrase, V=verb phrase, P=prepositional phrase, T=sentence termination
 constexpr dist grammar[] = {
-    {"NVT", 3.0},
-    {"NVPT", 3.0},
-    {"NVNT", 3.0},
-    {"NPVNT", 1.0},
-    {"NPVPT", 1.0}
+    {"NVT", 3},
+    {"NVPT", 3},
+    {"NVNT", 3},
+    {"NPVNT", 1},
+    {"NPVPT", 1}
 };
 // Noun phrases.
 // N=noun, A=article, J=adjective, D=adverb
 constexpr dist noun_phrases[] = {
     {"N", 10},
-    {"JN", 20.0},
-    {"JJN", 10.0},
-    {"DJN", 50.0}
+    {"JN", 20},
+    {"JJN", 10},
+    {"DJN", 50}
 };
 // Verb phrases.
 // V=verb, X=auxiliary, D=adverb
 constexpr dist verb_phrases[] = {
     {"V", 30},
     {"XV", 21},
-    {"VD", 40.0},
-    {"XVD", 1.0}
+    {"VD", 40},
+    {"XVD", 1}
 };
 
 //  nouns
@@ -335,7 +338,7 @@ void generator::TpchText::generate() {
   if (!generatedText_.empty()) {
     return;
   }
-
+  PLOGI << "TPC-H input text buffer generation - this can take a short while...";
   dist_grammar.emplace(WeightedSelect<std::string_view>(grammar));
   dist_noun_phrase.emplace(WeightedSelect<std::string_view>(noun_phrases));
   dist_verb_phrase.emplace(WeightedSelect<std::string_view>(verb_phrases));
@@ -370,4 +373,6 @@ void generator::TpchText::generate() {
       }
     }
   }
+  PLOGI << "TPC-H input text buffer done!";
+
 }

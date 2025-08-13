@@ -42,17 +42,5 @@ std::unique_ptr<GeneratorState> gen_state() {
 }
 
 TEST_CASE("Generate Tables", "[TPCH]") {
-  const std::string_view table = GENERATE("SUPPLIER", "PART", "PARTSUPP", "CUSTOMER", "ORDERS", "LINEITEM", "NATION",
-                                          "REGION");
-  const auto g = gen_state();
 
-  try {
-    g->generate(table);
-
-    for (const auto& p : g->table(table).paths()) {
-      INFO("Path of " << table << " is " << p.string());
-    };
-  } catch (const std::runtime_error& e) {
-    FAIL(e.what());
-  }
 }

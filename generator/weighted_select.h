@@ -11,11 +11,11 @@ namespace generator
     class WeightedSelect : GeneratorObject
     {
         std::vector<T> items_;
-        std::vector<double> weights_;
+        std::vector<unsigned> weights_;
         std::discrete_distribution<size_t> distribution_;
 
     public:
-        explicit WeightedSelect(const std::span<const std::pair<T, double>> discreetDistribution)
+        explicit WeightedSelect(const std::span<const std::pair<T, unsigned>> discreetDistribution)
         {
             for (auto [item, weight] : discreetDistribution) {
                 items_.push_back(item);

@@ -7,13 +7,13 @@
 #include <chrono>
 #include "runner/runner.h"
 #include "theorem/run_theorems.h"
-#include "connection_factory.h"
+#include "sql/connection_factory.h"
 
 void cli_1(const std::string& theorem, const TheoremState& state) {
   sql::ConnectionFactory factory(state.engine, state.credentials);
   auto sql = Query("SELECT 1", theorem.c_str());
   Runner runner(factory);
-  runner.serial(sql, 1000);
+  runner.serial(sql, 1);
 }
 
 

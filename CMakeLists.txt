@@ -19,11 +19,13 @@ include(PrintLibData)
 include(cmake/EmbedSQL.cmake)
 find_package(CLI11 CONFIG REQUIRED)
 find_package(plog CONFIG REQUIRED)
+find_path(RANG_INCLUDE_DIRS "rang.hpp")
 
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/MP>")
 
 add_subdirectory(sql)
 add_subdirectory(generator)
+add_subdirectory(theorem)
 
 set(THEOREM_SOURCES
         ux/Glyph.h
@@ -33,31 +35,24 @@ set(THEOREM_SOURCES
         ux/ux.h
         runner/Runner.h
         runner/Runner.cpp
-        theorem/Types.h
-        theorem/cli/prove.cpp
         generator/tpch/tpch_table_gen.cpp
         common/tree_node.h
-        theorem/run_theorems.h
-        theorem/plan/prove.cpp
-        theorem/run_theorems.cpp
         log_formatter.h
 )
 
 add_executable(dbprove main.cpp
-        theorem_type.h
-        theorem/cli/prove.h
         common/string.h
         ux/PreAmple.h
         ux/Terminal.h
-        theorem/cli/prove.cpp
         runner/Runner.cpp
         ${THEOREM_SOURCES}
 )
 target_link_libraries(dbprove PRIVATE sql)
 target_link_libraries(dbprove PRIVATE generator)
 target_link_libraries(dbprove PRIVATE CLI11::CLI11)
+target_link_libraries(dbprove PRIVATE theorem)
 
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR})
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR}/ux)
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR}/sql)
-target_include_directories(dbprove PUBLIC ${RANG_INC_DIR})
+target_include_directories(dbprove PUBLIC ${RANG_INCLUDE_DIRS})

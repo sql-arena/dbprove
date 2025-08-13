@@ -23,7 +23,7 @@ public:
   bool is_generated = false;
   const std::string_view name;
   const std::string_view ddl;
-  const GeneratorFunc& generator;
+  const GeneratorFunc generator;
   sql::RowCount row_count;
   std::filesystem::path path; ///< Where the CSV input of the generated files are stored
 

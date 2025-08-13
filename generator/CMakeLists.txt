@@ -33,7 +33,8 @@ add_library(generator STATIC tpch/tpch_text.cpp
         generator_state.h
         generator_state.cpp
         tpch/tpch.h
-        generated_table.cpp)
+        generated_table.cpp
+)
 target_include_directories(generator PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/generator)
 target_link_libraries(generator PUBLIC plog::plog)
 

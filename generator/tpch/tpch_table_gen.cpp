@@ -1,10 +1,11 @@
+#include <plog/Log.h>
+
 #include <chrono>
 #include <ostream>
-#include "tpch_text.h"
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 
+#include "tpch_text.h"
 #include "generator/date_range.h"
 #include "generator/double_range.h"
 #include "generator/foreign_key.h"
@@ -26,6 +27,27 @@ using namespace std::chrono;
 using namespace generator;
 
 
+template <typename T>
+void reportProgress(const std::string_view table_name, T current, T target) {
+  constexpr T num_reports = 10;
+  const T report_interval = target / num_reports;
+  if (current % report_interval == 0 && current > 0) {
+    PLOGI << "Table: " << table_name << " input generated " << current << " rows so far";
+  }
+}
+
+template <typename T>
+void reportProgress(const std::string_view table_name, T current, T target,
+                    const std::string_view secondary_table_name, T secondary_current) {
+  constexpr T num_reports = 10;
+  const T report_interval = target / num_reports;
+  if (current % report_interval == 0 && current > 0) {
+    PLOGI << "Table: " << table_name << " input generated " << current << " rows so far"
+    << " and " + std::string(secondary_table_name) + " " + std::to_string(secondary_current) + " rows";
+  }
+}
+
+
 constexpr size_t part_count = 200000;
 // Named to match the TPC-H spec
 constexpr auto STARTDATE = sys_days(1992y / January / 1);
@@ -38,7 +60,7 @@ uint64_t supplier_for_part(const uint64_t part_key, const uint64_t i) {
 }
 
 double price_for_part(const uint64_t part_key) {
-  return (90000.0 + ((part_key / 10) % 20001) + 100.0 * (part_key % 1000)) /
+  return (90000.0 + (part_key / 10) % 20001 + 100.0 * (part_key % 1000)) /
          100.0;
 }
 
@@ -72,11 +94,11 @@ void nation_gen(GeneratorState& state) {
 }
 
 void region_gen(GeneratorState& state) {
-  size_t region_count = state.table("region").row_count;
-  auto file_name = state.csvPath("region");
+  const size_t region_count = state.table("region").row_count;
+  const auto file_name = state.csvPath("region");
   std::ofstream region(file_name);
-  auto col_separator = state.columnSeparator();
-  auto row_separator = state.rowSeparator();
+  constexpr auto col_separator = state.columnSeparator();
+  constexpr auto row_separator = state.rowSeparator();
   region << "R_REGIONKEY" << col_separator;
   region << "R_NAME" << col_separator;
   region << "R_COMMENT" << row_separator;
@@ -117,6 +139,7 @@ void supplier_gen(GeneratorState& state) {
   c(supplier, "S_COMMENT", true);
 
   for (size_t row = 0; row < supplier_count; ++row) {
+    reportProgress("supplier", row, supplier_count);
     const auto key = s_suppkey.next();
     c(supplier, key);
     c(supplier, s_name.next(key));
@@ -207,7 +230,7 @@ void part_gen(GeneratorState& state) {
 
 void partsupp_gen(GeneratorState& state) {
   const size_t partsupp_count = state.table("partsupp").row_count;
-  const auto file_name =  state.csvPath("partsupp");
+  const auto file_name = state.csvPath("partsupp");
   std::ofstream partsupp(file_name);
   c(partsupp, "PS_PARTKEY");
   c(partsupp, "PS_SUPPKEY");
@@ -221,13 +244,12 @@ void partsupp_gen(GeneratorState& state) {
   DoubleRange ps_supplycost(1, 1000.0);
   TpchText ps_comment(49, 198);
 
-  const uint64_t S = 1 * 10000;
   for (size_t row = 0; row < partsupp_count / 4; ++row) {
-    auto ps_part_key = p_partkey.next();
+    const auto ps_part_key = p_partkey.next();
 
     for (size_t i = 0; i < 4; ++i) {
       c(partsupp, ps_part_key);
-      uint64_t ps_supp_key = supplier_for_part(ps_part_key, i);
+      const uint64_t ps_supp_key = supplier_for_part(ps_part_key, i);
       c(partsupp, ps_supp_key);
       c(partsupp, ps_availqty.next());
       c(partsupp, ps_supplycost.next());
@@ -363,8 +385,10 @@ void orders_lineitem_gen(GeneratorState& state) {
     size_t linestatus_f_count = 0;
     double totalprice = 0.0;
 
-    for (size_t li = 0; li < lineitems_per_order.next(); ++li) {
+    const auto num_lines = lineitems_per_order.next();
+    for (size_t li = 0; li < num_lines; ++li) {
       ++lineitem_count;
+
       c(lineitem, orderkey);
       const auto partkey = l_partkey.next();
       c(lineitem, partkey);
@@ -401,9 +425,9 @@ void orders_lineitem_gen(GeneratorState& state) {
         ++linestatus_o_count;
         c(lineitem, "O");
       }
-      c(lineitem, shipdate);
-      c(lineitem, commitdate);
-      c(lineitem, receiptdate);
+      c(lineitem, to_date_string(shipdate));
+      c(lineitem, to_date_string(commitdate));
+      c(lineitem, to_date_string(receiptdate));
       c(lineitem, l_shipinstruct.next());
       c(lineitem, l_shipmode.next());
       c(lineitem, l_comment.next(), true);
@@ -421,13 +445,15 @@ void orders_lineitem_gen(GeneratorState& state) {
     c(orders, orderkey);
     c(orders, custkey);
     c(orders, totalprice);
-    c(orders, orderdate);
+    c(orders, to_date_string(orderdate));
     c(orders, o_orderpriority.next());
     c(orders, o_clerk.next(o_clerk_random.next()));
     c(orders, "0"); // O_SHIPPRIORITY is indeed a const
     c(orders, o_comment.next(), true);
+
+    reportProgress("orders", row, orders_count, "lineitem", lineitem_count);
   }
-  state.registerGeneration("LINEITEM", lineitem_file_name);
-  state.registerGeneration("ORDERS", orders_file_name);
+  state.registerGeneration("lineitem", lineitem_file_name);
+  state.registerGeneration("orders", orders_file_name);
   state.table("lineitem").row_count = lineitem_count;
 }

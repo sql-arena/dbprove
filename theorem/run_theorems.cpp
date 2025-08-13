@@ -1,7 +1,7 @@
 #include "run_theorems.h"
 
-#include "Messages.h"
-#include "PreAmple.h"
+#include "ux/Messages.h"
+#include "ux/PreAmple.h"
 #include "types.h"
 
 

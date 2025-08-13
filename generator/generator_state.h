@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <map>
 #include <functional>
+#include <set>
+
 #include "sql/connection_base.h"
 #include "sql/sql_type.h"
 
@@ -17,21 +19,45 @@ class GeneratorState {
   const std::filesystem::path basePath_;
   static constexpr std::string_view colSeparator_ = "|";
   static constexpr std::string_view rowSeparator_ = "\n";
+  std::set<std::string_view> ready_tables_ = {};
 public:
   explicit GeneratorState(const std::filesystem::path& basePath);
   ~GeneratorState();
-  /// @brief Generate a table input (if not already made) and return the row count
-  sql::RowCount generate(std::string_view name);
 
   /**
+   * Makes sure that a table is availabe on the given connection
+   * @param table_name To guarantee exists and is ready
+   * @param conn Connection to generate the table at
+   * @return Rowcount of the generated table
+   */
+  void ensure(std::string_view table_name, sql::ConnectionBase& conn);
+
+  /**
+   * Makes sure that a table is availabe on the given connection
+   * @param table_names To guarantee exists and is ready
+   * @param conn Connection to generate the table at
+   * @return Rowcount of the generated table
+   */
+  void ensure(const std::span<std::string_view>& table_names, sql::ConnectionBase& conn);
+
+  /**
+   * Generate a table input (if not already made) and return the row count
+   */
+  sql::RowCount generate(std::string_view table_name);
+  /**
    * Load a table
-   * @param name Table to load
+   * @param table_name Table to load
    * @return Number of rows in the table
    */
-  sql::RowCount load(std::string_view name, sql::ConnectionBase& conn);
-  void registerGeneration(const std::string_view name, const std::filesystem::path& path);
-  GeneratedTable& table(std::string_view name) const;
-  bool contains(std::string_view name) const;
+  sql::RowCount load(std::string_view table_name, sql::ConnectionBase& conn);
+  /**
+   * Lets the state know that we have made the input files necessary for the generation
+   * @param table_name The table we have generated
+   * @param path The path where the input file can be found
+   */
+  void registerGeneration(const std::string_view table_name, const std::filesystem::path& path);
+  GeneratedTable& table(std::string_view table_name) const;
+  bool contains(std::string_view table_name) const;
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
   [[nodiscard]] std::filesystem::path csvPath(const std::string_view table_name) const {
     const std::string file_name = std::string(table_name) + ".csv";
@@ -43,7 +69,7 @@ public:
 
 
 struct Registrar {
-  Registrar(std::string_view name, const std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
+  Registrar(std::string_view table_name, const std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
 };
 }
 

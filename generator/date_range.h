@@ -15,5 +15,6 @@ namespace generator
         explicit DateRange(std::chrono::sys_days minValue, std::chrono::sys_days maxValue);
 
         std::chrono::sys_days next();
+
     };
 }

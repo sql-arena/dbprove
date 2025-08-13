@@ -2,11 +2,26 @@
 #include <cstdint>
 #include <variant>
 #include <string>
+#include <stdexcept>
 
 namespace sql {
 using RowCount = uint64_t;
 using ColumnCount = uint64_t;
 
+
+inline void checkTableName(const std::string_view table) {
+  for (const auto& c : table) {
+    if (c >= 'A' && c <= 'Z') {
+      throw std::runtime_error("Only lowercase table names are allowed");
+    }
+    if (std::isspace(c)) {
+      throw std::runtime_error("No whitespace allowed in tables");
+    }
+    if (c == '\"' || c == '\'') {
+      throw std::runtime_error("No quotes in table names");
+    }
+  }
+}
 
 enum class SqlTypeKind {
   TINYINT,

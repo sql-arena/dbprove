@@ -34,7 +34,7 @@ Also see: [Terminology](terminology.md)
 Here follows an overview of the modules making up `dbprove`
 
 ## Generator
-The [generator](../generator) library is responsible for generating CSV streams 
+The [generator](../src/generator) library is responsible for generating CSV streams 
 or files that can be loaded directly into databases. 
 
 It will dump files into the a `./data/` directory that `dbprove` was executed from.
@@ -70,7 +70,7 @@ Generator can be build as a standalone library.
 
 ## SQL Lib
 
-The [SQL library](../sql) is responsible for creating **Connections** and executing
+The [SQL library](../src/sql) is responsible for creating **Connections** and executing
 **Statements** in a **Driver** and **Engine** agnostic way.
 
 ### Constructing a Connection

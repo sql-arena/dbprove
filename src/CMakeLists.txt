@@ -1,1 +1,6 @@
 add_subdirectory(common)
+#add_subdirectory(generator)
+#add_subdirectory(theorem)
+add_subdirectory(ux)
+add_subdirectory(sql)
+#add_subdirectory(dbprove)

@@ -1,27 +1,26 @@
 #include <plog/Log.h>
-
+#include "tpch_text.h"
+#include "date_range.h"
+#include "double_range.h"
+#include "foreign_key.h"
+#include "formatter.h"
+#include "integer_range.h"
+#include "key.h"
+#include "set.h"
+#include "tpch_container.h"
+#include "tpch_nation.h"
+#include "tpch_phone.h"
+#include "tpch_types.h"
+#include "v_string.h"
+#include "tpch.h"
+#include "generator_state.h"
+#include "generated_table.h"
+#include <dbprove/common/string.h>
 #include <chrono>
 #include <ostream>
 #include <filesystem>
 #include <fstream>
 
-#include "tpch_text.h"
-#include "generator/date_range.h"
-#include "generator/double_range.h"
-#include "generator/foreign_key.h"
-#include "generator/formatter.h"
-#include "generator/integer_range.h"
-#include "generator/key.h"
-#include "generator/set.h"
-#include "tpch_container.h"
-#include "tpch_nation.h"
-#include "tpch_phone.h"
-#include "tpch_types.h"
-#include "generator/v_string.h"
-#include "tpch.h"
-#include "generator/generator_state.h"
-#include <dbprove/common/string.h>
-#include "generator/generated_table.h"
 
 using namespace std::chrono;
 using namespace generator;

@@ -1,7 +1,7 @@
 #pragma once
+#include "variable_integer.h"
 #include <string>
 
-#include "generator/variable_integer.h"
 
 namespace generator {
 /// @brief Generates type strings as per TPC-H spec section 4.2.2.13

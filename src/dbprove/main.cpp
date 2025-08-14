@@ -1,7 +1,7 @@
 #include <dbprove/theorem/theorem.h>
 #include <dbprove/ux/ux.h>
 #include <dbprove/sql/sql.h>
-#include <dbprove/common/common.h>
+#include <dbprove/common/null_stream.h>
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include "log_formatter.h"
@@ -15,6 +15,7 @@
 
 namespace fs = std::filesystem;
 
+using namespace dbprove;
 
 void TerminateHandler() {
   try {
@@ -30,29 +31,12 @@ void TerminateHandler() {
   std::exit(1);
 }
 
+/* TODO: Fix me up
 void parseTheorems(std::map<TheoremType, std::vector<std::string>>& theoremMap,
                    const std::vector<std::string>& theorems) {
-  for (const auto& t : theorems) {
-    bool parsed = false;
-    for (const auto& [name, theorem_type] : theorem_types) {
-      if (t.starts_with(name)) {
-        theoremMap[theorem_type].push_back(t);
-        parsed = true;
-        break;
-      }
-    }
-    if (!parsed) {
-      std::cerr << "Unknown theorem type: " << t << ".";
-      std::cerr << "the following prefixes are supported: ";
-      std::cerr << join(theorem_names, ",");
-      for (const auto& pair : theorem_types) {
-        std::cerr << pair.first << ", ";
-      }
-      std::cerr << std::endl;
-      std::exit(1);
-    }
-  }
+
 }
+*/
 
 sql::Credential parseCredentials(
     const sql::Engine& engine,
@@ -126,8 +110,8 @@ fs::path make_directory(const std::string& directory) {
   return directoryToMake;
 }
 
-GeneratorState configureDataGeneration() {
-  return GeneratorState("table_data");
+generator::GeneratorState configureDataGeneration() {
+  return generator::GeneratorState("table_data");
 }
 
 int main(int argc, char** argv) {
@@ -174,18 +158,12 @@ int main(int argc, char** argv) {
   plog::init<plog::DBProveFormatter>(plog::info, log_file.c_str(), 1000000, 5);
 
   const sql::Engine engine(engine_arg);
-  Terminal::configure();
+  ux::Terminal::configure();
 
   auto generator_state = configureDataGeneration();
 
   PLOGI << "Generating into directory: " << generator_state.basePath();
 
-  if (all_theorems.size() == 0) {
-    /* If user did not supply theorems, default to all of them */
-    for (auto& theorem_name : std::views::keys(theorem_types)) {
-      all_theorems.push_back(std::string(theorem_name));
-    }
-  }
 
   database = engine.defaultDatabase(database);
   host = engine.defaultHost(host);
@@ -207,13 +185,11 @@ int main(int argc, char** argv) {
                        password,
                        token);
 
-  std::map<TheoremType, std::vector<std::string>> theoremMap;
-  parseTheorems(theoremMap, all_theorems);
-
+  auto theorems = theorem::parse(all_theorems);
   NullStream dev_null;
-  auto input_state = TheoremState{engine, credentials, generator_state, std::cout, dev_null};
+  auto input_state = theorem::RunState{engine, credentials, generator_state, std::cout, dev_null};
 
-  for (const auto& [type, theorems] : theoremMap) {
-    dbprove::theorem::prove(theorems, input_state);
-  }
+  theorem::prove(theorems, input_state);
+
+
 }

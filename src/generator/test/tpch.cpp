@@ -1,13 +1,12 @@
-#include <iostream>
-#include <catch2/catch_test_macros.hpp>
-
-#include "generator_state.h"
+#include <dbprove/generator/generator_state.h>
+#include <dbprove/generator/tpch.h>
 #include "tpch/tpch_text.h"
-
 #include "variable_integer.h"
-#include "tpch/tpch.h"
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
-#include "catch2/generators/catch_generators.hpp"
+#include <iostream>
+
 using namespace generator;
 
 

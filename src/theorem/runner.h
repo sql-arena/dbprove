@@ -1,11 +1,9 @@
 #pragma once
+#include "theorem.h"
 #include <vector>
+#include <dbprove/sql/sql.h>
 
-#include "types.h"
-#include "../sql/include/dbprove/sql/connection_factory.h"
-#include "../sql/include/dbprove/sql/query.h"
-
-
+namespace dbprove::theorem {
 class Runner {
   sql::ConnectionFactory& factory_;
 
@@ -46,9 +44,9 @@ public:
    * @param queries To run
    * @param state To update
    */
-  void serialExplain(std::span<Query>& queries, TheoremProof& state) const ;
+  void serialExplain(std::span<Query>& queries, Proof& state) const ;
 
-  void serialExplain(Query&& query, TheoremProof& state)  const {
+  void serialExplain(Query&& query, Proof& state)  const {
     std::vector<Query> queries;
     queries.push_back(std::move(query));
     auto span = std::span(queries);
@@ -56,3 +54,4 @@ public:
   };
 
 };
+}

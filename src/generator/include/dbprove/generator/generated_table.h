@@ -1,10 +1,8 @@
 #pragma once
+#include "generator_state.h"
+#include <dbprove/sql/sql.h>
 #include <filesystem>
 #include <string_view>
-#include <vector>
-
-#include "generator_state.h"
-#include "sql/sql_type.h"
 
 namespace generator {
 class GeneratorState;

@@ -1,6 +1,6 @@
 #pragma once
-#include "generator/generator_state.h"
-#include "generator/embedded_sql.h"
+#include "generator_state.h"
+#include "dbprove_generator/embedded_sql.h"
 #include "tpch_nation.h"
 
 constexpr size_t TPCH_SF = 1;

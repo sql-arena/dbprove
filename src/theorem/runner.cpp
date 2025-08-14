@@ -1,11 +1,10 @@
+#include "runner.h"
+#include "theorem.h"
 #include <functional>
 #include <thread>
 #include <vector>
 
-#include "runner.h"
-#include "types.h"
-
-
+namespace dbprove::theorem {
 void do_threads(size_t threadCount, std::function<void()> thread_work) {
   std::vector<std::thread> threads;
   for (size_t i = 0; i < threadCount; ++i) {
@@ -70,15 +69,14 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
   do_threads(threadCount, thread_work);
 }
 
-void Runner::serialExplain(std::span<Query>& queries, TheoremProof& state) const {
+void Runner::serialExplain(std::span<Query>& queries, Proof& state) const {
   const auto connection = factory_.create();
   for (auto& query : queries) {
     auto qs = query.start();
     auto explain = connection->explain(query.textTagged());
     query.stop(qs);
-    state.data.push_back(TheoremDataExplain(std::move(explain)));
-
+    state.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
   }
   connection->close();
 }
-
+}

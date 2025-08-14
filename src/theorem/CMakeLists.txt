@@ -1,26 +1,28 @@
 set(_targetName "dbprove_theorem")
-add_library(${_targetName} STATIC)
+add_library(${_targetName} STATIC
+        init.h
+        init.cpp
+        run_state.cpp)
 add_library(dbprove::theorem ALIAS ${_targetName})
 
 target_sources(${_targetName}
         PUBLIC FILE_SET installed TYPE HEADERS BASE_DIRS include
 )
 
-target_include_directories(${_targetName} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)
+target_include_directories(${_targetName} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/theorem>)
 
 target_sources(${_targetName}
         PRIVATE
         plan/prove.cpp
         cli/prove.cpp
-        run_theorems.cpp
         runner.cpp
-        types.cpp
+        proof.cpp
+        prover.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         runner.h
-        types.h
-        run_theorems.h
-        cli/prove.h
-        plan/prove.h
+        run_theorem.h
+        cli/prover.h
+        plan/prover.h
 )
 
 target_embed_sql(${_targetName} SQL_FILES
@@ -31,5 +33,6 @@ target_embed_sql(${_targetName} SQL_FILES
 target_link_libraries(${_targetName} PRIVATE
         dbprove::sql
         dbprove::generator
+        dbprove::ux
 )
 

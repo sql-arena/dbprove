@@ -1,7 +1,7 @@
 #include "generator_state.h"
-#include <plog/Log.h>
 #include "generated_table.h"
-#include "sql/connection_factory.h"
+#include <dbprove/sql/sql.h>
+#include <plog/Log.h>
 
 namespace generator {
 std::map<std::string_view, GeneratedTable*>&

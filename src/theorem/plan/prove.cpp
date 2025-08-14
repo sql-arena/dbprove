@@ -1,39 +1,35 @@
-#include "prove.h"
+#include "theorem.h"
+#include "runner.h"
+#include "dbprove_theorem/embedded_sql.h"
+#include <dbprove/generator/tpch.h>
+#include <dbprove/sql/sql.h>
+#include "init.h"
 
-#include "theorem/types.h"
-#include <vector>
+using namespace dbprove::theorem;
 
-#include "ux/PreAmple.h"
-#include "sql/connection_factory.h"
-#include "../runner.h"
-#include "sql/Engine.h"
-#include "sql/Credential.h"
-#include "sql/query.h"
-#include "theorem/run_theorems.h"
-#include "generator/tpch/tpch.h"
-#include "theorem/embedded_sql.h"
-
-void tpch_q01(TheoremProof& proof) {
+void tpch_q01(Proof& proof) {
   proof.ensureSchema("tpch").ensure("tpch.lineitem");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q01_sql), proof);
 }
 
-void tpch_q19(TheoremProof& proof) {
+void tpch_q19(Proof& proof) {
   proof.ensure("tpch.lineitem").ensure("tpch.part");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q19_sql), proof);
 }
 
 
-namespace plan {
-void prove(const std::vector<std::string>& theorems, TheoremState& input_state) {
-  ux::PreAmple("PLAN - Planner Theorems");
-  static TheoremCommandMap planMap = {
-    {"PLAN-TPCH-Q01", {"TPC-H Q01 Analysis", tpch_q01}},
-    {"PLAN-TPCH-Q19", {"TPC-H Q19 Analysis", tpch_q19}},
-  };
+namespace dbprove::theorem::plan {
 
-  run_theorems("PLAN", planMap, theorems, input_state);
+void init() {
+  static bool is_initialised = false;
+  if (is_initialised) return;
+
+  addTheorem(Type::PLAN, "PLAN-TPCH-Q01", "TPC-H Q01 Analysis", tpch_q01);
+  addTheorem(Type::PLAN, "PLAN-TPCH-Q09", "TPC-H Q19 Analysis and Bloom Check", tpch_q19);
+
+  is_initialised = true;
 }
+
 }

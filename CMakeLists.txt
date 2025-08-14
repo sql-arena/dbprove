@@ -21,7 +21,12 @@ find_package(CLI11 CONFIG REQUIRED)
 find_package(plog CONFIG REQUIRED)
 find_path(RANG_INCLUDE_DIRS "rang.hpp")
 
-add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/MP>")
+
+if(CMAKE_GENERATOR MATCHES "Visual Studio")
+    add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/MP>")
+endif()
+
+add_subdirectory(src)
 
 add_subdirectory(sql)
 add_subdirectory(generator)
@@ -29,16 +34,18 @@ add_subdirectory(theorem)
 
 
 add_executable(dbprove main.cpp
-        common/string.h
         ux/PreAmple.h
         ux/Terminal.h
         ux/Terminal.cpp
         ${THEOREM_SOURCES}
 )
-target_link_libraries(dbprove PRIVATE sql)
-target_link_libraries(dbprove PRIVATE generator)
-target_link_libraries(dbprove PRIVATE CLI11::CLI11)
-target_link_libraries(dbprove PRIVATE theorem)
+target_link_libraries(dbprove 
+    PRIVATE 
+        sql 
+        generator 
+        CLI11::CLI11 
+        theorem
+)
 
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR})
 target_include_directories(dbprove PRIVATE ${PROJECT_SOURCE_DIR}/ux)

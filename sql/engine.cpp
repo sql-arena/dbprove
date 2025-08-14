@@ -1,6 +1,6 @@
 #include "engine.h"
 
-#include <common/config.h>
+#include <dbprove/common/config.h>
 
 namespace sql {
 std::string Engine::defaultDatabase(std::optional<std::string> database) const {

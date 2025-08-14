@@ -2,7 +2,7 @@
 
 #include <array>
 #include <stdexcept>
-#include "common/config.h"
+#include <dbprove/common/config.h>
 
 namespace sql {
 CredentialAccessToken::CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database,

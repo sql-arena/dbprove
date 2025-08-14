@@ -1,7 +1,8 @@
 #pragma once
 #include "node_type.h"
 #include "sql_type.h"
-#include "common/tree_node.h"
+
+#include <dbprove/common/tree_node.h>
 
 namespace sql::explain {
 /**

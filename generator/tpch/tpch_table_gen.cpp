@@ -20,7 +20,7 @@
 #include "generator/v_string.h"
 #include "tpch.h"
 #include "generator/generator_state.h"
-#include "common/string.h"
+#include <dbprove/common/string.h>
 #include "generator/generated_table.h"
 
 using namespace std::chrono;

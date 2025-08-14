@@ -2,7 +2,7 @@
 #include <utility>
 
 #include "node.h"
-#include "common/string.h"
+#include <dbprove/common/string.h>
 
 namespace sql::explain {
 /**

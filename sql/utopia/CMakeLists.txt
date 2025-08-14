@@ -4,6 +4,13 @@ add_library(sql_utopia STATIC
         Result.h
         Row.h
         Connection.cpp)
-target_link_libraries(sql_utopia PRIVATE sql_interface)
 
+target_link_libraries(sql_utopia 
+    PUBLIC 
+        dbprove::sql
+)
+
+target_include_directories(sql_utopia PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+)
 add_subdirectory("test")

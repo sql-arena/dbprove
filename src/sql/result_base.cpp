@@ -1,5 +1,5 @@
 #include "row_iterator.h"
-#include "include/dbprove/sql/result_base.h"
+#include "result_base.h"
 
 namespace sql {
 RowIterable ResultBase::rows() {

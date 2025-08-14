@@ -32,6 +32,13 @@ target_sources(${_targetName}
         explain/group_by.h
 )
 
+target_precompile_headers(${_targetName}
+  PRIVATE
+    <vector>
+    <stdexcept>
+    <string>
+)
+
 target_include_directories(${_targetName}
         PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)

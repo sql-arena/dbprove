@@ -76,8 +76,8 @@ void Runner::serialExplain(std::span<Query>& queries, TheoremProof& state) const
     auto qs = query.start();
     auto explain = connection->explain(query.textTagged());
     query.stop(qs);
-    query.summariseThread();
     state.data.push_back(TheoremDataExplain(std::move(explain)));
+
   }
   connection->close();
 }

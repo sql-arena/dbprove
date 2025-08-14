@@ -1,6 +1,6 @@
 #include <CLI/CLI.hpp>
 #include <iostream>
-
+#include <common/null_stream.h>
 #include "sql/connection_base.h"
 #include "sql/Credential.h"
 #include "sql/Engine.h"
@@ -218,7 +218,8 @@ int main(int argc, char** argv) {
   std::map<TheoremType, std::vector<std::string>> theoremMap;
   parseTheorems(theoremMap, all_theorems);
 
-  auto input_state = TheoremState{engine, credentials, generator_state};
+  NullStream dev_null;
+  auto input_state = TheoremState{engine, credentials, generator_state, std::cout, dev_null};
 
   for (const auto& [type, theorems] : theoremMap) {
     switch (type) {

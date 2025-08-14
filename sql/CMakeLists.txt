@@ -10,7 +10,6 @@ target_include_directories(sql_interface INTERFACE
         ${CMAKE_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/sql
-
 )
 target_sources(sql_interface INTERFACE
         connection_base.h

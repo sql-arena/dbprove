@@ -14,13 +14,13 @@
 #include "theorem/embedded_sql.h"
 
 void tpch_q01(TheoremProof& proof) {
-  proof.ensure("lineitem");
+  proof.ensureSchema("tpch").ensure("tpch.lineitem");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q01_sql), proof);
 }
 
 void tpch_q19(TheoremProof& proof) {
-  proof.ensure("lineitem").ensure("part");
+  proof.ensure("tpch.lineitem").ensure("tpch.part");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q19_sql), proof);
 }

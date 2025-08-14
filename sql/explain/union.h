@@ -1,7 +1,5 @@
 #pragma once
 
-#pragma once
-
 #include "column.h"
 #include "node.h"
 #include "sql_exceptions.h"

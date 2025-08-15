@@ -32,6 +32,13 @@ target_sources(${_targetName}
         explain/group_by.h
 )
 
+target_precompile_headers(${_targetName}
+  PRIVATE
+    <vector>
+    <stdexcept>
+    <string>
+)
+
 target_include_directories(${_targetName}
         PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)
@@ -72,5 +79,7 @@ target_link_libraries(${_targetName}
 #add_subdirectory("boilerplate")
 
 # Test it all, linking all drivers and running tests across them
-add_subdirectory("test")
+if (DBPROVE_ENABLE_TESTING)
+    add_subdirectory("test")
+endif()
 

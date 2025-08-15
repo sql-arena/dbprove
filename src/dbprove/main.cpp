@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
 
   auto theorems = theorem::parse(all_theorems);
   NullStream dev_null;
-  auto input_state = theorem::RunState{engine, credentials, generator_state, std::cout, dev_null};
+  auto input_state = theorem::RunCtx{engine, credentials, generator_state, std::cout, dev_null};
 
   theorem::prove(theorems, input_state);
 

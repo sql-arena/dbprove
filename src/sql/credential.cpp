@@ -1,11 +1,8 @@
 #include "include/dbprove/sql/credential.h"
 
-#include <array>
-#include <stdexcept>
-#include <dbprove/common/config.h>
 
 namespace sql {
-CredentialAccessToken::CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database,
+CredentialAccessToken::CredentialAccessToken(const Engine engine, std::string endpoint_url, std::string database,
                                              std::string token)
   : token(std::move(token))
   , database(std::move(database))

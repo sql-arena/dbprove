@@ -67,7 +67,7 @@ public:
   }
 
   void stop(QueryStats& stat) {
-    auto end_time = std::chrono::steady_clock::now();
+    const auto end_time = std::chrono::steady_clock::now();
     stat.duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - stat.start_time);
   }
 

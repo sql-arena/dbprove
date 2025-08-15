@@ -3,7 +3,7 @@
 #include <functional>
 
 namespace dbprove::theorem {
-using TheoremMap = std::map<std::string, Theorem>;
+using TheoremMap = std::map<std::string, std::unique_ptr<Theorem>>;
 
 /**
  * New theorem classes must add themselves here
@@ -11,4 +11,5 @@ using TheoremMap = std::map<std::string, Theorem>;
 void init();
 void addTheorem(Type type, std::string name, std::string description, const TheoremFunction& func);
 const TheoremMap& allTheorems();
+const std::set<const Theorem*>& allTheoremsInType(Type type);
 }

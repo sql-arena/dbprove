@@ -2,7 +2,9 @@ set(_targetName "dbprove_theorem")
 add_library(${_targetName} STATIC
         init.h
         init.cpp
-        run_state.cpp)
+        run_ctx.cpp
+        type.cpp
+        data.cpp)
 add_library(dbprove::theorem ALIAS ${_targetName})
 
 target_sources(${_targetName}
@@ -20,7 +22,6 @@ target_sources(${_targetName}
         prover.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         runner.h
-        run_theorem.h
         cli/prover.h
         plan/prover.h
 )

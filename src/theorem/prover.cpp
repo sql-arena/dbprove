@@ -8,12 +8,12 @@
 
 namespace dbprove::theorem {
 void run_theorem(const Theorem& theorem,
-                 RunState& state) {
+                 RunCtx& state) {
   state.proofs.push_back(std::make_unique<Proof>(theorem, state));
   theorem.func(*state.proofs.back());
 }
 
-void prove(const std::vector<const Theorem*>& theorems, RunState& input_state) {
+void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
   auto prev_type = Type::UNKNOWN;
   for (const auto& theorem : theorems) {
     run_theorem(*theorem, input_state);
@@ -25,29 +25,36 @@ void prove(const std::vector<const Theorem*>& theorems, RunState& input_state) {
 }
 
 std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
-  std::vector<const Theorem*> parsed_theorems;
+  std::set<const Theorem*> parsed_theorems;
   if (theorems.size() == 0) {
     // If user did not supply theorems, default to all
     for (auto& t : std::views::values(allTheorems())) {
-      parsed_theorems.push_back(&t);
+      parsed_theorems.insert(t.get());
     }
-    return parsed_theorems;
+  } else {
+    for (const auto& t : theorems) {
+      if (allTypeNames().contains(t)) {
+        /* User passed a category, pick everything */
+        auto all_theorems_in_type = allTheoremsInType(typeEnum(t));
+        parsed_theorems.insert(all_theorems_in_type.begin(), all_theorems_in_type.end());
+        continue;
+      }
+      if (allTheorems().contains(t)) {
+        /* Specific theorem*/
+        throw std::runtime_error("Unknown theorem: " + t);
+      }
+      parsed_theorems.insert(allTheorems().at(t).get());
+    }
   }
+  /* We want to process each category fully before moving on to the next */
+  std::vector sorted_theorems(parsed_theorems.begin(), parsed_theorems.end());
+  std::ranges::sort(sorted_theorems, [](const Theorem* a, const Theorem* b) {
+    if (a->type != b->type) {
+      return a->type < b->type;
+    }
+    return a->name < b->name;
+  });
 
-  for (const auto& t : theorems) {
-    // TODO: Handle the case where only the prefix is passed
-    if (allTheorems().contains(t)) {
-      std::cerr << "Unknown theorem type: " << t << ".";
-      std::cerr << "the following prefixes are supported: ";
-      //      std::cerr << join(theorem_names, ",");
-      //      for (const auto& pair : theorem_types) {
-      //        std::cerr << pair.first << ", ";
-      //      }
-      std::cerr << std::endl;
-      std::exit(1);
-    }
-    parsed_theorems.push_back(&allTheorems().at(t));
-  }
-  return parsed_theorems;
+  return sorted_theorems;
 }
 }

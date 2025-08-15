@@ -13,7 +13,8 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 foreach(lang IN ITEMS C CXX)
     add_compile_definitions(
-        "$<$<COMPILE_LANGUAGE:${lang}>:WIN32_LEAN_AND_MEAN;NOMINMAX;VC_EXTRALEAN>"             #Exclude rarely-used stuff from Windows headers
+        #Exclude rarely-used stuff from Windows headers
+        "$<$<COMPILE_LANGUAGE:${lang}>:WIN32_LEAN_AND_MEAN;NOMINMAX;VC_EXTRALEAN>"
     )
 endforeach()
 

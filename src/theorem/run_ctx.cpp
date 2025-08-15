@@ -2,6 +2,6 @@
 
 namespace dbprove::theorem {
 
-  RunState::~RunState() = default;
+  RunCtx::~RunCtx() = default;
 
 }

@@ -35,6 +35,7 @@ target_link_libraries(${_targetName}
         PUBLIC
         dbprove::sql
 )
+add_subdirectory(include/dbprove/generator)
 target_embed_sql(${_targetName} SQL_FILES
         tpch/ddl/customer.ddl
         tpch/ddl/lineitem.ddl

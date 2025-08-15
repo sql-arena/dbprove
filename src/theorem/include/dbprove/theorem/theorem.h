@@ -1,26 +1,50 @@
 #pragma once
-#include <vector>
-#include <string>
-#include <map>
-#include <memory>
-#include <functional>
 #include <dbprove/generator/generator_state.h>
 #include <dbprove/sql/sql.h>
 #include <dbprove/sql/explain/plan.h>
+#include <vector>
+#include <string>
+#include <memory>
+#include <functional>
 
 
 namespace dbprove::theorem
 {
+    /**
+    * The type of Theorem
+     */
     enum class Type
     {
-        CLI,
-        EE,
-        SE,
-        PLAN,
-        WLM,
-        UNKNOWN
+        CLI = 1,
+        WLM = 2,
+        PLAN = 3,
+        EE = 4,
+        SE = 5,
+        UNKNOWN = 0
     };
 
+    /**
+     * Name of Theorem
+     * @param type To find name of
+     * @return Short name for the Theorem
+     */
+    std::string_view typeName(Type type);
+    /**
+     * Convert from a name to the enum
+     * @param type_name Name to convert
+     * @return Enum matching the name
+     */
+    Type typeEnum(const std::string& type_name);
+
+    /**
+     * All types by name
+     * @return set of all types
+     */
+    std::set<std::string_view> allTypeNames();
+
+    /**
+     * Any datapoint that supports a Proof
+     */
     class Data
     {
     public:
@@ -41,62 +65,9 @@ namespace dbprove::theorem
         virtual std::string render() { return std::string{}; }
     };
 
-
-class Theorem;
-class RunState;
-
-
-    class Proof
-    {
-    public:
-        Proof(const Theorem& theorem, RunState& parent)
-            : theorem(theorem)
-            , state(parent)
-        {
-        }
-
-        ~Proof();
-        const Theorem& theorem;
-        std::vector<std::unique_ptr<Data>> data;
-        sql::ConnectionFactory& factory() const;
-        Proof& ensure(const std::string& table);
-        /**
-         * Make sure the schema exists
-         * @param schema To create if not there
-         * @return
-         */
-        Proof& ensureSchema(const std::string& schema);
-        std::ostream& console() const;
-        std::ostream& csv() const;
-
-    private:
-        RunState& state;
-    };
-
-    using TheoremFunction = std::function<void(Proof& state)>;
-
-    class Theorem
-    {
-    public:
-        Theorem(const Type type,
-                std::string theorem,
-                std::string description,
-                const TheoremFunction& func
-        )
-            : type(type)
-            , theorem(std::move(theorem))
-            , description(std::move(description))
-            , func(func)
-        {
-        }
-
-        Type type;
-        std::string theorem;
-        std::string_view description;
-        TheoremFunction func;
-    };
-
-
+    /**
+     * Explain plans and all the analysis that goes with it
+     */
     class DataExplain final : public Data
     {
     public:
@@ -111,7 +82,70 @@ class RunState;
         std::string render() override;
     };
 
-    class RunState
+
+    class Theorem;
+    class RunCtx;
+
+
+    /**
+     * A Proof is the holder of all data that is the result of proving a theorem
+     */
+    class Proof
+    {
+    public:
+        Proof(const Theorem& theorem, RunCtx& parent)
+            : theorem(theorem)
+            , state(parent)
+        {
+        }
+
+        ~Proof();
+        const Theorem& theorem;
+        std::vector<std::unique_ptr<Data>> data;
+        [[nodiscard]] sql::ConnectionFactory& factory() const;
+        Proof& ensure(const std::string& table);
+        /**
+         * Make sure the schema exists
+         * @param schema To create if not there
+         * @return
+         */
+        Proof& ensureSchema(const std::string& schema);
+        [[nodiscard]] std::ostream& console() const;
+        [[nodiscard]] std::ostream& csv() const;
+
+    private:
+        RunCtx& state;
+    };
+
+    using TheoremFunction = std::function<void(Proof& state)>;
+
+    class Theorem
+    {
+    public:
+        Theorem(const Type type,
+                std::string theorem,
+                std::string description,
+                const TheoremFunction& func
+        )
+            : type(type)
+            , name(std::move(theorem))
+            , description(std::move(description))
+            , func(func)
+        {
+        }
+
+        Type type;
+        std::string name;
+        std::string_view description;
+        TheoremFunction func;
+    };
+
+
+    /**
+     * RunContext must be passed into the Theorem prove function to provide the environment that is used for proving
+     * It is also where the proofs are kept for returning to caller
+     */
+    class RunCtx
     {
     public:
         const sql::Engine& engine;
@@ -122,7 +156,7 @@ class RunState;
         std::ostream& csv;
         std::vector<std::unique_ptr<Proof>> proofs;
 
-        RunState(
+        RunCtx(
             const sql::Engine& engine,
             const sql::Credential& credentials,
             generator::GeneratorState& generator,
@@ -137,7 +171,7 @@ class RunState;
         {
         }
 
-        ~RunState();
+        ~RunCtx();
     };
 
     /**
@@ -151,7 +185,7 @@ class RunState;
     /**
      * Run all theorems provided.
      * @param theorems Theorems per parse call
-     * @param input_state Caller supplied state with all the info neded to run
+     * @param input_state Caller supplied state with all the info needed to run
      */
-    void prove(const std::vector<const Theorem*>& theorems, RunState& input_state);
+    void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state);
 }

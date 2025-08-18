@@ -5,27 +5,27 @@
 #include <iostream>
 
 namespace dbprove::ux {
-void PreAmple(std::string title) {
-  std::cout << rang::fg::gray;
-  std::cout << BOX_TOP_LEFT;
+void PreAmple(std::ostream& out, const std::string_view title) {
+  out << rang::fg::gray;
+  out << BOX_TOP_LEFT;
   for (auto i = 0; i < Terminal::SCREEN_WIDTH - 2; i++) {
-    std::cout << BOX_HORIZONTAL;
+    out << BOX_HORIZONTAL;
   }
-  std::cout << BOX_TOP_RIGHT << std::endl;
-  std::cout << VERTICAL_LINE << " ";
-  std::cout << rang::fg::yellow << title;
-  auto padding = Terminal::SCREEN_WIDTH - 4 - title.length();
-  std::cout << std::string(padding, ' ');
-  std::cout << rang::fg::gray << " " << VERTICAL_LINE << std::endl;
-  std::cout << HASH_BUILD_CHILD;
+  out << BOX_TOP_RIGHT << std::endl;
+  out << VERTICAL_LINE << " ";
+  out << rang::fg::yellow << title;
+  const auto padding = Terminal::SCREEN_WIDTH - 4 - title.length();
+  out << std::string(padding, ' ');
+  out << rang::fg::gray << " " << VERTICAL_LINE << std::endl;
+  out << HASH_BUILD_CHILD;
   for (auto i = 0; i < Terminal::SCREEN_WIDTH - 2; i++) {
-    std::cout << BOX_HORIZONTAL;
+    out << BOX_HORIZONTAL;
   }
-  std::cout << BOX_BOTTOM_RIGHT;
-  std::cout << rang::fg::reset << std::endl;
+  out << BOX_BOTTOM_RIGHT;
+  out << rang::fg::reset << std::endl;
 }
 
-void PreAmpleTheorem(std::string_view theorem) {
-  std::cout << std::format("{:10}", theorem) << std::endl;
+void PreAmpleTheorem(std::ostream& out, std::string_view theorem) {
+  out << std::format("{:10}", theorem) << std::endl;
 }
 }

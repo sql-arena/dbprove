@@ -43,15 +43,16 @@ public:
   const std::string full_message = "";
   const SqlState sql_state_class;
 
-  explicit Exception(SqlState sql_state_class, const std::string& message)
+  explicit Exception(const SqlState sql_state_class, const std::string& message)
     : std::runtime_error(kDatabaseError)
     , full_message(std::string(message))
     , sql_state_class(sql_state_class) {
   }
 
-  explicit Exception(SqlState sql_state_class, const std::string& message, const std::string_view statement)
+  explicit Exception(const SqlState sql_state_class, const std::string& message, const std::string_view statement)
     : std::runtime_error(kDatabaseError)
     , statement(statement)
+    , full_message(std::string(statement) + "\n" + message)
     , sql_state_class(sql_state_class) {
   }
 
@@ -100,6 +101,10 @@ public:
   explicit SyntaxException(const std::string& message)
     : Exception(SqlState::SYNTAX_ERROR_42, "SQL syntax error: " + message) {
   }
+
+  explicit SyntaxException(const std::string& message, const std::string_view statement)
+    : Exception(SqlState::SYNTAX_ERROR_42, "SQL syntax error: " + message, statement) {
+  }
 };
 
 /**
@@ -142,7 +147,8 @@ public:
 class InvalidTableException final : public Exception {
 public:
   explicit InvalidTableException(const std::string& error)
-    : Exception(SqlState::INVALID_TABLE_42P01, error) {}
+    : Exception(SqlState::INVALID_TABLE_42P01, error) {
+  }
 };
 
 
@@ -159,7 +165,7 @@ public:
 
 
 class PermissionDeniedException final : public Exception {
-  public:
+public:
   explicit PermissionDeniedException(const std::string& error)
     : Exception(SqlState::INVALID_AUTHORIZATION_SPECIFICATION_28, error) {
   }
@@ -198,5 +204,4 @@ public:
     : Exception(SqlState::CONNECTION_08, error) {
   }
 };
-
 }

@@ -1,7 +1,7 @@
-CREATE TABLE NATION
+CREATE TABLE tpch.nation
 (
-    N_NATIONKEY INT PRIMARY KEY,
-    N_NAME      STRING(25),
-    N_REGIONKEY INT,
-    N_COMMENT   STRING(152)
+    n_nationkey INT PRIMARY KEY,
+    n_name      VARCHAR(25),
+    n_regionkey INT,
+    n_comment   VARCHAR(152)
 );

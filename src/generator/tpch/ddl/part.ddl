@@ -1,12 +1,12 @@
-CREATE TABLE PART
+CREATE TABLE tpch.part
 (
-    P_PARTKEY     INT PRIMARY KEY,
-    P_NAME        STRING(25),
-    P_MFGR        STRING(25),
-    P_BRAND       STRING(10),
-    P_TYPE        STRING(25),
-    P_SIZE        INT,
-    P_CONTAINER   STRING(10),
-    P_RETAILPRICE DECIMAL,
-    P_COMMENT     STRING(23),
+    p_partkey     INT PRIMARY KEY,
+    p_name        VARCHAR(25),
+    p_mfgr        VARCHAR(25),
+    p_brand       VARCHAR(10),
+    p_type        VARCHAR(25),
+    p_size        INT,
+    p_container   VARCHAR(10),
+    p_retailprice DECIMAL(15, 2),
+    p_comment     VARCHAR(23)
 );

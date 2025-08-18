@@ -7,7 +7,8 @@ add_library(${_targetName} STATIC
         explain/scan.cpp
         explain/scan_empty.cpp
         explain/sort.cpp
-        explain/union.cpp)
+        explain/union.cpp
+        sql_exception.cpp)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 

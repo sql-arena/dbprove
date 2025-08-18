@@ -21,15 +21,15 @@ void tpch_q19(Proof& proof) {
 
 
 namespace dbprove::theorem::plan {
-
 void init() {
   static bool is_initialised = false;
-  if (is_initialised) return;
+  if (is_initialised) {
+    return;
+  }
 
   addTheorem(Type::PLAN, "PLAN-TPCH-Q01", "TPC-H Q01 Analysis", tpch_q01);
   addTheorem(Type::PLAN, "PLAN-TPCH-Q09", "TPC-H Q19 Analysis and Bloom Check", tpch_q19);
 
   is_initialised = true;
 }
-
 }

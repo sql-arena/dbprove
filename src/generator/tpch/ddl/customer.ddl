@@ -1,11 +1,11 @@
-CREATE TABLE CUSTOMER
+CREATE TABLE tpch.customer
 (
-    C_CUSTKEY    INT PRIMARY KEY,
-    C_NAME       STRING(25),
-    C_ADDRESS    STRING(40),
-    C_NATIONKEY  INT,
-    C_PHONE      STRING(15),
-    C_ACCTBAL    DECIMAL,
-    C_MKTSEGMENT STRING(10),
-    C_COMMENT    STRING(117)
+    c_custkey    INT PRIMARY KEY,
+    c_name       VARCHAR(25),
+    c_address    VARCHAR(40),
+    c_nationkey  INT,
+    c_phone      VARCHAR(15),
+    c_acctbal    DECIMAL,
+    c_mktsegment VARCHAR(10),
+    c_comment    VARCHAR(117)
 );

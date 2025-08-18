@@ -1,19 +1,19 @@
-CREATE TABLE LINEITEM
+CREATE TABLE tpch.lineitem
 (
-    L_ORDERKEY      INT,
-    L_PARTKEY       INT,
-    L_SUPPKEY       INT,
-    L_LINENUMBER    INT,
-    L_QUANTITY      DECIMAL,
-    L_EXTENDEDPRICE DECIMAL,
-    L_DISCOUNT      DECIMAL,
-    L_TAX           DECIMAL,
-    L_RETURNFLAG    STRING(1),
-    L_LINESTATUS    STRING(1),
-    L_SHIPDATE      DATE,
-    L_COMMITDATE    DATE,
-    L_RECEIPTDATE   DATE,
-    L_SHIPINSTRUCT  STRING(25),
-    L_SHIPMODE      STRING(10),
-    L_COMMENT       STRING(44)
+    l_orderkey      INT,
+    l_partkey       INT,
+    l_suppkey       INT,
+    l_linenumber    INT,
+    l_quantity      DECIMAL,
+    l_extendedprice DECIMAL,
+    l_discount      DECIMAL,
+    l_tax           DECIMAL,
+    l_returnflag    VARCHAR(1),
+    l_linestatus    VARCHAR(1),
+    l_shipdate      DATE,
+    l_commitdate    DATE,
+    l_receiptdate   DATE,
+    l_shipinstruct  VARCHAR(25),
+    l_shipmode      VARCHAR(10),
+    l_comment       VARCHAR(44)
 );

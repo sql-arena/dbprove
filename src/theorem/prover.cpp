@@ -16,10 +16,11 @@ void run_theorem(const Theorem& theorem,
 void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
   auto prev_type = Type::UNKNOWN;
   for (const auto& theorem : theorems) {
-    run_theorem(*theorem, input_state);
     if (theorem->type != prev_type) {
-      ux::PreAmple("NEW category");
+      ux::PreAmple(input_state.console, typeName(theorem->type));
     }
+    ux::PreAmpleTheorem(input_state.console, theorem->name);
+    run_theorem(*theorem, input_state);
     prev_type = theorem->type;
   }
 }

@@ -110,6 +110,7 @@ namespace dbprove::theorem
          * @return
          */
         Proof& ensureSchema(const std::string& schema);
+        void render();
         [[nodiscard]] std::ostream& console() const;
         [[nodiscard]] std::ostream& csv() const;
 
@@ -174,6 +175,11 @@ namespace dbprove::theorem
         ~RunCtx();
     };
 
+
+    /**
+     * Call this before using the library
+     */
+    void init();
     /**
      * Parse a list of theorems and turn them into properly typed theorems
      * @param theorems List of strings to parse

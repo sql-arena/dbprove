@@ -31,12 +31,6 @@ void TerminateHandler() {
   std::exit(1);
 }
 
-/* TODO: Fix me up
-void parseTheorems(std::map<TheoremType, std::vector<std::string>>& theoremMap,
-                   const std::vector<std::string>& theorems) {
-
-}
-*/
 
 sql::Credential parseCredentials(
     const sql::Engine& engine,
@@ -74,7 +68,6 @@ sql::Credential parseCredentials(
     std::exit(1);
   }
 }
-
 
 
 fs::path make_directory(const std::string& directory) {
@@ -115,7 +108,6 @@ generator::GeneratorState configureDataGeneration() {
 }
 
 int main(int argc, char** argv) {
-
   std::set_terminate(TerminateHandler);
 
   CLI::App app{"dbprove"};
@@ -152,7 +144,6 @@ int main(int argc, char** argv) {
 
   CLI11_PARSE(app, argc, argv);
 
-
   const auto log_directory = make_directory("logs");
   const std::string log_file = log_directory.string() + "/dbprove.log";
   plog::init<plog::DBProveFormatter>(plog::info, log_file.c_str(), 1000000, 5);
@@ -163,7 +154,6 @@ int main(int argc, char** argv) {
   auto generator_state = configureDataGeneration();
 
   PLOGI << "Generating into directory: " << generator_state.basePath();
-
 
   database = engine.defaultDatabase(database);
   host = engine.defaultHost(host);
@@ -184,12 +174,10 @@ int main(int argc, char** argv) {
                        username,
                        password,
                        token);
-
+  theorem::init();
   auto theorems = theorem::parse(all_theorems);
   NullStream dev_null;
   auto input_state = theorem::RunCtx{engine, credentials, generator_state, std::cout, dev_null};
 
   theorem::prove(theorems, input_state);
-
-
 }

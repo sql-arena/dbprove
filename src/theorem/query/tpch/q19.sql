@@ -1,7 +1,7 @@
 /* TPC-H Q01 */
 SELECT SUM(l_extendedprice * (1 - l_discount)) AS revenue
-FROM lineitem,
-     part
+FROM tpch.lineitem,
+     tpch.part
 WHERE (
     p_partkey = l_partkey
         AND p_brand = 'Brand#01'

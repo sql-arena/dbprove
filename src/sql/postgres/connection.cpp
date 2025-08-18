@@ -38,7 +38,7 @@ public:
 
   /// @brief Handles return values from calls into postgres
   /// @note: If we throw here, we will call `PQClear`. But it is the responsibility of the caller to clear on success
-  void check_return(PGresult* result) const {
+  void check_return(PGresult* result, std::string_view statement) const {
     // ReSharper disable once CppTooWideScope
     const auto status = PQresultStatus(result);
     switch (status) {
@@ -66,7 +66,7 @@ public:
           throw InvalidTableException(error_msg);
         }
         if (state.starts_with("42")) {
-          throw sql::SyntaxException(error_msg);
+          throw sql::SyntaxException(error_msg, statement);
         }
         throw sql::ConnectionException(credential, error_msg);
     }
@@ -82,7 +82,7 @@ public:
                                     nullptr,
                                     nullptr,
                                     1);
-    check_return(result);
+    check_return(result, statement);
     return result;
   }
 
@@ -90,7 +90,7 @@ public:
     const auto mapped_statement = connection.mapTypes(statement);
     PGresult* result = PQexec(conn, mapped_statement.data());
     auto status = PQresultStatus(result);
-    check_return(result);
+    check_return(result, statement);
     PQclear(result);
     return status;
   }
@@ -182,7 +182,7 @@ void sql::postgres::Connection::bulkLoad(
                             + " FROM STDIN"
                             + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
     const auto ready_status = impl_->executeRaw(copyQuery);
-    assert(ready_status == PGRES_COPY_IN);  // We better have handled this already
+    assert(ready_status == PGRES_COPY_IN); // We better have handled this already
 
     // Chunk file content to the database (synchronously) with 1MB chunks so we can hide latency
     // There is an "async" interface too - but it requires polling sockets and manually backing off
@@ -202,7 +202,7 @@ void sql::postgres::Connection::bulkLoad(
 
     // After our final row (which is marked by PQOutCopyEnd we now get a result back telling us if it worked
     const auto final_result = PQgetResult(cn);
-    impl_->check_return(final_result);
+    impl_->check_return(final_result, copyQuery);
     PQclear(PQgetResult(cn));
 
     // Drain the connection - the usual libpq pointless logic

@@ -1,31 +1,36 @@
 #include "pre_ample.h"
 #include "glyphs.h"
-#include "terminal.h"
 #include <rang.hpp>
 #include <iostream>
 
+#include "boxes.h"
+
 namespace dbprove::ux {
-void PreAmple(std::string title) {
-  std::cout << rang::fg::gray;
-  std::cout << BOX_TOP_LEFT;
-  for (auto i = 0; i < Terminal::SCREEN_WIDTH - 2; i++) {
-    std::cout << BOX_HORIZONTAL;
-  }
-  std::cout << BOX_TOP_RIGHT << std::endl;
-  std::cout << VERTICAL_LINE << " ";
-  std::cout << rang::fg::yellow << title;
-  auto padding = Terminal::SCREEN_WIDTH - 4 - title.length();
-  std::cout << std::string(padding, ' ');
-  std::cout << rang::fg::gray << " " << VERTICAL_LINE << std::endl;
-  std::cout << HASH_BUILD_CHILD;
-  for (auto i = 0; i < Terminal::SCREEN_WIDTH - 2; i++) {
-    std::cout << BOX_HORIZONTAL;
-  }
-  std::cout << BOX_BOTTOM_RIGHT;
-  std::cout << rang::fg::reset << std::endl;
+void PreAmple(std::ostream& out, const std::string_view title) {
+  Box header;
+  header.setText(title);
+  header.setBorderStyle(BorderStyle::DOUBLE);
+  header.setTextColour(Colour::BLUE);
+  header.render(out);
 }
 
-void PreAmpleTheorem(std::string_view theorem) {
-  std::cout << std::format("{:10}", theorem) << std::endl;
+void PreAmpleTheorem(std::ostream& out, std::string_view theorem) {
+  Box header;
+  header.setText(theorem);
+  header.setBorderColour(Colour::GREY);
+  header.setTextColour(Colour::WHITE);
+  header.render(out);
+}
+
+void Line(std::ostream& out, const Distance width) {
+  for (auto i = 0; i < width; ++i) {
+    out << BOX_HORIZONTAL;
+  }
+  out << std::endl;
+}
+
+void Header(std::ostream& out, const std::string_view title, Distance min_width) {
+  out << rang::style::bold << "  " << title << rang::style::reset << std::endl;
+  Line(out, std::max(min_width, static_cast<Distance>(4 + title.size())));
 }
 }

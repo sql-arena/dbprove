@@ -1,9 +1,10 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <ostream>
 
 namespace dbprove::ux {
-    void PreAmple(std::string title);
+void PreAmple(std::ostream& out, const std::string_view title);
 
-    void PreAmpleTheorem(std::string_view theorem);
+void PreAmpleTheorem(std::ostream& out, std::string_view theorem);
 }

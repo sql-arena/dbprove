@@ -1,6 +1,6 @@
-CREATE TABLE REGION
+CREATE TABLE tpch.region
 (
-    R_REGIONKEY INT PRIMARY KEY,
-    R_NAME      STRING(25),
-    R_COMMENT   STRING(152)
+    r_regionkey INT PRIMARY KEY,
+    r_name      VARCHAR(25),
+    r_comment   VARCHAR(152)
 );

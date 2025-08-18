@@ -38,7 +38,7 @@ public:
 
   /// @brief Handles return values from calls into postgres
   /// @note: If we throw here, we will call `PQClear`. But it is the responsibility of the caller to clear on success
-  void check_return(PGresult* result) const {
+  void check_return(PGresult* result, std::string_view statement) const {
     // ReSharper disable once CppTooWideScope
     const auto status = PQresultStatus(result);
     switch (status) {
@@ -47,8 +47,8 @@ public:
       case PGRES_EMPTY_QUERY:
       case PGRES_SINGLE_TUPLE:
       case PGRES_COPY_IN: // Ready to receive data on COPY
-        /* Legit and harmless status code */
         return;
+      /* Legit and harmless status code */
 
       default:
         std::string error_msg = PQerrorMessage(this->conn);
@@ -66,7 +66,7 @@ public:
           throw InvalidTableException(error_msg);
         }
         if (state.starts_with("42")) {
-          throw sql::SyntaxException(error_msg);
+          throw sql::SyntaxException(error_msg, statement);
         }
         throw sql::ConnectionException(credential, error_msg);
     }
@@ -82,7 +82,7 @@ public:
                                     nullptr,
                                     nullptr,
                                     1);
-    check_return(result);
+    check_return(result, statement);
     return result;
   }
 
@@ -90,7 +90,7 @@ public:
     const auto mapped_statement = connection.mapTypes(statement);
     PGresult* result = PQexec(conn, mapped_statement.data());
     auto status = PQresultStatus(result);
-    check_return(result);
+    check_return(result, statement);
     PQclear(result);
     return status;
   }
@@ -182,7 +182,7 @@ void sql::postgres::Connection::bulkLoad(
                             + " FROM STDIN"
                             + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
     const auto ready_status = impl_->executeRaw(copyQuery);
-    assert(ready_status == PGRES_COPY_IN);  // We better have handled this already
+    assert(ready_status == PGRES_COPY_IN); // We better have handled this already
 
     // Chunk file content to the database (synchronously) with 1MB chunks so we can hide latency
     // There is an "async" interface too - but it requires polling sockets and manually backing off
@@ -202,9 +202,8 @@ void sql::postgres::Connection::bulkLoad(
 
     // After our final row (which is marked by PQOutCopyEnd we now get a result back telling us if it worked
     const auto final_result = PQgetResult(cn);
-    impl_->check_return(final_result);
+    impl_->check_return(final_result, copyQuery);
     PQclear(PQgetResult(cn));
-
     // Drain the connection - the usual libpq pointless logic
     while (PGresult* leftover = PQgetResult(cn)) {
       PQclear(leftover);
@@ -221,6 +220,7 @@ using namespace nlohmann;
 std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) {
   const auto pg_node_type = node_json["Node Type"].get<std::string>();
   std::unique_ptr<Node> node;
+  double actual_override = -1;
 
   if (pg_node_type == "Seq Scan" || pg_node_type == "Index Scan" || pg_node_type == "Index Only Scan") {
     std::string relation_name;
@@ -229,6 +229,10 @@ std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) 
     }
     if (node_json.contains("Alias")) {
       relation_name = node_json["Alias"].get<std::string>();
+    }
+    if (pg_node_type == "Index Scan" && node_json.contains("Actual Loops")) {
+      // This is a loop driven index scan. For reasons, PG reports actual rows as zero for this case
+      actual_override = node_json["Actual Loops"].get<double>();
     }
 
     node = std::make_unique<Scan>(relation_name);
@@ -240,6 +244,11 @@ std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) 
       join_strategy = Join::Strategy::HASH;
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
+      // Loops may have a index scan as a child. In that case, the join condition is on the scan
+      auto loop_child = node_json["Plans"][1];
+      if (loop_child["Node Type"] == "Index Scan") {
+        join_condition = loop_child["Index Cond"].get<std::string>();
+      }
     } else if (pg_node_type == "Merge Join") {
       join_strategy = Join::Strategy::MERGE;
       join_condition = node_json["Merge Cond"].get<std::string>();
@@ -250,7 +259,7 @@ std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) 
       // TODO: Parse the strategy into the enum
       auto join_type = node_json["Join Type"].get<std::string>();
     }
-    if (node_json.contains("Join Filter")) {
+    if (node_json.contains("Join Filter") and join_condition.empty()) {
       join_condition = node_json["Join Filter"].get<std::string>();
     }
     if (node_json.contains("Hash Cond")) {
@@ -295,6 +304,8 @@ std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) 
         group_strategy = GroupBy::Strategy::HASH;
       } else if (strategy == "Sorted") {
         group_strategy = GroupBy::Strategy::SORT_MERGE;
+      } else if (strategy == "Plain") {
+        group_strategy = GroupBy::Strategy::SIMPLE;
       } else {
         throw std::runtime_error("Did not know GROUP BY strategy " + strategy);
       }
@@ -344,7 +355,9 @@ std::unique_ptr<sql::explain::Node> createNodeFromPgType(const json& node_json) 
   if (node_json.contains("Plan Rows")) {
     node->rows_estimated = node_json["Plan Rows"].get<double>();
   }
-  if (node_json.contains("Actual Rows")) {
+  if (actual_override > 0) {
+    node->rows_actual = actual_override;
+  } else if (node_json.contains("Actual Rows")) {
     node->rows_actual = node_json["Actual Rows"].get<double>();
   }
 
@@ -394,6 +407,25 @@ std::unique_ptr<sql::explain::Node> buildExplainNode(nlohmann::json& node_json) 
   return node;
 }
 
+/**
+* Loop joins in PG have the lookup table on the wrong side, flip that
+*/
+void flipJoins(Node& root) {
+  std::vector<Node*> join_nodes;
+  for (auto& node : root.depth_first()) {
+    if (node.type == NodeType::JOIN) {
+      const auto join_node = static_cast<Join*>(&node);
+      if (join_node->strategy == Join::Strategy::LOOP) {
+        join_nodes.push_back(&node);
+      }
+    }
+  }
+
+  for (const auto node : join_nodes) {
+    node->reverseChildren();
+  }
+}
+
 
 std::unique_ptr<sql::explain::Plan> buildExplainPlan(nlohmann::json& json) {
   if (!json.is_array() || json.empty() || !json[0].contains("Plan")) {
@@ -420,6 +452,8 @@ std::unique_ptr<sql::explain::Plan> buildExplainPlan(nlohmann::json& json) {
     // TODO: Add the plan here
     throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan from ");
   }
+
+  flipJoins(*root_node.get());
 
   // Create and return the plan object with timing information
   auto plan = std::make_unique<Plan>(std::move(root_node));

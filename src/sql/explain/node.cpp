@@ -1,9 +1,9 @@
-#include "../include/dbprove/sql/explain/node.h"
-
+#include <dbprove/sql/explain/node.h>
 #include <iostream>
+#include "cutoff.h"
 
-
-std::string sql::explain::Node::typeName() const {
+namespace sql::explain {
+std::string Node::typeName() const {
   switch (type) {
     case NodeType::JOIN:
       return "JOIN";
@@ -26,6 +26,15 @@ std::string sql::explain::Node::typeName() const {
   }
 }
 
-void sql::explain::Node::debugPrint() const {
+void Node::debugPrint() const {
   std::cout << "type: " << typeName() << " depth: " << std::to_string(depth()) << std::endl;
+}
+
+RowCount Node::rowsEstimated() const {
+  return cutoff(rows_estimated);
+}
+
+RowCount Node::rowsActual() const {
+  return cutoff(rows_actual);
+}
 }

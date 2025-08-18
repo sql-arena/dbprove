@@ -27,10 +27,14 @@ public:
   std::string filter_condition;
   std::vector<std::string> columns_input;
   std::vector<std::string> columns_output;
+
+  RowCount rowsEstimated() const;;
+  RowCount rowsActual() const;
+
   /// @brief Return the compact, symbolic representation of the node
   virtual std::string compactSymbolic() const = 0;
-  virtual std::string renderMuggle() const = 0;
+  virtual std::string renderMuggle(size_t max_width = 0) const = 0;
   std::string typeName() const;
   void debugPrint() const;
 };
-}  // namespace sql::explain
+} // namespace sql::explain

@@ -3,6 +3,5 @@ target_sources(${_targetName}
         messages.h
         pre_ample.h
         spinner.h
-        terminal.h
         ux.h
 )

@@ -14,7 +14,7 @@ std::string Union::compactSymbolic() const {
   return result;
 }
 
-std::string Union::renderMuggle() const {
+std::string Union::renderMuggle(size_t max_width) const {
   std::string result = "UNION ";
   if (type == Type::DISTINCT) {
     result += "DISTINCT";

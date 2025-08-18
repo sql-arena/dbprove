@@ -42,9 +42,9 @@ public:
   /**
    * Explain queries and add to proof data
    * @param queries To run
-   * @param state To update
+   * @param proof To update
    */
-  void serialExplain(std::span<Query>& queries, Proof& state) const ;
+  void serialExplain(std::span<Query>& queries, Proof& proof) const ;
 
   void serialExplain(Query&& query, Proof& state)  const {
     std::vector<Query> queries;

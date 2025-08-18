@@ -6,7 +6,6 @@ target_sources(${_targetName}
         credential.h
         engine.h
         integer_type_def.h
-        query.h
         result_base.h
         row_base.h
         row_iterator.h

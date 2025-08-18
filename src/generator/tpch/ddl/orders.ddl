@@ -1,12 +1,12 @@
-CREATE TABLE ORDERS
+CREATE TABLE tpch.orders
 (
-    O_ORDERKEY      INT PRIMARY KEY,
-    O_CUSTKEY       INT,
-    O_ORDERSTATUS   STRING(1),
-    O_TOTALPRICE    DECIMAL,
-    O_ORDERDATE     DATE,
-    O_ORDERPRIORITY STRING(15),
-    O_CLERK         STRING(15),
-    O_SHIPPRIORITY  INT,
-    O_COMMENT       STRING(79)
+    o_orderkey      INT PRIMARY KEY,
+    o_custkey       INT,
+    o_orderstatus   VARCHAR(1),
+    o_totalprice    DECIMAL,
+    o_orderdate     DATE,
+    o_orderpriority VARCHAR(15),
+    o_clerk         VARCHAR(15),
+    o_shippriority  INT,
+    o_comment       VARCHAR(79)
 );

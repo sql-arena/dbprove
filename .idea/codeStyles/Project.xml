@@ -17,7 +17,9 @@
     </RiderCodeStyleSettings>
     <SqlCodeStyleSettings version="7">
       <option name="KEYWORD_CASE" value="2" />
+      <option name="IDENTIFIER_CASE" value="1" />
       <option name="TYPE_CASE" value="2" />
+      <option name="ALIAS_CASE" value="2" />
     </SqlCodeStyleSettings>
   </code_scheme>
 </component>

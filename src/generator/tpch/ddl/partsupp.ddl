@@ -1,8 +1,8 @@
-CREATE TABLE PARTSUPP
+CREATE TABLE tpch.partsupp
 (
-    PS_PARTKEY    INT PRIMARY KEY,
-    PS_SUPPKEY    INT,
-    PS_AVAILQTY   INT,
-    PS_SUPPLYCOST DECIMAL,
-    PS_COMMENT    STRING(199)
+    ps_partkey    INT PRIMARY KEY,
+    ps_suppkey    INT,
+    ps_availqty   INT,
+    ps_supplycost DECIMAL,
+    ps_comment    VARCHAR(199)
 );

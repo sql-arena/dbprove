@@ -201,15 +201,26 @@ void part_gen(GeneratorState& state) {
   Set<std::string_view> p_name(p_name_strings);
   Formatter p_mfgr("Manufacturer{}");
   IntegerRange p_mfgr_random(1, 5);
-  Formatter p_brand("Brand{}{}");
+  Formatter p_brand("Brand#{}{}");
   IntegerRange p_brand_random(1, 5);
   TpchTypes p_type;
   IntegerRange p_size(1, 50);
   TpchContainer p_container;
   TpchText p_comment_base(5, 22);
 
+  c(part, "P_PARTKEY");
+  c(part, "P_NAME");
+  c(part, "P_MFGR");
+  c(part, "P_BRAND");
+  c(part, "P_TYPE");
+  c(part, "P_SIZE");
+  c(part, "P_CONTAINER");
+  c(part, "P_RETAILPRICE");
+  c(part, "P_COMMENT", true);
+
   for (size_t row = 0; row < part_count; ++row) {
     auto key = p_partkey.next();
+
     c(part, key);
     auto name_parts = p_name.n_of(5);
     std::string name = join(p_name.n_of(5), " ");
@@ -221,7 +232,9 @@ void part_gen(GeneratorState& state) {
     c(part, p_type.next());
     c(part, p_size.next());
     c(part, p_container.next());
-    c(part, p_comment_base.next());
+    double p_retail_price = (90000 + ((key / 10) % 20001) + 100 * (key % 1000)) / 100.0;
+    c(part, p_retail_price);
+    c(part, p_comment_base.next(), true);
   }
   state.registerGeneration("tpch.part", file_name);
 }

@@ -2,12 +2,17 @@ project(sql VERSION 0.1.0 LANGUAGES C CXX)
 
 set(_targetName "dbprove_sql")
 add_library(${_targetName} STATIC
+        sql_exception.cpp
         explain/limit.cpp
         explain/projection.cpp
         explain/scan.cpp
         explain/scan_empty.cpp
         explain/sort.cpp
-        explain/union.cpp)
+        explain/union.cpp
+        explain/node.cpp
+        explain/cutoff.h
+        explain/join.cpp
+)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 
@@ -22,7 +27,6 @@ target_sources(${_targetName}
         connection_factory.cpp
         credential.cpp
         engine.cpp
-        query.cpp
         explain/group_by.cpp
         explain/distribution.cpp
         explain/select.cpp
@@ -33,10 +37,10 @@ target_sources(${_targetName}
 )
 
 target_precompile_headers(${_targetName}
-  PRIVATE
-    <vector>
-    <stdexcept>
-    <string>
+        PRIVATE
+        <vector>
+        <stdexcept>
+        <string>
 )
 
 target_include_directories(${_targetName}
@@ -81,5 +85,5 @@ target_link_libraries(${_targetName}
 # Test it all, linking all drivers and running tests across them
 if (DBPROVE_ENABLE_TESTING)
     add_subdirectory("test")
-endif()
+endif ()
 

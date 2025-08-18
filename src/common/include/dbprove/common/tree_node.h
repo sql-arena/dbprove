@@ -15,7 +15,9 @@ struct TreeDepthIterable {
     explicit Iterator(T& root) {
       stack.push(&root);
     }
-    Iterator(): is_end(true) {
+
+    Iterator()
+      : is_end(true) {
     }
 
     T& operator*() const {
@@ -33,16 +35,14 @@ struct TreeDepthIterable {
         for (auto it = children.rbegin(); it != children.rend(); ++it) {
           stack.push(*it);
         }
-
       }
       return *this;
     };
 
     bool operator!=(const Iterator& other) const {
-      if (is_end) { return !other.is_end || !other.stack.empty();}
-      if (other.is_end) {return !stack.empty();}
+      if (is_end) { return !other.is_end || !other.stack.empty(); }
+      if (other.is_end) { return !stack.empty(); }
       return stack != other.stack;
-
     }
   };
 
@@ -53,7 +53,7 @@ struct TreeDepthIterable {
   }
 
   [[nodiscard]] Iterator begin() const { return Iterator{root}; }
-  [[nodiscard]] Iterator end() const { return Iterator{};};
+  [[nodiscard]] Iterator end() const { return Iterator{}; };
 };
 
 template <typename T>
@@ -61,7 +61,9 @@ struct TreeBreathIterable {
   struct Iterator {
     std::queue<T*> queue;
     const bool is_end = false;
-    Iterator(): is_end(true) {
+
+    Iterator()
+      : is_end(true) {
     }
 
     explicit Iterator(T& root) {
@@ -77,7 +79,6 @@ struct TreeBreathIterable {
         queue.push(n);
       }
       return *this;
-
     };
 
     bool operator!=(const Iterator& other) const {
@@ -98,11 +99,11 @@ struct TreeBreathIterable {
   }
 
   [[nodiscard]] Iterator begin() const { return Iterator{root}; }
-  [[nodiscard]] Iterator end() const { return Iterator{};};
+  [[nodiscard]] Iterator end() const { return Iterator{}; };
 };
 
 
-template<typename T>
+template <typename T>
 class TreeNode {
   inline static std::atomic<uint64_t> currentId_{0};
   std::vector<std::unique_ptr<T>> children_;
@@ -113,7 +114,6 @@ class TreeNode {
   explicit TreeNode(bool _)
     : parent_(nullptr)
     , id_((std::numeric_limits<uint64_t>::max)()) {
-
   }
 
 public:
@@ -154,7 +154,6 @@ public:
       p = p->parent_;
     }
     return d;
-
   }
 
   /// @brief Direct parent of the tree
@@ -193,20 +192,22 @@ public:
 
   size_t childCount() const { return children_.size(); }
 
-  const T* firstChild() {
+  const T* firstChild() const {
     if (children_.empty()) {
       return nullptr;
     }
     return children_.front().get();
   }
-  const T* lastChild() {
+
+  const T* lastChild() const {
     if (children_.empty()) {
       return nullptr;
     }
     return children_.back().get();
   }
+
   /// @brief is the child here
-  bool hasChild(const T* child) {
+  bool hasChild(const T* child) const {
     if (children_.empty()) {
       return false;
     }
@@ -217,7 +218,6 @@ public:
     }
     return false;
   }
-
 };
 
 

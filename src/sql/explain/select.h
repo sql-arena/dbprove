@@ -21,7 +21,7 @@ public:
     result+="}";
     return result;
   }
-  std::string renderMuggle() const override {
+  std::string renderMuggle(size_t max_width) const override {
     std::string result = "SELECT";
     return result;
   }

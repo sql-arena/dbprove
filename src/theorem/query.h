@@ -4,7 +4,7 @@
 #include <chrono>
 #include <mutex>
 
-
+namespace dbprove::theorem {
 struct QueryStats {
   std::chrono::time_point<std::chrono::steady_clock> start_time;
   std::chrono::microseconds duration;
@@ -31,10 +31,12 @@ public:
     : text_(std::move(text))
     , text_tagged_(tagSQL(text_, theorem)) {
   };
+
   explicit Query(std::string_view text, const char* theorem = nullptr)
     : text_(std::string(text))
     , text_tagged_(tagSQL(text_, theorem)) {
   };
+
   explicit Query(const char* text, const char* theorem = nullptr)
     : text_(text)
     , text_tagged_(tagSQL(text_, theorem)) {
@@ -46,6 +48,7 @@ public:
     stats_ = std::move(other.stats_);
     thread_stats_ = std::move(other.thread_stats_);
   };
+
   Query& operator=(Query&& other) noexcept {
     if (this != &other) {
       text_ = std::move(other.text_);
@@ -79,3 +82,4 @@ public:
     }
   }
 };
+}

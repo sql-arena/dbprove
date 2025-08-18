@@ -10,7 +10,7 @@ std::string Projection::compactSymbolic() const {
   return result;
 }
 
-std::string Projection::renderMuggle() const {
+std::string Projection::renderMuggle(size_t max_width) const {
   std::string result = "PROJECT ";
   result += "(";
   result += Column::join(columns_projected, ", ");

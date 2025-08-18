@@ -20,8 +20,10 @@ target_sources(${_targetName}
         runner.cpp
         proof.cpp
         prover.cpp
+        query.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         runner.h
+        query.h
         cli/prover.h
         plan/prover.h
 )
@@ -35,5 +37,6 @@ target_link_libraries(${_targetName} PRIVATE
         dbprove::sql
         dbprove::generator
         dbprove::ux
+        dbprove::common
 )
 

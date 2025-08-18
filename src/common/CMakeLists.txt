@@ -1,6 +1,7 @@
 set(_targetName "dbprove_common")
 
-add_library(${_targetName} INTERFACE)
+add_library(${_targetName} INTERFACE
+		include/dbprove/common/pretty.h)
 add_library(dbprove::common ALIAS ${_targetName})
 
 target_sources(${_targetName} 

@@ -2,7 +2,6 @@
 #include <dbprove/sql/sql.h>
 
 namespace dbprove::theorem {
-
 Proof::~Proof() = default;
 
 sql::ConnectionFactory& Proof::factory() const {
@@ -21,6 +20,12 @@ Proof& Proof::ensureSchema(const std::string& schema) {
     // NOOP
   }
   return *this;
+}
+
+void Proof::render() {
+  for (auto& d : data) {
+    d->render(console());
+  }
 }
 
 std::ostream& Proof::console() const {

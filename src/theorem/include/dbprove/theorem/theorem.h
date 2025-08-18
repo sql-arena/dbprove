@@ -52,7 +52,8 @@ namespace dbprove::theorem
 
         enum class Type
         {
-            EXPLAIN
+            EXPLAIN,
+            QUERY
         };
 
         const Type type;
@@ -62,7 +63,9 @@ namespace dbprove::theorem
         {
         }
 
-        virtual std::string render() { return std::string{}; }
+        virtual void render(std::ostream& out)
+        {
+        }
     };
 
     /**
@@ -79,9 +82,23 @@ namespace dbprove::theorem
 
         std::unique_ptr<sql::explain::Plan> plan;
 
-        std::string render() override;
+        void render(std::ostream& out) override;
     };
 
+    class Query;
+
+    class DataQuery final : public Data
+    {
+    public:
+        explicit DataQuery(Query& query)
+            : Data(Type::QUERY)
+            , query(query)
+        {
+        }
+
+        Query& query;
+        void render(std::ostream& out) override;
+    };
 
     class Theorem;
     class RunCtx;
@@ -110,6 +127,7 @@ namespace dbprove::theorem
          * @return
          */
         Proof& ensureSchema(const std::string& schema);
+        void render();
         [[nodiscard]] std::ostream& console() const;
         [[nodiscard]] std::ostream& csv() const;
 
@@ -174,6 +192,11 @@ namespace dbprove::theorem
         ~RunCtx();
     };
 
+
+    /**
+     * Call this before using the library
+     */
+    void init();
     /**
      * Parse a list of theorems and turn them into properly typed theorems
      * @param theorems List of strings to parse

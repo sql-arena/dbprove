@@ -1,10 +1,10 @@
-CREATE TABLE SUPPLIER
+CREATE TABLE tpch.supplier
 (
-    S_SUPPKEY   INT PRIMARY KEY,
-    S_NAME      STRING(25),
-    S_ADDRESS   STRING(40),
-    S_NATIONKEY INT,
-    S_PHONE     STRING(15),
-    S_ACCTBAL   DECIMAL,
-    S_COMMENT   STRING(101),
+    s_suppkey   INT PRIMARY KEY,
+    s_name      VARCHAR(25),
+    s_address   VARCHAR(40),
+    s_nationkey INT,
+    s_phone     VARCHAR(15),
+    s_acctbal   DECIMAL,
+    s_comment   VARCHAR(101),
 );

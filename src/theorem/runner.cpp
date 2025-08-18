@@ -1,5 +1,6 @@
 #include "runner.h"
 #include "theorem.h"
+#include "query.h"
 #include <functional>
 #include <thread>
 #include <vector>
@@ -34,7 +35,7 @@ void Runner::serial(Query& query, size_t iterations) const {
   return serial(std::span(&query, 1), iterations);
 }
 
-void Runner::parallelApart(size_t threadCount, std::span<Query>& queries) const {
+void Runner::parallelApart(const size_t threadCount, std::span<Query>& queries) const {
   auto thread_work = [this, &queries]() {
     const auto connection = factory_.create();
 
@@ -69,14 +70,16 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
   do_threads(threadCount, thread_work);
 }
 
-void Runner::serialExplain(std::span<Query>& queries, Proof& state) const {
+void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   const auto connection = factory_.create();
   for (auto& query : queries) {
+    proof.data.push_back(std::make_unique<DataQuery>(query));
     auto qs = query.start();
     auto explain = connection->explain(query.textTagged());
     query.stop(qs);
-    state.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
+    proof.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
   }
   connection->close();
+  proof.render();
 }
 }

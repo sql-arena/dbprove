@@ -1,6 +1,7 @@
 #include "theorem.h"
 #include "runner.h"
 #include "init.h"
+#include "query.h"
 #include <vector>
 
 namespace dbprove::theorem::cli {

@@ -27,7 +27,7 @@ public:
 
   std::string compactSymbolic() const override;
 
-  std::string renderMuggle() const override;
+  std::string renderMuggle(size_t max_width) const override;
   const Strategy strategy;
   const std::vector<Column> group_keys;
   const std::vector<Column> aggregates;

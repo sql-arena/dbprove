@@ -17,7 +17,7 @@ void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
   auto prev_type = Type::UNKNOWN;
   for (const auto& theorem : theorems) {
     if (theorem->type != prev_type) {
-      ux::PreAmple(input_state.console, typeName(theorem->type));
+      ux::PreAmple(input_state.console, to_string(theorem->type));
     }
     ux::PreAmpleTheorem(input_state.console, theorem->name);
     run_theorem(*theorem, input_state);

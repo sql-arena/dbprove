@@ -23,6 +23,27 @@ RowCount countRowsByNode(Node& node, const NodeType type) {
   return cutoff(result);
 }
 
+std::string order_to_string(int8_t magnitude) {
+  return std::to_string(1 << std::abs(magnitude)) + "x";
+}
+
+std::string Magnitude::to_string() const {
+  std::string magnitude;
+  if (value == 0) {
+    magnitude = "=";
+  } else if (value == Plan::MisEstimation::INFINITE_OVER) {
+    magnitude += ">";
+    magnitude += order_to_string(value);
+  } else if (value == Plan::MisEstimation::INFINITE_UNDER) {
+    magnitude += "<";
+    magnitude += order_to_string(value);
+  } else {
+    magnitude = value < 0 ? "-" : "+";
+    magnitude += order_to_string(value);
+  }
+  return magnitude;
+}
+
 RowCount Plan::rowsAggregated() const {
   double result = 0;
   for (const auto& n : planTree().depth_first()) {

@@ -176,8 +176,16 @@ int main(int argc, char** argv) {
                        token);
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
-  NullStream dev_null; // TODO: construct file name for report and put in directory
-  auto input_state = theorem::RunCtx{engine, credentials, generator_state, std::cout, dev_null};
+
+  const auto proof_directory = make_directory("proof");
+  const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
+  std::ofstream proof_output_stream(proof_file);
+  if (!proof_output_stream.is_open()) {
+    throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
+  }
+
+  auto input_state = theorem::RunCtx{engine, credentials, generator_state,
+                                     std::cout, proof_output_stream};
 
   theorem::prove(theorems, input_state);
 }

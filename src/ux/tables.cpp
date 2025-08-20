@@ -51,23 +51,10 @@ void EstimationStatTable(std::ostream& out, const std::vector<sql::explain::Plan
   auto last_magnitude = Plan::MisEstimation::INFINITE_OVER;
   unsigned row_number = 0;
   for (auto& e : mis_estimations) {
-    if (e.order_of_magnitude != last_magnitude) {
+    if (e.magnitude.value != last_magnitude) {
       table << endr;
-      std::string magnitude;
-      if (e.order_of_magnitude == 0) {
-        magnitude = "=";
-      } else if (e.order_of_magnitude == Plan::MisEstimation::INFINITE_OVER) {
-        magnitude += ">";
-        magnitude += order_to_string(e.order_of_magnitude);
-      } else if (e.order_of_magnitude == Plan::MisEstimation::INFINITE_UNDER) {
-        magnitude += "<";
-        magnitude += order_to_string(e.order_of_magnitude);
-      } else {
-        magnitude = e.order_of_magnitude < 0 ? "-" : "+";
-        magnitude += order_to_string(e.order_of_magnitude);
-      }
-      table << magnitude;
-      const auto abs_magnitude = std::abs(e.order_of_magnitude);
+      table << e.magnitude.to_string();
+      const auto abs_magnitude = std::abs(e.magnitude.value);
       const auto row_colour = magnitude_colour.contains(abs_magnitude)
                                 ? magnitude_colour.at(abs_magnitude)
                                 : Colour::RED;
@@ -79,7 +66,7 @@ void EstimationStatTable(std::ostream& out, const std::vector<sql::explain::Plan
     } else {
       table << "";
     }
-    last_magnitude = e.order_of_magnitude;
+    last_magnitude = e.magnitude.value;
   }
   table << endr;
   table.column(0).set_cell_text_align(text_align::right);

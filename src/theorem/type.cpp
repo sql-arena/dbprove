@@ -26,7 +26,7 @@ Type typeEnum(const std::string& type_name) {
 std::set<std::string_view> allTypeNames() {
   std::set<std::string_view> typeNames;
   for (const auto& type : typeMap_ | std::views::keys) {
-    typeNames.insert(typeName(type));
+    typeNames.insert(to_string(type));
   }
   return typeNames;
 }

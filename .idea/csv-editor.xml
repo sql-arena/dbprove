@@ -3,6 +3,13 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
+        <entry key="\AIAssistantSnippet.">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\vcpkg\buildtrees\duckdb\src\v1.2.2-661f11aebd.clean\.github\config\uncovered_files.csv">
           <value>
             <Attribute>

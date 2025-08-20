@@ -1,10 +1,5 @@
 set(_targetName "dbprove_theorem")
-add_library(${_targetName} STATIC
-        init.h
-        init.cpp
-        run_ctx.cpp
-        type.cpp
-        data.cpp)
+add_library(${_targetName} STATIC)
 add_library(dbprove::theorem ALIAS ${_targetName})
 
 target_sources(${_targetName}
@@ -21,9 +16,14 @@ target_sources(${_targetName}
         proof.cpp
         prover.cpp
         query.cpp
+        init.cpp
+        run_ctx.cpp
+        type.cpp
+        data.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         runner.h
         query.h
+        init.h
         cli/prover.h
         plan/prover.h
 )
@@ -33,11 +33,17 @@ target_embed_sql(${_targetName} SQL_FILES
         query/tpch/q19.sql
 )
 
+find_package(unofficial-vincentlaucsb-csv-parser CONFIG REQUIRED)
+find_package(magic_enum CONFIG REQUIRED)
+
 target_link_libraries(${_targetName} PRIVATE
         dbprove::sql
         dbprove::generator
         dbprove::ux
         dbprove::common
+        unofficial::vincentlaucsb-csv-parser::csv
+        PUBLIC
+        magic_enum::magic_enum
 )
 
 # TODO: Integrate CSV writer here

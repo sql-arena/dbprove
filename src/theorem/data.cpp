@@ -4,27 +4,39 @@
 #include <string>
 
 namespace dbprove::theorem {
-void DataExplain::render(std::ostream& out) {
+void DataExplain::render(Proof& proof) {
   using namespace sql::explain;
+  auto& out = proof.console();
   ux::Header(out, "Query Plan", 10);
   plan->render(out, ux::Terminal::width());
 
+  const auto joined = plan->rowsJoined();
+  const auto aggregated = plan->rowsAggregated();
+  const auto sorted = plan->rowsSorted();
+  const auto scanned = plan->rowsScanned();
   std::vector<ux::RowStats> stats;
-  stats.push_back({"Join", plan->rowsJoined()});
-  stats.push_back({"Aggregate", plan->rowsAggregated()});
-  stats.push_back({"Sort", plan->rowsSorted()});
-  stats.push_back({"Scan", plan->rowsScanned()});
+  stats.push_back({"Join", joined});
+  stats.push_back({"Aggregate", aggregated});
+  stats.push_back({"Sort", sorted});
+  stats.push_back({"Scan", scanned});
   RowStatTable(out, stats);
 
-  ux::EstimationStatTable(out, plan->misEstimations());
+  proof.writeCsv("Join", std::to_string(joined), Unit::Rows);
+  proof.writeCsv("Aggregate", std::to_string(aggregated), Unit::Rows);
+  proof.writeCsv("Sort", std::to_string(sorted), Unit::Rows);
+  proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
+  const auto mis_estimates = plan->misEstimations();
+  ux::EstimationStatTable(out, mis_estimates);
+
+  for (const auto& [operation, magnitude, count] : mis_estimates) {
+    const auto name = "Mis-estimate " + std::string(to_string(operation)) + " " + magnitude.to_string();
+    proof.writeCsv(name, std::to_string(count), Unit::Magnitude);
+  }
 }
 
-
-void DataQuery::render(std::ostream& out) {
+void DataQuery::render(Proof& proof) {
+  auto& out = proof.console();
   ux::Header(out, "Query", 10);
   out << query.text() << std::endl;
 }
-
-
-// TODO: provide CSV rendering
 }

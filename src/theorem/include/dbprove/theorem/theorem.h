@@ -6,10 +6,19 @@
 #include <string>
 #include <memory>
 #include <functional>
-
+#include <magic_enum/magic_enum.hpp>
 
 namespace dbprove::theorem
 {
+    class Proof;
+    class RunCtx;
+    class Theorem;
+    class Query;
+    class Data;
+    class DataExplain;
+    class DataQuery;
+    using TheoremFunction = std::function<void(Proof& state)>;
+
     /**
     * The type of Theorem
      */
@@ -23,12 +32,8 @@ namespace dbprove::theorem
         UNKNOWN = 0
     };
 
-    /**
-     * Name of Theorem
-     * @param type To find name of
-     * @return Short name for the Theorem
-     */
-    std::string_view typeName(Type type);
+    inline std::string_view to_string(const Type type) { return magic_enum::enum_name(type); }
+
     /**
      * Convert from a name to the enum
      * @param type_name Name to convert
@@ -63,13 +68,8 @@ namespace dbprove::theorem
         {
         }
 
-        virtual void render(std::ostream& out)
+        virtual void render(Proof& out)
         {
-        }
-
-        virtual void writeCsv(std::ostream& out)
-        {
-            // TODO: Provide a way to render into a standard format
         }
     };
 
@@ -87,10 +87,9 @@ namespace dbprove::theorem
 
         std::unique_ptr<sql::explain::Plan> plan;
 
-        void render(std::ostream& out) override;
+        void render(Proof& out) override;
     };
 
-    class Query;
 
     class DataQuery final : public Data
     {
@@ -102,12 +101,17 @@ namespace dbprove::theorem
         }
 
         Query& query;
-        void render(std::ostream& out) override;
+        void render(Proof& proof) override;
     };
 
-    class Theorem;
-    class RunCtx;
+    enum class Unit
+    {
+        Rows,
+        COUNT,
+        Magnitude
+    };
 
+    constexpr inline std::string_view to_string(const Unit unit) { return magic_enum::enum_name(unit); }
 
     /**
      * A Proof is the holder of all data that is the result of proving a theorem
@@ -134,13 +138,19 @@ namespace dbprove::theorem
         Proof& ensureSchema(const std::string& schema);
         void render();
         [[nodiscard]] std::ostream& console() const;
+        /**
+         * Write data into the csv stream for later merging and processing
+         * @param key Unique name (in the context of the  theorem) of the measurement
+         * @param value The measurement. Can be of any type, but must cast to string
+         * @param unit Unit of measurement
+         */
+        void writeCsv(const std::string& key, std::string value, Unit unit) const;
         [[nodiscard]] std::ostream& csv() const;
 
     private:
         RunCtx& state;
     };
 
-    using TheoremFunction = std::function<void(Proof& state)>;
 
     class Theorem
     {
@@ -159,7 +169,7 @@ namespace dbprove::theorem
 
         Type type;
         std::string name;
-        std::string_view description;
+        std::string description;
         TheoremFunction func;
     };
 
@@ -170,6 +180,9 @@ namespace dbprove::theorem
      */
     class RunCtx
     {
+        class CsvWriter;
+        std::unique_ptr<CsvWriter> writer;
+
     public:
         const sql::Engine& engine;
         const sql::Credential& credentials;
@@ -178,21 +191,14 @@ namespace dbprove::theorem
         std::ostream& console;
         std::ostream& csv;
         std::vector<std::unique_ptr<Proof>> proofs;
-
+        void writeCsv(const std::vector<std::string_view>& values) const;
         RunCtx(
             const sql::Engine& engine,
             const sql::Credential& credentials,
             generator::GeneratorState& generator,
             std::ostream& console,
             std::ostream& csv
-        )
-            : engine(engine)
-            , credentials(credentials)
-            , generator(generator)
-            , console(console)
-            , csv(csv)
-        {
-        }
+        );
 
         ~RunCtx();
     };

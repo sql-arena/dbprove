@@ -7,3 +7,4 @@ std::string PrettyRows(const size_t rows) {
   return common::PrettyHumanCount(rows);
 }
 }
+

@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
                        token);
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
-  NullStream dev_null;
+  NullStream dev_null; // TODO: construct file name for report and put in directory
   auto input_state = theorem::RunCtx{engine, credentials, generator_state, std::cout, dev_null};
 
   theorem::prove(theorems, input_state);

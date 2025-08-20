@@ -1,6 +1,7 @@
 set(_targetName "dbprove_ux")
 add_library(${_targetName} STATIC
-        boxes.cpp)
+        boxes.cpp
+        sort_orders.h)
 add_library(dbprove::ux ALIAS ${_targetName})
 
 find_path(RANG_INCLUDE_DIRS "rang.hpp")
@@ -30,6 +31,7 @@ target_link_libraries(${_targetName}
         PRIVATE
         libfort::fort
         dbprove::common
+        dbprove::sql
 )
 
 target_include_directories(${_targetName} PRIVATE ${RANG_INCLUDE_DIRS})

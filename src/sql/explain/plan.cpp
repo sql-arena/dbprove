@@ -1,10 +1,10 @@
 #include "explain/plan.h"
-
-#include <iostream>
-#include <rang.hpp>
-
 #include "cutoff.h"
 #include "dbprove/common/pretty.h"
+
+#include <iostream>
+#include <ranges>
+#include <rang.hpp>
 
 constexpr auto HASH_BUILD_CHILD = "└";
 constexpr auto VERTICAL_LINE = "│";
@@ -70,10 +70,59 @@ RowCount Plan::rowsFiltered() const {
   return cutoff(result);
 }
 
+int8_t estimateOrderOfMagnitude(double estimate, double actual) {
+  actual = std::max(actual, 1.0);
+  estimate = std::max(estimate, 1.0);
+  const auto error = (estimate > actual) ? estimate / actual : -actual / estimate;
+  auto magnitude = static_cast<int8_t>(std::log2(error));
+  magnitude = std::min(magnitude, Plan::MisEstimation::INFINITE_OVER);
+  magnitude = std::max(magnitude, Plan::MisEstimation::INFINITE_UNDER);
+  return magnitude;
+}
+
+std::vector<Plan::MisEstimation> Plan::misEstimations() const {
+  /* Construct mis estimation map, All combination must exist for easy rendering */
+  std::map<Operation, std::map<int8_t, MisEstimation>> mis_estimation;
+  for (auto& op : {Operation::JOIN, Operation::SORT, Operation::FILTER, Operation::AGGREGATE}) {
+    mis_estimation.insert({op, {}}).first;
+    for (int8_t magnitude = MisEstimation::INFINITE_UNDER;
+         magnitude <= MisEstimation::INFINITE_OVER;
+         magnitude++) {
+      mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
+    };
+  }
+
+  for (const auto& n : planTree().depth_first()) {
+    auto magnitude = estimateOrderOfMagnitude(n.rows_estimated, n.rows_actual);
+    switch (n.type) {
+      case NodeType::JOIN:
+        mis_estimation[Operation::JOIN][magnitude].count++;
+        break;
+      case NodeType::SORT:
+        mis_estimation[Operation::SORT][magnitude].count++;
+        break;
+      case NodeType::GROUP_BY:
+        mis_estimation[Operation::AGGREGATE][magnitude].count++;
+        break;
+      default:
+        break;
+    }
+  }
+  std::vector<MisEstimation> sorted_mis_estimations;
+  for (const auto& inner_map : mis_estimation | std::views::values) {
+    for (const auto& mis_estimation : inner_map | std::views::values) {
+      sorted_mis_estimations.push_back(mis_estimation);
+    }
+  }
+  std::sort(sorted_mis_estimations.begin(), sorted_mis_estimations.end());
+
+  return sorted_mis_estimations;
+}
+
 
 void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
-  std::string indent = "";
-  std::string divider = "  ";
+  std::string indent;
+  const std::string divider = "  ";
   struct Frame {
     Node* node;
     std::string indent;

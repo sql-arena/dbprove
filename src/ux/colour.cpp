@@ -4,7 +4,10 @@
 
 namespace dbprove::ux {
 const static std::map<Colour, fort::color> map = {
-    {Colour::RED, fort::color::red},
+    {Colour::RED, fort::color::light_red},
+    {Colour::ORANGE, fort::color::red},
+    {Colour::YELLOW, fort::color::yellow},
+    {Colour::GREEN, fort::color::green},
     {Colour::BLUE, fort::color::blue},
     {Colour::WHITE, fort::color::default_color},
     {Colour::BLACK, fort::color::black},
@@ -19,7 +22,7 @@ const static std::map<Colour, fort::color> map = {
  */
 fort::color mapFortColour(const Colour colour) {
   if (!map.contains(colour)) {
-    throw std::runtime_error("Unknown colour");
+    throw std::runtime_error("Unknown colour: " + std::to_string(static_cast<int>(colour)));
   }
   return map.at(colour);
 }

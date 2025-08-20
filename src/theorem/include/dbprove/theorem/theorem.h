@@ -66,6 +66,11 @@ namespace dbprove::theorem
         virtual void render(std::ostream& out)
         {
         }
+
+        virtual void writeCsv(std::ostream& out)
+        {
+            // TODO: Provide a way to render into a standard format
+        }
     };
 
     /**

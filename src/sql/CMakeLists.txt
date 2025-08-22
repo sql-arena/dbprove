@@ -50,7 +50,6 @@ target_include_directories(${_targetName}
 # public headers
 add_subdirectory(include/dbprove/sql)
 
-add_compile_definitions(DUCKDB_STATIC_LINK)
 
 # To implement drivers, one needs access to some raw headers that should not be visible elsewhere
 add_library(sql_driver_headers INTERFACE)

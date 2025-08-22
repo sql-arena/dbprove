@@ -25,8 +25,16 @@ void DataExplain::render(Proof& proof) {
   proof.writeCsv("Aggregate", std::to_string(aggregated), Unit::Rows);
   proof.writeCsv("Sort", std::to_string(sorted), Unit::Rows);
   proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
-  const auto mis_estimates = plan->misEstimations();
+  auto mis_estimates = plan->misEstimations();
   ux::EstimationStatTable(out, mis_estimates);
+  // For CSV dump, it looks better to collect all operations together
+  std::ranges::sort(mis_estimates,
+                    [](const auto& lhs, const auto& rhs) {
+                      if (lhs.operation != rhs.operation) {
+                        return lhs.operation < rhs.operation;
+                      }
+                      return lhs.magnitude < rhs.magnitude;
+                    });
 
   for (const auto& [operation, magnitude, count] : mis_estimates) {
     const auto name = "Mis-estimate " + std::string(to_string(operation)) + " " + magnitude.to_string();

@@ -4,4 +4,6 @@ target_sources(${_targetName}
         string.h
         tree_node.h
         null_stream.h
+        log_formatter.h
+        file_utility.h
 )

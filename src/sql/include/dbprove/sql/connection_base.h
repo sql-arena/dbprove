@@ -14,8 +14,7 @@
 
 
 namespace sql::explain {
-  class Plan;
-
+class Plan;
 }
 
 namespace sql {
@@ -35,6 +34,10 @@ public:
   /// @brief Used to map type names specific to the engine before executing DDL/SQL
   virtual const TypeMap& typeMap() const;
   const Engine& engine() const { return engine_; }
+  /***
+   * Version of the engine we are running againt
+   */
+  virtual std::string version() { return ""; };
 
   /// @brief Run statement and return
   virtual void execute(std::string_view statement) = 0;
@@ -68,7 +71,7 @@ public:
    */
   void bulkLoad(const std::string_view table, const std::filesystem::path& source_path) {
     bulkLoad(table,
-      std::vector({source_path}));
+             std::vector({source_path}));
   }
 
   void executeDdl(const std::string_view ddl) {

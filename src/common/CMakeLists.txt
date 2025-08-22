@@ -7,6 +7,7 @@ target_sources(${_targetName}
         PUBLIC FILE_SET installed TYPE HEADERS BASE_DIRS include
         PRIVATE
         pretty.cpp
+        file_utility.cpp
 )
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(${_targetName}

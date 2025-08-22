@@ -2,12 +2,12 @@
 #include <dbprove/ux/ux.h>
 #include <dbprove/sql/sql.h>
 #include <dbprove/common/null_stream.h>
+#include <dbprove/common/log_formatter.h>
+#include <dbprove/common/file_utility.h>
 #include <CLI/CLI.hpp>
 #include <iostream>
-#include "log_formatter.h"
 #include <string>
 #include <version>
-#include <map>
 #include <format>
 #include <ranges>
 #include <plog/Log.h>
@@ -55,6 +55,8 @@ sql::Credential parseCredentials(
       }
       case sql::Engine::Type::Utopia:
         return sql::CredentialNone();
+      case sql::Engine::Type::DuckDB:
+        return sql::CredentialFile(database);
       case sql::Engine::Type::Databricks: {
         if (!token) {
           throw std::invalid_argument("Token is required for " + engine_name);
@@ -67,40 +69,6 @@ sql::Credential parseCredentials(
     std::cerr << e.what() << std::endl;
     std::exit(1);
   }
-}
-
-
-fs::path make_directory(const std::string& directory) {
-  const auto currentWorkingDir = fs::current_path();
-  const auto directoryToMake = currentWorkingDir / directory;
-
-  if (!fs::exists(directoryToMake)) {
-    try {
-      fs::create_directory(directoryToMake);
-    } catch (const std::filesystem::filesystem_error& e) {
-      throw std::runtime_error(
-          "Failed to create 'table_data' directory: " + std::string(e.what()));
-    }
-  } else {
-    if (!fs::is_directory(directoryToMake)) {
-      throw std::runtime_error("'table_data' exists but is not a directory.");
-    }
-  }
-
-  // We need write permission to put CSV into this directory. Instead of relying on platform specific checks for
-  // that, just try to write
-  const fs::path testFile = directoryToMake / ".test_write_permission";
-  try {
-    std::ofstream testStream(testFile);
-    if (!testStream) {
-      throw std::runtime_error("'table_data' exists, but no write permission.");
-    }
-    testStream.close();
-    fs::remove(testFile);
-  } catch (...) {
-    throw std::runtime_error("'table_data' exists, but no write permission.");
-  }
-  return directoryToMake;
 }
 
 generator::GeneratorState configureDataGeneration() {
@@ -144,7 +112,7 @@ int main(int argc, char** argv) {
 
   CLI11_PARSE(app, argc, argv);
 
-  const auto log_directory = make_directory("logs");
+  const auto log_directory = dbprove::common::make_directory("logs");
   const std::string log_file = log_directory.string() + "/dbprove.log";
   plog::init<plog::DBProveFormatter>(plog::info, log_file.c_str(), 1000000, 5);
 
@@ -177,7 +145,7 @@ int main(int argc, char** argv) {
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
 
-  const auto proof_directory = make_directory("proof");
+  const auto proof_directory = common::make_directory("proof");
   const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
   std::ofstream proof_output_stream(proof_file);
   if (!proof_output_stream.is_open()) {

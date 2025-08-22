@@ -6,15 +6,109 @@
 #include <nlohmann/json.hpp>
 #include <duckdb.hpp>
 #include <memory>
+#include <regex>
 #include <stdexcept>
-
 
 
 namespace sql::duckdb {
 void handleDuckError(::duckdb::QueryResult* result) {
-  if (result->HasError()) {
-    throw std::runtime_error("DuckDB query execution failed: " + result->GetError());
+  if (!result->HasError()) {
+    return;
   }
+
+  switch (result->GetErrorType()) {
+    case ::duckdb::ExceptionType::INVALID:
+      break;
+    case ::duckdb::ExceptionType::OUT_OF_RANGE:
+      break;
+    case ::duckdb::ExceptionType::CONVERSION:
+      break;
+    case ::duckdb::ExceptionType::UNKNOWN_TYPE:
+      break;
+    case ::duckdb::ExceptionType::DECIMAL:
+      break;
+    case ::duckdb::ExceptionType::MISMATCH_TYPE:
+      break;
+    case ::duckdb::ExceptionType::DIVIDE_BY_ZERO:
+      break;
+    case ::duckdb::ExceptionType::OBJECT_SIZE:
+      break;
+    case ::duckdb::ExceptionType::INVALID_TYPE:
+      break;
+    case ::duckdb::ExceptionType::SERIALIZATION:
+      break;
+    case ::duckdb::ExceptionType::TRANSACTION:
+      break;
+    case ::duckdb::ExceptionType::NOT_IMPLEMENTED:
+      break;
+    case ::duckdb::ExceptionType::EXPRESSION:
+      break;
+    case ::duckdb::ExceptionType::CATALOG: {
+      // TODO: we can do better here
+      throw InvalidTableException(result->GetError());
+      break;
+    }
+    case ::duckdb::ExceptionType::PARSER:
+      break;
+    case ::duckdb::ExceptionType::PLANNER:
+      break;
+    case ::duckdb::ExceptionType::SCHEDULER:
+      break;
+    case ::duckdb::ExceptionType::EXECUTOR:
+      break;
+    case ::duckdb::ExceptionType::CONSTRAINT:
+      break;
+    case ::duckdb::ExceptionType::INDEX:
+      break;
+    case ::duckdb::ExceptionType::STAT:
+      break;
+    case ::duckdb::ExceptionType::CONNECTION:
+      break;
+    case ::duckdb::ExceptionType::SYNTAX:
+      break;
+    case ::duckdb::ExceptionType::SETTINGS:
+      break;
+    case ::duckdb::ExceptionType::BINDER:
+      break;
+    case ::duckdb::ExceptionType::NETWORK:
+      break;
+    case ::duckdb::ExceptionType::OPTIMIZER:
+      break;
+    case ::duckdb::ExceptionType::NULL_POINTER:
+      break;
+    case ::duckdb::ExceptionType::IO:
+      break;
+    case ::duckdb::ExceptionType::INTERRUPT:
+      break;
+    case ::duckdb::ExceptionType::FATAL:
+      break;
+    case ::duckdb::ExceptionType::INTERNAL:
+      break;
+    case ::duckdb::ExceptionType::INVALID_INPUT:
+      break;
+    case ::duckdb::ExceptionType::OUT_OF_MEMORY:
+      break;
+    case ::duckdb::ExceptionType::PERMISSION:
+      break;
+    case ::duckdb::ExceptionType::PARAMETER_NOT_RESOLVED:
+      break;
+    case ::duckdb::ExceptionType::PARAMETER_NOT_ALLOWED:
+      break;
+    case ::duckdb::ExceptionType::DEPENDENCY:
+      break;
+    case ::duckdb::ExceptionType::HTTP:
+      break;
+    case ::duckdb::ExceptionType::MISSING_EXTENSION:
+      break;
+    case ::duckdb::ExceptionType::AUTOLOAD:
+      break;
+    case ::duckdb::ExceptionType::SEQUENCE:
+      break;
+    case ::duckdb::ExceptionType::INVALID_CONFIGURATION:
+      break;
+  }
+
+  throw std::runtime_error("DuckDB query execution failed: " + result->GetError());
 }
 
 class Connection::Pimpl {
@@ -118,7 +212,7 @@ void Connection::bulkLoad(const std::string_view table, std::vector<std::filesys
   for (const auto& path : source_paths) {
     std::string copy_statement = "COPY " + std::string(table) +
                                  " FROM '" + path.string() +
-                                 "' WITH (FORMAT 'csv', AUTO_DETECT true, HEADER true)";
+                                 "' WITH (FORMAT 'csv', AUTO_DETECT true, STRICT_MODE false, HEADER true)";
     auto result = impl_->execute(copy_statement);
   }
 }
@@ -221,6 +315,16 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
   if (operator_name == "FILTER") {
     auto filter_condition = extra_info["Expression"].get<std::string>();
     node = std::make_unique<Selection>(filter_condition);
+  }
+  if (operator_name == "UNGROUPED_AGGREGATE") {
+    // An aggregate without group by
+    std::vector<Column> aggregate_columns;
+    if (extra_info.contains("Aggregates")) {
+      for (auto& column : extra_info["Aggregates"]) {
+        aggregate_columns.push_back(Column(column.get<std::string>()));
+      }
+    }
+    node = std::make_unique<GroupBy>(GroupBy::Strategy::SIMPLE, std::vector<Column>({}), aggregate_columns);
   }
   if (operator_name == "HASH_GROUP_BY" || operator_name == "PERFECT_HASH_GROUP_BY") {
     std::vector<Column> group_by_columns;
@@ -355,5 +459,15 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   auto explain_json = json::parse(explain_raw);
 
   return buildExplainPlan(explain_json);
+}
+
+std::string Connection::version() {
+  const auto version_string = fetchScalar("SELECT version()").get<SqlString>().get();
+  const std::regex versionRegex(R"(v(\d+\.\d+.\d+))");
+  std::smatch match;
+  if (std::regex_search(version_string, match, versionRegex)) {
+    return match[1];
+  }
+  return "Unknown";
 }
 }

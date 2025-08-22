@@ -1,15 +1,15 @@
 include(CMakeParseArguments)
 
 # Function to embed SQL files into a target
-function(target_embed_sql TARGET)
+function(target_embed_files TARGET)
     cmake_parse_arguments("ARG" "" "" "SQL_FILES" ${ARGN})
 
-    if(NOT ARG_SQL_FILES)
+    if (NOT ARG_SQL_FILES)
         message(FATAL "No SQL files specified for ${TARGET}")
-    endif()
+    endif ()
 
     # Create a unique output directory for this target
-    set(BASE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/sql_embed/")
+    set(BASE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/sql_embed")
     set(OUTPUT_DIR "${BASE_OUTPUT_DIR}/${TARGET}")
     set(OUTPUT_HEADER "${OUTPUT_DIR}/embedded_sql.h")
     file(MAKE_DIRECTORY "${OUTPUT_DIR}")

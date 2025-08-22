@@ -13,8 +13,24 @@ void run_theorem(const Theorem& theorem,
   theorem.func(*state.proofs.back());
 }
 
+void writeVersion(RunCtx& input_state) {
+  const std::string version = input_state.factory.create()->version();
+  input_state.writeCsv(std::vector<std::string_view>{
+      input_state.engine.name(),
+      "0",
+      "CONFIG",
+      "CONFIG-VERSION",
+      "Version of Engine",
+      "version",
+      version,
+      "version"});
+}
+
 void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
   auto prev_type = Type::UNKNOWN;
+
+  writeVersion(input_state);
+
   for (const auto& theorem : theorems) {
     if (theorem->type != prev_type) {
       ux::PreAmple(input_state.console, to_string(theorem->type));

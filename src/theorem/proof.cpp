@@ -23,7 +23,7 @@ Proof& Proof::ensureSchema(const std::string& schema) {
 }
 
 void Proof::render() {
-  for (auto& d : data) {
+  for (const auto& d : data) {
     d->render(*this);
   }
 }
@@ -34,13 +34,15 @@ std::ostream& Proof::console() const {
 
 void Proof::writeCsv(const std::string& key, std::string value, const Unit unit) const {
   static std::atomic<uint64_t> counter{1};
-  state.writeCsv(std::vector<std::string_view>{std::to_string(++counter),
-                                               to_string(theorem.type),
-                                               theorem.name,
-                                               theorem.description,
-                                               key,
-                                               value,
-                                               to_string(unit)});
+  state.writeCsv(std::vector<std::string_view>{
+      state.engine.name(),
+      std::to_string(++counter),
+      to_string(theorem.type),
+      theorem.name,
+      theorem.description,
+      key,
+      value,
+      to_string(unit)});
 }
 
 std::ostream& Proof::csv() const {

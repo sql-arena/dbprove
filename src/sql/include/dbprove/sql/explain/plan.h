@@ -23,6 +23,11 @@ namespace sql::explain
     {
         int8_t value;
         std::string to_string() const;
+
+        bool operator<(const Magnitude& other) const
+        {
+            return value < other.value;
+        }
     };
 
     class Plan
@@ -32,8 +37,8 @@ namespace sql::explain
     public:
         struct MisEstimation
         {
-            static constexpr int8_t INFINITE_OVER = 8;
-            static constexpr int8_t INFINITE_UNDER = -8;
+            static constexpr int8_t INFINITE_OVER = 4;
+            static constexpr int8_t INFINITE_UNDER = -4;
             Operation operation;
             Magnitude magnitude;
             size_t count;

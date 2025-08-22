@@ -15,5 +15,8 @@
   }, {
     "name" : "magic-enum",
     "version>=" : "0.9.7#1"
+  }, {
+    "name" : "pugixml",
+    "version>=" : "1.15"
   } ]
 }

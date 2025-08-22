@@ -3,6 +3,9 @@
 #include <dbprove/common/config.h>
 
 namespace sql {
+/// @brief Some database engine dont have a concept, so we just return this
+static const std::string kDummyValue = "dummy";
+
 std::string Engine::defaultDatabase(std::optional<std::string> database) const {
   if (database.has_value()) {
     return database.value();
@@ -15,7 +18,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       }
       break;
     }
-
+    case Type::DuckDB:
+      return "duck.db";
     case Type::Postgres: {
       return "postgres";
     }
@@ -45,6 +49,8 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       }
       break;
     }
+    case Type::DuckDB:
+      return "localhost";
     default:
       host = getEnvVar("BASE_URL",
                        "API_URL",
@@ -74,6 +80,8 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
       return 1521;
     case Type::ClickHouse:
       return 9000;
+    case Type::DuckDB:
+      return 42; // Dummy port, Duck is localhost
     default:
       return 0;
   }
@@ -90,13 +98,14 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
       break;
     case Type::Yellowbrick:
       username = getEnvVar("YB_USER");
-    if (!username) {
-      username = "yellowbrick";
-    }
-    break;
+      if (!username) {
+        username = "yellowbrick";
+      }
+    case Type::DuckDB:
+      return "";
+      break;
   }
   return username.value_or("");
-
 }
 
 std::string Engine::defaultToken(std::optional<std::string> token) const {
@@ -107,10 +116,10 @@ std::string Engine::defaultToken(std::optional<std::string> token) const {
   switch (type()) {
     case Type::Databricks:
       token = getEnvVar("DATABRICKS_TOKEN");
-    break;
+      break;
     default:
       token = getEnvVar("TOKEN", "API_TOKEN", "API_KEY", "API_SECRET");
-    break;
+      break;
   }
   if (token.has_value()) {
     return token.value();

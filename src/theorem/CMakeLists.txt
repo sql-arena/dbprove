@@ -28,7 +28,7 @@ target_sources(${_targetName}
         plan/prover.h
 )
 
-target_embed_sql(${_targetName} SQL_FILES
+target_embed_files(${_targetName} SQL_FILES
         query/tpch/q01.sql
         query/tpch/q19.sql
 )

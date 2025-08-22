@@ -12,7 +12,7 @@ target_link_libraries(test_connectivity
         dbprove::sql::databricks
 )
 
-target_embed_sql(test_connectivity SQL_FILES
+target_embed_files(test_connectivity SQL_FILES
         sql/bushy_plan.sql
         sql/explain.sql
         sql/simple_join.sql

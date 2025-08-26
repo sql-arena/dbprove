@@ -47,17 +47,19 @@ sql::RowCount generator::GeneratorState::generate(const std::string_view table_n
         "Generator not found for table: " + std::string(table_name));
   }
 
+  auto target_row_count = table(table_name).row_count;
   const auto file_name = csvPath(table_name);
-  if (exists(file_name)) {
+  if (exists(file_name) && file_size(file_name) > 0) {
+    // NOTE: even a zero row file will still have a header.
     PLOGI << "Table: " << table_name << " input already exists.";
     table(table_name).path = file_name;
-  } else {
-    PLOGI << "Table: " << table_name << " input data being generated to " + file_name.string() + "...";
-    table(table_name).generator(*this);
-    PLOGI << "Table: " << table_name << " input successfully generated";
+    return target_row_count;
   }
+  PLOGI << "Table: " << table_name << " input data being generated to " + file_name.string() + "...";
+  table(table_name).generator(*this);
+  PLOGI << "Table: " << table_name << " input successfully generated";
 
-  return table(table_name).row_count;
+  return target_row_count;
 }
 
 sql::RowCount GeneratorState::load(const std::string_view table_name, sql::ConnectionBase& conn) {
@@ -74,6 +76,8 @@ sql::RowCount GeneratorState::load(const std::string_view table_name, sql::Conne
     << " exists but has no rows. Loading it from file: " << table(table_name).path.string() << "...";
     conn.bulkLoad(table_name, {table(table_name).path});
     const auto generated_row_count = table(table_name).row_count;
+    PLOGI << "Table: " << table_name << " needs analysis...";
+    conn.analyse(table_name);
     PLOGI << "Table: " << table_name
     << " is ready with " + std::to_string(generated_row_count) + " rows";
     return generated_row_count;

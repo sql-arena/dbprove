@@ -12,6 +12,10 @@ std::unique_ptr<explain::Plan> ConnectionBase::explain(std::string_view statemen
   return nullptr;
 }
 
+void ConnectionBase::analyse(std::string_view table_name) {
+  execute("ANALYZE " + std::string(table_name));
+}
+
 std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view table) {
   const std::string dumb_row_count = "SELECT COUNT(*) FROM " + std::string(table);
   try {

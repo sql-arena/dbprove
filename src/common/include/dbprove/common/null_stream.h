@@ -1,19 +1,21 @@
 #include <streambuf>
 #include <ostream>
 
-class NullBuffer : public std::streambuf {
+class NullBuffer final : public std::streambuf {
 protected:
   int overflow(int c) override {
-    return c;  // Indicate success, but do nothing
+    return c; // Indicate success, but do nothing
   }
 };
 
 /**
 * Stream to discard all data
 */
-class NullStream : public std::ostream {
+class NullStream final : public std::ostream {
 public:
-  NullStream() : std::ostream(&nullBuffer) {}
+  NullStream()
+    : std::ostream(&nullBuffer) {
+  }
 
 private:
   NullBuffer nullBuffer;

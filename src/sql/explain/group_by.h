@@ -10,7 +10,8 @@ public:
     HASH,
     SORT_MERGE,
     PARTIAL,
-    SIMPLE
+    SIMPLE,
+    UNKNOWN
   };
 
   explicit GroupBy(const Strategy strategy,

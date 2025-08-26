@@ -5,6 +5,6 @@ CREATE TABLE tpch.supplier
     s_address   VARCHAR(40),
     s_nationkey INT,
     s_phone     VARCHAR(15),
-    s_acctbal   DECIMAL,
-    s_comment   VARCHAR(101),
+    s_acctbal   DECIMAL(15, 2),
+    s_comment   VARCHAR(101)
 );

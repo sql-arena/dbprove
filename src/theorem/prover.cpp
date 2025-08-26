@@ -51,12 +51,12 @@ std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
   } else {
     for (const auto& t : theorems) {
       if (allTypeNames().contains(t)) {
-        /* User passed a category, pick everything */
+        /* User passed a category: pick everything.*/
         auto all_theorems_in_type = allTheoremsInType(typeEnum(t));
         parsed_theorems.insert(all_theorems_in_type.begin(), all_theorems_in_type.end());
         continue;
       }
-      if (allTheorems().contains(t)) {
+      if (!allTheorems().contains(t)) {
         /* Specific theorem*/
         throw std::runtime_error("Unknown theorem: " + t);
       }

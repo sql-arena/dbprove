@@ -27,7 +27,7 @@ std::string Sort::compactSymbolic() const {
 
 std::string Sort::renderMuggle(size_t max_width) const {
   std::string result = "SORT ";
-  result += Column::join(columns_sorted, ", ", true);
+  result += Column::join(columns_sorted, ", ", max_width);
   return result;
 }
 }

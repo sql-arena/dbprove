@@ -32,15 +32,25 @@ void TerminateHandler() {
   std::exit(1);
 }
 
+using namespace pugi;
 
 struct Data {
   std::unique_ptr<sql::ResultBase> result;
   std::vector<std::string> engines;
 };
 
+void writeData(const sql::RowBase& row, const size_t column, xml_node& td) {
+  const auto unit = row.asString(row.columnCount() - 1);
+
+  if (unit == "Plan") {
+    td.append_child("pre").text().set(row.asString(column));
+  } else {
+    td.text().set(row.asString(column));
+  }
+}
+
 
 void writeHtmlReport(const fs::path& input_path, Data& result) {
-  using namespace pugi;
   xml_document doc;
 
   auto decl = doc.append_child(pugi::node_declaration);
@@ -56,12 +66,12 @@ void writeHtmlReport(const fs::path& input_path, Data& result) {
 
   auto thead = table.append_child("thread");
   thead.append_child("th").text().set("Proof");
-  for (auto engine : result.engines) {
+  for (auto& engine : result.engines) {
     thead.append_child("th").text().set(engine);
   }
   thead.append_child("th").text().set("Unit");
   auto tbody = table.append_child("tbody");
-  std::string last_theorem = "";
+  std::string last_theorem;
   // TODO: It would be very nice if rows has name based indexers
   for (auto& row : result.result->rows()) {
     auto theorem = row.asString(1);
@@ -81,14 +91,15 @@ void writeHtmlReport(const fs::path& input_path, Data& result) {
     tr.append_child("td").text().set(row.asString(3));
     for (size_t e = 0; e < result.engines.size(); ++e) {
       auto engine = result.engines[e];
-      tr.append_child("td").text().set(row.asString(4 + e));
+      auto td = tr.append_child("td");
+      writeData(row, 4 + e, td);
     }
     tr.append_child("td").text().set(row.asString(row.columnCount() - 1));
   }
 
-  std::ofstream report_File(input_path / "report.html");
-  doc.save(report_File, "  ");
-  report_File.close();
+  std::ofstream report_file(input_path / "report.html");
+  doc.save(report_file, "  ");
+  report_file.close();
 }
 
 /**

@@ -21,10 +21,18 @@
 #include <filesystem>
 #include <fstream>
 
+#include "dbprove/common/null_stream.h"
+
 
 using namespace std::chrono;
 using namespace generator;
 
+/**
+ * TPC-H uses two digit rounding of floats for the actual data
+ */
+double tpch_round(const double v) {
+  return std::round(v * 100.0) / 100.0;
+}
 
 template <typename T>
 void reportProgress(const std::string_view table_name, T current, T target) {
@@ -81,13 +89,17 @@ void nation_gen(GeneratorState& state) {
   std::ofstream nation(file_name);
   c(nation, "N_NATIONKEY");
   c(nation, "N_NAME");
-  c(nation, "N_REGIONKEY", true);
+  c(nation, "N_REGIONKEY");
+  c(nation, "N_COMMENT", true);
 
   using namespace generator;
+  TpchText n_comment(31, 113);
+
   for (size_t i = 0; i < nation_count; ++i) {
     c(nation, i);
     c(nation, tpch_nations[i].first);
-    c(nation, tpch_nations[i].second, true);
+    c(nation, tpch_nations[i].second);
+    c(nation, n_comment.next(), true);
   }
   state.registerGeneration("tpch.nation", file_name);
 }
@@ -122,6 +134,7 @@ void supplier_gen(GeneratorState& state) {
   VString s_address(10, 40);
   ForeignKey s_nationkey(0, 24);
   DoubleRange s_acctbal(-999.99, 9999.99);
+  TpchPhone s_phone;
   TpchText s_comment_base(25, 100);
   DoubleRange s_comment_chance(0.0, 1.0);
 
@@ -142,11 +155,10 @@ void supplier_gen(GeneratorState& state) {
     const auto key = s_suppkey.next();
     c(supplier, key);
     c(supplier, s_name.next(key));
-
     c(supplier, s_address.next());
     c(supplier, s_nationkey.next());
+    c(supplier, s_phone.next());
     c(supplier, s_acctbal.next());
-
     auto comment = s_comment_base.next();
 
     if (s_comment_chance.next() < fraction_customer_comment) {
@@ -159,10 +171,11 @@ void supplier_gen(GeneratorState& state) {
       }
       auto customer_offset = s_comment_chance.random(
           comment.size() - s_comment_customer.size() - second_string.size());
-      comment.insert(customer_offset, s_comment_customer);
+      comment.replace(customer_offset, second_string.size(), s_comment_customer);
       auto second_string_offset = s_comment_chance.random(
           comment.size() - s_comment_customer.size() - customer_offset);
-      comment.insert(customer_offset + second_string_offset, second_string);
+      comment.replace(customer_offset + second_string_offset, second_string.size(), second_string);
+      assert(comment.size() <= 100);
     }
     c(supplier, comment, true);
   }
@@ -312,12 +325,24 @@ void customer_gen(GeneratorState& state) {
   state.registerGeneration("tpch.customer", file_name);
 }
 
+
+std::unique_ptr<std::ostream> SafeStream(std::filesystem::path file) {
+  if (exists(file) || file_size(file) == 0) {
+    return std::make_unique<NullStream>();
+  }
+  return std::make_unique<std::ofstream>(file);
+}
+
 void orders_lineitem_gen(GeneratorState& state) {
   const auto orders_count = state.table("tpch.orders").row_count;
   const auto orders_file_name = state.csvPath("tpch.orders");
   const auto lineitem_file_name = state.csvPath("tpch.lineitem");
-  std::ofstream orders(orders_file_name);
-  std::ofstream lineitem(lineitem_file_name);
+
+  auto orders_file = SafeStream(orders_file_name);
+  auto lineitem_file = SafeStream(lineitem_file_name);
+
+  std::ostream& lineitem = *lineitem_file;
+  std::ostream& orders = *orders_file;
 
   // LINEITEM header
   c(lineitem, "L_ORDERKEY");
@@ -382,13 +407,15 @@ void orders_lineitem_gen(GeneratorState& state) {
   size_t lineitem_count = 0;
   size_t key_jump = 0;
   for (size_t row = 0; row < orders_count; ++row) {
-    // TPC-h requires only every third customer has an order and enforces with a simple modulo
+    // TPC-H requires only every third customer has an order and enforces with a simple modulo.
+
     uint64_t custkey = 0;
-    for (; custkey % 3 != 0; custkey = o_custkey.next()) {
-    }
+    do {
+      custkey = o_custkey.next();
+    } while (custkey % 3 != 0);
 
     if (++key_jump == 8) {
-      // See Comment on section 4.2.3 of TPC-H spec. This is to make the key range sparse
+      // See Comment on section 4.2.3 of TPC-H spec. This is to make the key range sparse.
       o_orderkey.skip(custkey);
     }
     auto orderkey = o_orderkey.next();
@@ -411,14 +438,14 @@ void orders_lineitem_gen(GeneratorState& state) {
       c(lineitem, quantity);
       const auto extended_price = quantity * price_for_part(partkey);
       c(lineitem, extended_price);
-      const auto discount = l_discount.next();
-      c(lineitem, discount);
-      const auto tax = l_tax.next();
-      c(lineitem, tax);
+      const auto discount = tpch_round(l_discount.next());
+      c(lineitem, std::format("{:.2f}", discount));
+      const auto tax = tpch_round(l_tax.next());
+      c(lineitem, std::format("{:.2f}", tax));
 
       totalprice += extended_price * (1 + tax) * (1 - discount);
 
-      // dates must be calculated first, but the ordering of output column is not in this dependency order
+      // dates must be calculated first, but the ordering of output column is not in this dependency order.
       const auto shipdate = orderdate + days(l_shipdate_offset.next());
       const auto commitdate = orderdate + days(l_commitdate_offset.next());
       const auto receiptdate = shipdate + days(l_receiptdate_offset.next());
@@ -445,6 +472,8 @@ void orders_lineitem_gen(GeneratorState& state) {
       c(lineitem, l_comment.next(), true);
     }
 
+    c(orders, orderkey);
+    c(orders, custkey);
     // O_ORDERSTATUS
     if (linestatus_o_count == 0) {
       c(orders, "F");
@@ -453,9 +482,6 @@ void orders_lineitem_gen(GeneratorState& state) {
     } else {
       c(orders, "P");
     }
-
-    c(orders, orderkey);
-    c(orders, custkey);
     c(orders, totalprice);
     c(orders, to_date_string(orderdate));
     c(orders, o_orderpriority.next());
@@ -465,6 +491,8 @@ void orders_lineitem_gen(GeneratorState& state) {
 
     reportProgress("orders", row, orders_count, "lineitem", lineitem_count);
   }
+  orders.flush();
+  lineitem.flush();
   state.registerGeneration("tpch.lineitem", lineitem_file_name);
   state.registerGeneration("tpch.orders", orders_file_name);
   state.table("tpch.lineitem").row_count = lineitem_count;

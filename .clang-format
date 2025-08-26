@@ -16,4 +16,16 @@ BasedOnStyle: Google
 AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 ColumnLimit: 120
+IncludeBlocks: Regroup
+IncludeIsMainRegex: '([-_](test|unittest))?$'
+IncludeCategories:
+  # Internal
+  - Regex: '"<[^/]+"$'
+    Priority: 1
+  # stdlib
+  - Regex: '^<[^/]+>$'
+    Priority: 2
+  # thirdparty
+  - Regex: '^<[^/]+>$'
+    Priority: 3
 ---

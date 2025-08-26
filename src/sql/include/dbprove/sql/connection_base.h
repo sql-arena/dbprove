@@ -79,9 +79,15 @@ public:
   }
 
   /**
-   * Fetch the row count from a table in the most effective way available to the database
-   * @param table To count rows for
-   * @return The count of rows if the table exists, nullopt if the table does not exist
+   * Analyse and create statistics (if needed) on the table.
+   * @param table_name Table to operate on.
+   */
+  void analyse(std::string_view table_name);
+
+  /**
+   * Fetch the row count from a table in the most effective way available to the database.
+   * @param table Table to count rows for.
+   * @return The count of rows if the table exists, `nullopt` if the table does not exist.
    */
   virtual std::optional<RowCount> tableRowCount(const std::string_view table);
 

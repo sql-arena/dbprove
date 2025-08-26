@@ -373,6 +373,17 @@ void generator::TpchText::generate() {
       }
     }
   }
-  PLOGI << "TPC-H input text buffer done!";
 
+  for (size_t o = 0; o < max_generated_text_length; ++o) {
+    assert(generatedText_.c_str()[o] != 0);
+  }
+
+  PLOGI << "TPC-H input text buffer done!";
+}
+
+std::string generator::TpchText::next() {
+  const auto len = lengthDistribution_(gen_);
+
+  const size_t offset = offsetDistribution_.next(max_generated_text_length - len);
+  return generatedText_.substr(offset, len);
 }

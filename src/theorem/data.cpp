@@ -2,6 +2,9 @@
 #include <dbprove/ux/ux.h>
 #include "query.h"
 #include <string>
+#include <sstream>
+
+#include <internal/basic_csv_parser.hpp>
 
 namespace dbprove::theorem {
 void DataExplain::render(Proof& proof) {
@@ -27,7 +30,7 @@ void DataExplain::render(Proof& proof) {
   proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
   auto mis_estimates = plan->misEstimations();
   ux::EstimationStatTable(out, mis_estimates);
-  // For CSV dump, it looks better to collect all operations together
+  // For CSV dump, it looks better to collect all operations together.
   std::ranges::sort(mis_estimates,
                     [](const auto& lhs, const auto& rhs) {
                       if (lhs.operation != rhs.operation) {
@@ -40,6 +43,10 @@ void DataExplain::render(Proof& proof) {
     const auto name = "Mis-estimate " + std::string(to_string(operation)) + " " + magnitude.to_string();
     proof.writeCsv(name, std::to_string(count), Unit::Magnitude);
   }
+  const std::string csv_plan;
+  std::ostringstream plan_stream(csv_plan);
+  plan->render(plan_stream, 500);
+  proof.writeCsv("Plan", csv_plan, Unit::Plan);
 }
 
 void DataQuery::render(Proof& proof) {

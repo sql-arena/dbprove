@@ -12,6 +12,3 @@ inline int operation_sort(const std::string& operation) {
   return operation_priority.at(operation);
 }
 
-inline std::vector<std::string> operation_order() {
-  return {"Join", "Aggregate", "Sort", "Scan"};
-}

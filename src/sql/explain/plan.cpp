@@ -23,7 +23,7 @@ RowCount countRowsByNode(Node& node, const NodeType type) {
   return cutoff(result);
 }
 
-std::string order_to_string(int8_t magnitude) {
+std::string order_to_string(const int8_t magnitude) {
   return std::to_string(1 << std::abs(magnitude)) + "x";
 }
 
@@ -94,8 +94,9 @@ RowCount Plan::rowsFiltered() const {
 int8_t estimateOrderOfMagnitude(double estimate, double actual) {
   actual = std::max(actual, 1.0);
   estimate = std::max(estimate, 1.0);
-  const auto error = (estimate > actual) ? estimate / actual : -actual / estimate;
+  const auto error = (estimate > actual) ? estimate / actual : actual / estimate;
   auto magnitude = static_cast<int8_t>(std::log2(error));
+  magnitude = (estimate > actual) ? magnitude : -magnitude;
   magnitude = std::min(magnitude, Plan::MisEstimation::INFINITE_OVER);
   magnitude = std::max(magnitude, Plan::MisEstimation::INFINITE_UNDER);
   return magnitude;
@@ -104,26 +105,35 @@ int8_t estimateOrderOfMagnitude(double estimate, double actual) {
 std::vector<Plan::MisEstimation> Plan::misEstimations() const {
   /* Construct mis estimation map, All combination must exist for easy rendering */
   std::map<Operation, std::map<int8_t, MisEstimation>> mis_estimation;
-  for (auto& op : {Operation::JOIN, Operation::SORT, Operation::FILTER, Operation::AGGREGATE}) {
+  for (auto& op : {Operation::Join,
+                   Operation::Aggregate,
+                   Operation::Sort,
+                   Operation::Filter,
+                   Operation::Scan}) {
     mis_estimation.insert({op, {}}).first;
     for (int8_t magnitude = MisEstimation::INFINITE_UNDER;
          magnitude <= MisEstimation::INFINITE_OVER;
          magnitude++) {
       mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
-    };
+    }
   }
 
   for (const auto& n : planTree().depth_first()) {
     auto magnitude = estimateOrderOfMagnitude(n.rows_estimated, n.rows_actual);
     switch (n.type) {
       case NodeType::JOIN:
-        mis_estimation[Operation::JOIN][magnitude].count++;
+        mis_estimation[Operation::Join][magnitude].count++;
         break;
       case NodeType::SORT:
-        mis_estimation[Operation::SORT][magnitude].count++;
+        mis_estimation[Operation::Sort][magnitude].count++;
         break;
       case NodeType::GROUP_BY:
-        mis_estimation[Operation::AGGREGATE][magnitude].count++;
+        mis_estimation[Operation::Aggregate][magnitude].count++;
+      case NodeType::SCAN:
+        mis_estimation[Operation::Scan][magnitude].count++;
+        break;
+      case NodeType::SELECTION:
+        mis_estimation[Operation::Filter][magnitude].count++;
         break;
       default:
         break;
@@ -131,8 +141,8 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
   }
   std::vector<MisEstimation> sorted_mis_estimations;
   for (const auto& inner_map : mis_estimation | std::views::values) {
-    for (const auto& mis_estimation : inner_map | std::views::values) {
-      sorted_mis_estimations.push_back(mis_estimation);
+    for (const auto& e : inner_map | std::views::values) {
+      sorted_mis_estimations.push_back(e);
     }
   }
   std::sort(sorted_mis_estimations.begin(), sorted_mis_estimations.end());
@@ -148,17 +158,15 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     Node* node;
     std::string indent;
   };
-
   out << rang::style::bold;
   out << "Estimate" << divider;
   out << "  Actual" << divider;
   out << "Operator";
   out << rang::style::reset << std::endl;
-  // Remaining length after we have rendered actual/esimate and dividers
-  const auto node_width = max_width - 2 * 10 - divider.size();
 
   std::vector<Frame> parent_split_nodes;
   for (auto& node : plan_tree->depth_first()) {
+    const auto used_before = out.tellp();
     /* Estimates/actuals */
     out << dbprove::common::PrettyHumanCount(node.rowsEstimated()) << divider;
     out << dbprove::common::PrettyHumanCount(node.rowsActual()) << divider;
@@ -179,22 +187,25 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     /* Render ancestor lines */
     for (size_t i = 0; i < parent_split_nodes.size(); ++i) {
       const auto& ancestor = parent_split_nodes[i].node;
-      auto& indent = parent_split_nodes[i].indent;
+      auto& current_indent = parent_split_nodes[i].indent;
       if (ancestor->type == NodeType::JOIN && &node == ancestor->firstChild()) {
         out << "│└";
       } else if (ancestor->type == NodeType::UNION && &node == ancestor->lastChild()) {
         out << "└─";
-        indent = "  "; // Last children of UNION must just be indented
+        current_indent = "  "; // Last children of UNION must just be indented
       } else if (ancestor->type == NodeType::UNION && &node.parent() == ancestor) {
         out << "├─";
       } else {
-        out << indent;
+        out << current_indent;
       }
     }
 
     if (node.children().size() > 1) {
       parent_split_nodes.push_back({&node, "│ "});
     }
+
+    // Remaining length in the terminal
+    const auto node_width = max_width - (out.tellp() - used_before);
 
     // Finally, the node itself
     switch (mode) {

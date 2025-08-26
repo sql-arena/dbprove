@@ -231,10 +231,6 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     if (node_json.contains("Alias")) {
       relation_name = node_json["Alias"].get<std::string>();
     }
-    if (pg_node_type == "Index Scan" && node_json.contains("Actual Loops")) {
-      // This is a loop driven index scan. For reasons, PG reports actual rows as zero for this case
-      actual_override = node_json["Actual Loops"].get<double>();
-    }
 
     node = std::make_unique<Scan>(relation_name);
   } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
@@ -271,6 +267,10 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
         join_condition.back() == ')') {
       join_condition = join_condition.substr(1, join_condition.length() - 2);
     }
+    if (join_condition.empty()) {
+      // PG does not use the notion of cross join, it simply has loop join without conditions.
+      join_type = Join::Type::CROSS;
+    }
 
     node = std::make_unique<Join>(join_type, join_strategy, join_condition);
   } else if (pg_node_type == "Sort") {
@@ -298,7 +298,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
   } else if (pg_node_type == "Aggregate") {
     std::vector<Column> group_keys;
 
-    auto group_strategy = GroupBy::Strategy::SIMPLE;
+    auto group_strategy = GroupBy::Strategy::UNKNOWN;
     if (node_json.contains("Strategy")) {
       const auto strategy = node_json["Strategy"].get<std::string>();
       if (strategy == "Hashed") {
@@ -362,6 +362,25 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     node->rows_actual = node_json["Actual Rows"].get<double>();
   }
 
+  /* PG can loop over the same sub-plan multiple times.
+   * It does not estimate the expected loops, but it does report the actual loops during ANALYSE.
+   * Because the sub-plan is run multiple times, the row counts we are dealing with going through
+   * the node is : (#loops * #rows)
+   *
+   * Since we don't want to unfairly skew estimate vs actual, we multiply both by the loop count.
+   *
+   * The `rows_actual` is the AVERAGE per loop.
+   * Instead of using a double for an average value, like a sane human, Postgres uses an integer.
+   * That then means that the value can be rounded DOWN to zero - misrepresenting the actual. For those cases
+   * we then have to fall back to the loop count.
+   */
+  if (node_json.contains("Actual Loops")) {
+    auto loop_count = node_json["Actual Loops"].get<double>();
+    node->rows_actual *= loop_count;
+    node->rows_actual = std::max(node->rows_actual, loop_count);
+    node->rows_estimated *= loop_count;
+  }
+
   // Filter conditions
   if (node_json.contains("Filter")) {
     node->filter_condition = node_json["Filter"].get<std::string>();
@@ -416,7 +435,7 @@ void flipJoins(Node& root) {
   for (auto& node : root.depth_first()) {
     if (node.type == NodeType::JOIN) {
       const auto join_node = static_cast<Join*>(&node);
-      if (join_node->strategy == Join::Strategy::LOOP) {
+      if (join_node->strategy == Join::Strategy::HASH) {
         join_nodes.push_back(&node);
       }
     }

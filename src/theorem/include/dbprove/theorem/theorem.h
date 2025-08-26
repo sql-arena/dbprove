@@ -87,7 +87,7 @@ namespace dbprove::theorem
 
         std::unique_ptr<sql::explain::Plan> plan;
 
-        void render(Proof& out) override;
+        void render(Proof& proof) override;
     };
 
 
@@ -108,7 +108,8 @@ namespace dbprove::theorem
     {
         Rows,
         COUNT,
-        Magnitude
+        Magnitude,
+        Plan
     };
 
     constexpr inline std::string_view to_string(const Unit unit) { return magic_enum::enum_name(unit); }

@@ -1,5 +1,7 @@
 #include "join.h"
 
+#include "glyphs.h"
+
 namespace sql::explain {
 std::string Join::compactSymbolic() const {
   static const std::map<Type, const char*> join_symbols = {
@@ -39,7 +41,9 @@ std::string Join::renderMuggle(size_t max_width) const {
   std::string result = join_name.at(type);
   result += " JOIN ";
   result += strategy_name.at(strategy);
-  result += " ON " + condition;
+  result += " ON ";
+  max_width -= result.size();
+  result += ellipsify(condition, max_width);
   return result;
 }
 }

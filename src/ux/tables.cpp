@@ -33,24 +33,38 @@ std::string order_to_string(int8_t magnitude) {
 void EstimationStatTable(std::ostream& out, const std::vector<sql::explain::Plan::MisEstimation>& mis_estimations) {
   using namespace sql::explain;
   static const std::map<uint8_t, Colour> magnitude_colour = {
-      {5, Colour::ORANGE},
-      {4, Colour::ORANGE},
-      {3, Colour::YELLOW},
+      {5, Colour::RED},
+      {4, Colour::RED},
+      {3, Colour::ORANGE},
       {2, Colour::YELLOW},
       {1, Colour::GREEN},
       {0, Colour::GREEN}
   };
   char_table table;
   table.set_border_style(FT_SOLID_ROUND_STYLE);
+  // Calculate the header based on the unique operations we received
   table << header << "Magnitude";
-  for (const auto& o : operation_order()) {
-    table << o;
+  auto last_operation_type = Operation::UNKNOWN;
+  for (const auto& e : mis_estimations) {
+    if (e.operation != last_operation_type) {
+      table << to_string(e.operation);
+    }
+    last_operation_type = e.operation;
   }
   table[0].set_cell_text_style(text_style::bold);
 
+  // We want each magnitude to be its own line -> change sort order
+  std::vector<Plan::MisEstimation> by_magnitude = mis_estimations;
+  std::ranges::sort(by_magnitude,
+                    [](const Plan::MisEstimation& a, const Plan::MisEstimation& b) {
+                      if (a.magnitude.value != b.magnitude.value) {
+                        return a.magnitude.value < b.magnitude.value;
+                      }
+                      return a.operation < b.operation;
+                    });
   auto last_magnitude = Plan::MisEstimation::INFINITE_OVER;
   unsigned row_number = 0;
-  for (auto& e : mis_estimations) {
+  for (auto& e : by_magnitude) {
     if (e.magnitude.value != last_magnitude) {
       table << endr;
       table << e.magnitude.to_string();

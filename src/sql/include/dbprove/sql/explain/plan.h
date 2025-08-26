@@ -12,7 +12,7 @@ namespace sql::explain
      */
     enum class Operation
     {
-        JOIN = 0, AGGREGATE = 1, SORT = 2, SCAN = 3, FILTER = 4,
+        Join = 0, Aggregate = 1, Sort = 2, Scan = 3, Filter = 4, UNKNOWN = 99
     };
 
     inline std::string_view to_string(const Operation op) { return magic_enum::enum_name(op); }
@@ -45,10 +45,10 @@ namespace sql::explain
 
             bool operator<(const MisEstimation& other) const
             {
-                if (magnitude.value != other.magnitude.value) {
-                    return magnitude.value < other.magnitude.value;
+                if (operation != other.operation) {
+                    return operation < other.operation;
                 }
-                return operation < other.operation;
+                return magnitude.value < other.magnitude.value;
             }
         };
 

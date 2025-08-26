@@ -12,6 +12,7 @@ add_library(${_targetName} STATIC
         explain/node.cpp
         explain/cutoff.h
         explain/join.cpp
+        explain/glyphs.h
 )
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)

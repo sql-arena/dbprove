@@ -110,6 +110,63 @@ void tpch_q11(Proof& proof) {
   runner.serialExplain(Query(resource::q11_sql), proof);
 }
 
+void tpch_q12(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.lineitem")
+       .ensure("tpch.orders");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q12_sql), proof);
+}
+
+void tpch_q13(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.customer")
+       .ensure("tpch.orders");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q13_sql), proof);
+}
+
+void tpch_q14(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.lineitem")
+       .ensure("tpch.part");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q14_sql), proof);
+}
+
+void tpch_q15(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.supplier")
+       .ensure("tpch.lineitem");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q14_sql), proof);
+}
+
+void tpch_q16(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.partsupp")
+       .ensure("tpch.part");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q16_sql), proof);
+}
+
+void tpch_q17(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.lineitem")
+       .ensure("tpch.part");
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q17_sql), proof);
+}
+
+void tpch_q18(Proof& proof) {
+  proof.ensureSchema("tpch")
+       .ensure("tpch.orders")
+       .ensure("tpch.lineitem")
+       .ensure("tpch.customer");;
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q18_sql), proof);
+}
+
 
 void tpch_q19(Proof& proof) {
   proof.ensure("tpch.lineitem").ensure("tpch.part");
@@ -118,8 +175,40 @@ void tpch_q19(Proof& proof) {
 }
 
 
+void tpch_q20(Proof& proof) {
+  proof
+      .ensureSchema("tpch")
+      .ensure("tpch.supplier")
+      .ensure("tpch.nation")
+      .ensure("tpch.partsupp")
+      .ensure("tpch.lineitem")
+      .ensure("tpch.part");
+  Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q20_sql), proof);
+}
+
+void tpch_q21(Proof& proof) {
+  proof
+      .ensureSchema("tpch")
+      .ensure("tpch.lineitem")
+      .ensure("tpch.orders")
+      .ensure("tpch.supplier")
+      .ensure("tpch.nation");
+  Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q21_sql), proof);
+}
+
+void tpch_q22(Proof& proof) {
+  proof
+      .ensureSchema("tpch")
+      .ensure("tpch.customer")
+      .ensure("tpch.orders");
+  Runner runner(proof.factory());
+  runner.serialExplain(Query(resource::q22_sql), proof);
+}
+
 void register_tpch(unsigned query_number, const TheoremFunction& func) {
-  std::string q = std::format("Q{:02}", query_number);
+  const std::string q = std::format("Q{:02}", query_number);
   addTheorem(Type::PLAN,
              "PLAN-TPCH-" + q,
              "TPC-H " + q + " Analysis",
@@ -144,7 +233,17 @@ void init() {
   register_tpch(9, tpch_q09);
   register_tpch(10, tpch_q10);
   register_tpch(11, tpch_q11);
+  register_tpch(12, tpch_q12);
+  register_tpch(13, tpch_q13);
+  register_tpch(14, tpch_q14);
+  register_tpch(15, tpch_q15);
+  register_tpch(16, tpch_q16);
+  register_tpch(17, tpch_q17);
+  register_tpch(18, tpch_q18);
   register_tpch(19, tpch_q19);
+  register_tpch(20, tpch_q20);
+  register_tpch(21, tpch_q21);
+  register_tpch(22, tpch_q22);
 
   is_initialised = true;
 }

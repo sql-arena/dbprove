@@ -3,10 +3,10 @@
   <component name="CsvFileAttributes">
     <option name="attributeMap">
       <map>
-        <entry key="\AIAssistantSnippet.">
+        <entry key="C:\temp\table_data\tpch.supplier.csv">
           <value>
             <Attribute>
-              <option name="separator" value="," />
+              <option name="separator" value="|" />
             </Attribute>
           </value>
         </entry>

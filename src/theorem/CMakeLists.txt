@@ -40,8 +40,17 @@ target_embed_files(${_targetName} SQL_FILES
         query/tpch/q09.sql
         query/tpch/q10.sql
         query/tpch/q11.sql
-
+        query/tpch/q12.sql
+        query/tpch/q13.sql
+        query/tpch/q14.sql
+        query/tpch/q15.sql
+        query/tpch/q16.sql
+        query/tpch/q17.sql
+        query/tpch/q18.sql
         query/tpch/q19.sql
+        query/tpch/q20.sql
+        query/tpch/q21.sql
+        query/tpch/q22.sql
 )
 
 find_package(unofficial-vincentlaucsb-csv-parser CONFIG REQUIRED)

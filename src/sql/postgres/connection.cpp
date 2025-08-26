@@ -107,7 +107,9 @@ const sql::ConnectionBase::TypeMap& sql::postgres::Connection::typeMap() const {
   return map;
 }
 
-sql::postgres::Connection::~Connection() = default;
+sql::postgres::Connection::~Connection() {
+  PQfinish(impl_->conn);
+}
 
 void sql::postgres::Connection::execute(const std::string_view statement) {
   [[maybe_unused]] auto s = impl_->executeRaw(statement);
@@ -233,11 +235,31 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     }
 
     node = std::make_unique<Scan>(relation_name);
-  } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
+  } else if (pg_node_type == "Bitmap Heap Scan" || pg_node_type == "Bitmap Index Scan") {
+    /* PG does a bitmap intersection of indexes using e special operators.
+     * They can be chained together and be arbitrarily nested
+     * We just care about the very top one as that is the actual outcome of the scan.
+     */
+    std::string relation_name;
+    if (node_json.contains("Relation Name")) {
+      relation_name = node_json["Relation Name"].get<std::string>();
+    }
+    if (node_json.contains("Alias")) {
+      relation_name = node_json["Alias"].get<std::string>();
+    }
+    if (relation_name.empty()) {
+      // One of the lower bitmap operations, we already rendered the scan
+      return nullptr;
+    }
+    node = std::make_unique<Scan>(relation_name);
+  } else if (pg_node_type == "Hash Join"
+             || pg_node_type == "Nested Loop"
+             || pg_node_type == "Merge Join") {
     std::string join_condition;
 
     Join::Strategy join_strategy;
     if (pg_node_type == "Hash Join") {
+      // We treat
       join_strategy = Join::Strategy::HASH;
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
@@ -404,6 +426,16 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
   }
 
   auto node = createNodeFromPgType(node_json);
+  const auto node_type = node_json["Node Type"].get<std::string>();
+  if (node == nullptr
+      && (node_type == "BitmapAnd"
+          || node_type == "Bitmap Index Scan"
+          || node_type == "Bitmap Heap Scan"
+      )
+  ) {
+    // We already handled the first bitmap operation.
+    return nullptr;
+  }
   while (node == nullptr) {
     if (!node_json.contains("Plans")) {
       throw std::runtime_error(
@@ -418,8 +450,21 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
   }
 
   if (node_json.contains("Plans") && node_json["Plans"].is_array()) {
-    for (auto& child_json : node_json["Plans"]) {
+    const auto plans = node_json["Plans"];
+    for (size_t i = 0; i < plans.size(); ++i) {
+      auto child_json = plans[i];
       auto child_node = buildExplainNode(child_json);
+      if (child_node == nullptr) {
+        continue;
+      }
+      if (child_node->type == NodeType::GROUP_BY && i != plans.size() - 1) {
+        /* Postgres init plans are handled as aggregate of other plans!
+         * Which means: Aggregate can have MORE than only child!
+         * We don't care about these init plans, skip past them if we must and just take the last plan
+         * under the aggregate.
+         */
+        continue;
+      }
       node->addChild(std::move(child_node));
     }
   }
@@ -469,7 +514,6 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
   auto root_node = buildExplainNode(plan_json);
 
   if (!root_node) {
-    // TODO: Add the plan here
     throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan from ");
   }
 

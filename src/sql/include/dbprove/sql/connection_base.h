@@ -105,7 +105,7 @@ public:
 
   const Credential credential;
 
-  void close() { closed_ = true; };
+  virtual void close() { closed_ = true; };
 
   std::string mapTypes(std::string_view statement) const;
 

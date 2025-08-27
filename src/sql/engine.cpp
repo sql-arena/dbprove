@@ -150,15 +150,12 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
   }
   switch (type()) {
     case Type::Yellowbrick:
-      password = getEnvVar("YBPASSWORD");
+      password = getEnvVar("YBPASSWORD").value_or("yellowbrick");
       break;
     default:
       break;
   }
-  if (password.has_value()) {
-    return password.value();
-  }
-  return "";
+  return password.value_or("");
 }
 
 std::string Engine::defaultToken(std::optional<std::string> token) const {

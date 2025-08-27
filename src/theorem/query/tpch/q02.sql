@@ -25,7 +25,7 @@ WHERE p_size = 25
                            ON ps_suppkey = s_suppkey
                        INNER JOIN tpch.nation AS n_min
                            ON s_nationkey = n_nationkey
-                       INNER JOIN region AS r_min
+                       INNER JOIN tpch.region AS r_min
                            ON n_regionkey = r_regionkey
                        WHERE ps_partkey = p_partkey
                          AND r_name = 'EUROPE')

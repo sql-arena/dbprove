@@ -4,6 +4,7 @@
 #include "utopia/connection.h"
 #include "msodbc/connection.h"
 #include "databricks/connection.h"
+#include "yellowbrick/connection.h"
 
 namespace sql {
 std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
@@ -21,7 +22,7 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       if (!std::holds_alternative<CredentialPassword>(credential_)) {
         throw std::invalid_argument("Yellowbrick engine requires a password credential");
       }
-      return std::make_unique<postgres::Connection>(std::get<CredentialPassword>(credential_), engine_);
+      return std::make_unique<yellowbrick::Connection>(std::get<CredentialPassword>(credential_), engine_);
     case Engine::Type::SQLServer:
       return std::make_unique<msodbc::Connection>(credential_, engine_);
     case Engine::Type::DuckDB:

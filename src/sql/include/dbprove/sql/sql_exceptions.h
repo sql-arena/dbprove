@@ -89,7 +89,7 @@ public:
       const Credential& credential,
       const std::string& message)
     : Exception(SqlState::CONNECTION_08,
-                "When trying to access" + render_credential(credential) + " the connector threw:\n" + message) {
+                "When trying to access: " + render_credential(credential) + " the connector threw:\n" + message) {
   }
 };
 
@@ -202,6 +202,13 @@ class ProtocolException final : public Exception {
 public:
   explicit ProtocolException(const std::string& error)
     : Exception(SqlState::CONNECTION_08, error) {
+  }
+};
+
+class ExplainException final : public Exception {
+public:
+  explicit ExplainException(const std::string& error)
+    : Exception(SqlState::SYNTAX_ERROR_42, error) {
   }
 };
 }

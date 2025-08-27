@@ -22,7 +22,8 @@ public:
     : connection(connection)
     , credential(credential) {
     std::string connection_string =
-        "dbname=" + credential.database +
+        "host=" + credential.host +
+        " dbname=" + credential.database +
         " user=" + credential.username +
         " port=" + std::to_string(credential.port);
     if (credential.password.has_value()) {

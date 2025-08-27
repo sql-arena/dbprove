@@ -7,7 +7,7 @@ namespace sql::postgres
 {
     class Result;
 
-    class Row final : public RowBase
+    class Row : public RowBase
     {
         PGresult* result_;
         int row_number_ = 0; ///< PG uses signed integer for row number... Odd...

@@ -1,10 +1,40 @@
 #include "engine.h"
 
+#include "credential.h"
 #include <dbprove/common/config.h>
 
 namespace sql {
 /// @brief Some database engine dont have a concept, so we just return this
 static const std::string kDummyValue = "dummy";
+
+
+Engine::Engine(const std::string_view name) {
+  const static std::map<std::string_view, Type> known_names = {
+      {"mariadb", Type::MariaDB},
+      {"mysql", Type::MariaDB},
+      {"postgresql", Type::Postgres},
+      {"postgres", Type::Postgres},
+      {"azurefabricwarehouse", Type::SQLServer},
+      {"pg", Type::Postgres},
+      {"sqlite", Type::SQLite},
+      {"sqlserver", Type::SQLServer},
+      {"duckdb", Type::DuckDB},
+      {"duck", Type::DuckDB},
+      {"utopia", Type::Utopia},
+      {"databricks", Type::Databricks},
+      {"utopia", Type::Utopia},
+      {"yellowbrick", Type::Yellowbrick},
+      {"yb", Type::Yellowbrick},
+      {"ybd", Type::Yellowbrick}
+  };
+
+  const std::string name_lower = to_lower(name);
+  if (!known_names.contains(name_lower)) {
+    throw std::runtime_error("Engine '" + std::string(name) + "' not found");
+  }
+  type_ = known_names.at(name_lower);
+}
+
 
 std::string Engine::defaultDatabase(std::optional<std::string> database) const {
   if (database.has_value()) {
@@ -17,6 +47,13 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
         return warehouse_id.value();
       }
       break;
+    }
+    case Type::Yellowbrick: {
+      const auto yb_database = getEnvVar("YBDATABASE");
+      if (yb_database.has_value()) {
+        return yb_database.value();
+      }
+      return "yellowbrick";
     }
     case Type::DuckDB:
       return "duck.db";
@@ -43,12 +80,12 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       break;
     }
     case Type::Postgres: {
-      host = getEnvVar("PGHOST");
-      if (!host) {
-        host = "localhost";
-      }
+      host = getEnvVar("PGHOST").value_or("localhost");
       break;
     }
+    case Type::Yellowbrick:
+      host = getEnvVar("YBHOST").value_or("localhost");
+      break;
     case Type::DuckDB:
       return "localhost";
     default:
@@ -72,6 +109,10 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
   switch (type()) {
     case Type::Postgres:
       return 5432;
+    case Type::Yellowbrick: {
+      const auto yb_port = getEnvVar("YBPORT").value_or("5432");
+      return std::stoi(yb_port);
+    }
     case Type::SQLServer:
       return 1433;
     case Type::Databricks:
@@ -91,21 +132,33 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
 std::string Engine::defaultUsername(std::optional<std::string> username) const {
   switch (type()) {
     case Type::Postgres:
-      username = getEnvVar("PGUSER");
-      if (!username) {
-        username = "postgres";
-      }
+      username = getEnvVar("PGUSER").value_or("postgres");
       break;
-    case Type::Yellowbrick:
-      username = getEnvVar("YB_USER");
-      if (!username) {
-        username = "yellowbrick";
-      }
+    case Type::Yellowbrick: {
+      username = getEnvVar("YBUSER").value_or("yellowbrick");
+      return username.value();
+    }
     case Type::DuckDB:
       return "";
-      break;
   }
   return username.value_or("");
+}
+
+std::string Engine::defaultPassword(std::optional<std::string> password) const {
+  if (password.has_value()) {
+    return password.value();
+  }
+  switch (type()) {
+    case Type::Yellowbrick:
+      password = getEnvVar("YBPASSWORD");
+      break;
+    default:
+      break;
+  }
+  if (password.has_value()) {
+    return password.value();
+  }
+  return "";
 }
 
 std::string Engine::defaultToken(std::optional<std::string> token) const {
@@ -125,5 +178,56 @@ std::string Engine::defaultToken(std::optional<std::string> token) const {
     return token.value();
   }
   return token.value_or("");
+}
+
+
+Credential Engine::parseCredentials(
+    const std::string& host,
+    const uint16_t port,
+    const std::string& database,
+    const std::optional<std::string>& username,
+    const std::optional<std::string>& password,
+    const std::optional<std::string>& token) const {
+  const auto engine_name = name();
+
+  switch (type()) {
+    case Type::MariaDB:
+    case Type::Postgres:
+    case Type::SQLServer:
+    case Type::Yellowbrick:
+    case Type::Oracle: {
+      if (!username) {
+        throw std::invalid_argument("Username is required for " + engine_name);
+      }
+      return sql::CredentialPassword(host, database, port, username.value(), password);
+    }
+    case Type::Utopia:
+      return sql::CredentialNone();
+    case Type::DuckDB:
+      return sql::CredentialFile(database);
+    case Type::Databricks: {
+      if (!token) {
+        throw std::invalid_argument("Token is required for " + engine_name);
+      }
+      return sql::CredentialAccessToken(*this, host, database, token.value());
+    }
+  }
+  throw std::invalid_argument("Cannot generate credentials for engine: " + engine_name);
+}
+
+std::string Engine::name() const {
+  const static std::map<Type, std::string_view> canonical_names = {
+      {Type::MariaDB, "MySQL"},
+      {Type::Postgres, "PostgreSQL"},
+      {Type::SQLite, "SQLite"},
+      {Type::Utopia, "Utopia"},
+      {Type::DuckDB, "DuckDB"},
+      {Type::Databricks, "Databricks"},
+      {Type::Yellowbrick, "Yellowbrick"}
+  };
+  if (!canonical_names.contains(type())) {
+    throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");
+  }
+  return std::string(canonical_names.at(type()));
 }
 }

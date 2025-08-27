@@ -1,7 +1,7 @@
-set(_targetName "dbprove_boilerplate_sql")
+set(_targetName "dbprove_yellowbrick_sql")
 
 add_library(${_targetName} STATIC)
-add_library(dbprove::sql::boilerplate ALIAS ${_targetName})
+add_library(dbprove::sql::yellowbrick ALIAS ${_targetName})
 
 target_sources(${_targetName}
         PRIVATE
@@ -10,10 +10,12 @@ target_sources(${_targetName}
         row.cpp
 )
 
+find_package(pugixml CONFIG REQUIRED)
 target_link_libraries(${_targetName}
         PRIVATE
         dbprove::sql
         dbprove::sql::driver
+        dbprove::sql::postgres
+        pugixml::shared
+        pugixml::pugixml
 )
-
-# TODO: Find packages specific to driver and link them (public linking) to the library

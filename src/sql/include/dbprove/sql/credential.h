@@ -1,9 +1,11 @@
 #pragma once
-#include "engine.h"
+#include <optional>
 #include <string>
 #include <variant>
 
 namespace sql {
+class Engine;
+
 class CredentialFile {
 public:
   const std::string path;
@@ -32,7 +34,6 @@ public:
     , username(std::move(username))
     , password(std::move(password)) {
   }
-
 };
 
 /**
@@ -56,12 +57,12 @@ public:
  */
 class CredentialAccessToken {
 public:
-  explicit CredentialAccessToken(Engine engine, std::string endpoint_url, std::string database, std::string token);
-  CredentialAccessToken(Engine engine);
+  explicit CredentialAccessToken(const Engine& engine, std::string endpoint_url, std::string database,
+                                 std::string token);
+  explicit CredentialAccessToken(const Engine& engine);
   const std::string token;
   const std::string database;
   const std::string endpoint_url;
-  const Engine engine;
 };
 
 

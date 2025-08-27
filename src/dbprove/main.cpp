@@ -47,6 +47,7 @@ sql::Credential parseCredentials(
       case sql::Engine::Type::MariaDB:
       case sql::Engine::Type::Postgres:
       case sql::Engine::Type::SQLServer:
+      case sql::Engine::Type::Yellowbrick:
       case sql::Engine::Type::Oracle: {
         if (!username) {
           throw std::invalid_argument("Username is required for " + engine_name);
@@ -127,6 +128,7 @@ int main(int argc, char** argv) {
   host = engine.defaultHost(host);
   port = engine.defaultPort(port);
   username = engine.defaultUsername(username);
+  password = engine.defaultPassword(password);
   token = engine.defaultToken(token);
 
   PLOGI << "Using engine: " << engine.name();
@@ -135,13 +137,13 @@ int main(int argc, char** argv) {
   PLOGI << "  database  : " << database.value();
 
   auto credentials =
-      parseCredentials(engine,
-                       host.value(),
-                       port,
-                       database.value(),
-                       username,
-                       password,
-                       token);
+      engine.parseCredentials(
+          host.value(),
+          port,
+          database.value(),
+          username,
+          password,
+          token);
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
 

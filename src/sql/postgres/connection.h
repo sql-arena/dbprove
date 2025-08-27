@@ -3,7 +3,7 @@
 
 namespace sql::postgres
 {
-  class Connection final : public ConnectionBase
+  class Connection : public ConnectionBase
   {
     /**
      * @note: Use the Pimpl Pattern here to avoid polluting the main namespace and to keep all

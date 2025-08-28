@@ -14,6 +14,7 @@ enum class NodeType {
   SELECTION,
   DISTRIBUTE,
   LIMIT,
+  SEQUENCE,
   UNKNOWN
 };
-}  // namespace sql::explain
+} // namespace sql::explain

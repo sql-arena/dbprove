@@ -279,9 +279,9 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
     if (join_type_str.contains("INNER")) {
       join_type = Join::Type::INNER;
     } else if (join_type_str.contains("LEFT")) {
-      join_type = Join::Type::LEFT;
+      join_type = Join::Type::LEFT_OUTER;
     } else if (join_type_str.contains("RIGHT")) {
-      join_type = Join::Type::RIGHT;
+      join_type = Join::Type::RIGHT_OUTER;
     } else if (join_type_str.contains("FULL")) {
       join_type = Join::Type::FULL;
     }

@@ -2,11 +2,11 @@
 
 #include "explain/column.h"
 #include "explain/node.h"
-#include "sql_exceptions.h"
+
 
 namespace sql::explain
 {
-  class Sort : public Node
+  class Sort final : public Node
   {
   public:
     explicit Sort(const std::vector<Column>& columns_sorted)

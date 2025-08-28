@@ -1,7 +1,8 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
 
 set(_targetName "dbprove_sql")
-add_library(${_targetName} STATIC)
+add_library(${_targetName} STATIC
+        explain/sequence.h)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 

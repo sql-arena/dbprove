@@ -6,8 +6,8 @@ namespace sql::explain {
 std::string Join::compactSymbolic() const {
   static const std::map<Type, const char*> join_symbols = {
       {Type::INNER, "⋈"},
-      {Type::LEFT, "⟕"},
-      {Type::RIGHT, "⟖"},
+      {Type::LEFT_OUTER, "⟕"},
+      {Type::RIGHT_OUTER, "⟖"},
       {Type::FULL, "⟗"},
       {Type::CROSS, "×"}
   };
@@ -30,8 +30,14 @@ std::string Join::compactSymbolic() const {
 std::string Join::renderMuggle(size_t max_width) const {
   static const std::map<Type, const char*> join_name = {
       {Type::INNER, "INNER"},
-      {Type::LEFT, "LEFT"},
-      {Type::RIGHT, "RIGHT"},
+      {Type::LEFT_SEMI_INNER, "LEFT SEMI"},
+      {Type::LEFT_SEMI_OUTER, "LEFT SEMI"},
+      {Type::LEFT_OUTER, "LEFT OUTER"},
+      {Type::LEFT_ANTI, "LEFT ANTI"},
+      {Type::RIGHT_OUTER, "RIGHT OUTER"},
+      {Type::RIGHT_SEMI_INNER, "RIGHT SEMI INNER"},
+      {Type::RIGHT_SEMI_OUTER, "RIGHT SEMI OUTER"},
+      {Type::RIGHT_ANTI, "RIGHT ANTI"},
       {Type::FULL, "FULL"},
       {Type::CROSS, "CROSS"}
   };

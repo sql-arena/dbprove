@@ -13,7 +13,17 @@ namespace sql::explain
 
     enum class Type
     {
-      INNER, LEFT, RIGHT, FULL, CROSS
+      INNER,
+      LEFT_OUTER,
+      LEFT_SEMI_INNER,
+      LEFT_SEMI_OUTER,
+      LEFT_ANTI,
+      RIGHT_OUTER,
+      RIGHT_SEMI_INNER,
+      RIGHT_SEMI_OUTER,
+      RIGHT_ANTI,
+      FULL,
+      CROSS
     };
 
     explicit Join(const Type type, const Strategy join_strategy, const std::string& condition)

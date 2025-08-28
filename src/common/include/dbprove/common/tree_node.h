@@ -117,6 +117,8 @@ class TreeNode {
   }
 
 public:
+  virtual ~TreeNode() = default;
+
   TreeNode()
     : parent_(static_cast<T*>(this))
     , id_(currentId_++) {

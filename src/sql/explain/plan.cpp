@@ -174,7 +174,7 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     /* Coming back up the tree. If I am the last descendant of a union, I need to have my indentation removed */
     if (!parent_split_nodes.empty() && node.depth() < parent_split_nodes.back().node->depth()) {
       const auto parent_type = parent_split_nodes.back().node->type;
-      if (parent_type == NodeType::UNION) {
+      if (parent_type == NodeType::UNION || parent_type == NodeType::SEQUENCE) {
         parent_split_nodes.pop_back();
       }
     }
@@ -190,10 +190,12 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
       auto& current_indent = parent_split_nodes[i].indent;
       if (ancestor->type == NodeType::JOIN && &node == ancestor->firstChild()) {
         out << "│└";
-      } else if (ancestor->type == NodeType::UNION && &node == ancestor->lastChild()) {
+      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE)
+                 && &node == ancestor->lastChild()) {
         out << "└─";
         current_indent = "  "; // Last children of UNION must just be indented
-      } else if (ancestor->type == NodeType::UNION && &node.parent() == ancestor) {
+      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE)
+                 && &node.parent() == ancestor) {
         out << "├─";
       } else {
         out << current_indent;

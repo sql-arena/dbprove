@@ -5,7 +5,6 @@
 #include <set>
 
 
-
 namespace sql {
 class ConnectionFactory;
 }
@@ -21,7 +20,17 @@ class GeneratorState {
   const std::filesystem::path basePath_;
   static constexpr std::string_view colSeparator_ = "|";
   static constexpr std::string_view rowSeparator_ = "\n";
-  std::set<std::string_view> ready_tables_ = {};
+
+  struct TransparentLess {
+    using is_transparent = void;
+
+    bool operator()(const std::string_view lhs, const std::string_view rhs) const {
+      return lhs < rhs;
+    }
+  };
+
+  std::set<std::string, TransparentLess> ready_tables_ = {};
+
 public:
   explicit GeneratorState(const std::filesystem::path& basePath);
   ~GeneratorState();
@@ -61,10 +70,12 @@ public:
   GeneratedTable& table(std::string_view table_name) const;
   bool contains(std::string_view table_name) const;
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
+
   [[nodiscard]] std::filesystem::path csvPath(const std::string_view table_name) const {
     const std::string file_name = std::string(table_name) + ".csv";
     return basePath_ / file_name;
   }
+
   static constexpr std::string_view columnSeparator() { return colSeparator_; }
   static constexpr std::string_view rowSeparator() { return rowSeparator_; }
 };

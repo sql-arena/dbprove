@@ -2,14 +2,15 @@
 #include <dbprove/sql/sql.h>
 #include <memory>
 #include <cassert>
-#include <join.h>
 #include <regex>
 #include <pugixml.hpp>
-#include <scan.h>
+#include <selection.h>
 #include <set>
-#include <sort.h>
-
+#include "join.h"
+#include "scan.h"
+#include "sort.h"
 #include "group_by.h"
+#include "sequence.h"
 
 namespace sql::explain {
 class GroupBy;
@@ -49,6 +50,9 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
                                                      "columns",
                                                      "column",
                                                      "DISTRIBUTE",
+                                                     "WRITE_TEMP",
+                                                     "WRITE_HASH",
+                                                     "EXPRESSION",
                                                      "partition_stats"};
 
   if (ignore_nodes.contains(yb_node_type)) {
@@ -68,8 +72,18 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
     auto strategy = (strategy_xml == "hash") ? Join::Strategy::HASH : Join::Strategy::LOOP;
     static const std::map<std::string_view, Join::Type> xml2type = {
         {"inner", Join::Type::INNER},
-        {"left", Join::Type::LEFT},
-        {"right", Join::Type::RIGHT},
+        {"left", Join::Type::LEFT_OUTER},
+        {"left outer", Join::Type::LEFT_OUTER},
+        {"right", Join::Type::RIGHT_OUTER},
+        {"right anti", Join::Type::RIGHT_ANTI},
+        {"anti right", Join::Type::RIGHT_ANTI},
+        {"left anti", Join::Type::LEFT_ANTI},
+        {"anti left", Join::Type::LEFT_ANTI},
+        {"right outer", Join::Type::RIGHT_OUTER},
+        {"semi right inner", Join::Type::RIGHT_SEMI_INNER},
+        {"semi right outer", Join::Type::RIGHT_SEMI_OUTER},
+        {"semi left inner", Join::Type::LEFT_SEMI_INNER},
+        {"semi left outer", Join::Type::LEFT_SEMI_OUTER},
         {"full", Join::Type::FULL}
     };
     if (!xml2type.contains(type_xml)) {
@@ -86,6 +100,11 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
   } else if (yb_node_type == "SCAN") {
     const auto table_name = xml_node.attribute("table_name").as_string();
     node = std::make_unique<Scan>(table_name);
+  } else if (yb_node_type == "SEQUENCE") {
+    node = std::make_unique<Sequence>();
+  } else if (yb_node_type == "FILTER") {
+    const auto filter = std::string(xml_node.attribute("criteria").as_string());
+    node = std::make_unique<Selection>(filter);
   }
 
   if (node == nullptr) {

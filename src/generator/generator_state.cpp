@@ -1,5 +1,6 @@
 #include "generator_state.h"
 #include "generated_table.h"
+#include "../sql/msodbc/connection.h"
 #include <dbprove/sql/sql.h>
 #include <plog/Log.h>
 
@@ -23,12 +24,12 @@ void GeneratorState::ensure(const std::string_view table_name, sql::ConnectionFa
 }
 
 void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql::ConnectionFactory& conn) {
-  const auto cn = conn.create();
   for (auto table_name : table_names) {
     sql::checkTableName(table_name);
     if (ready_tables_.contains(table_name)) {
       continue;
     }
+    std::unique_ptr<sql::ConnectionBase> cn = conn.create();
     generate(table_name);
     load(table_name, *cn);
   }
@@ -93,7 +94,7 @@ sql::RowCount GeneratorState::load(const std::string_view table_name, sql::Conne
   PLOGI << "Table: " << table_name
     << " is already in the database with the correct count of: " + std::to_string(existing_rows.value()) + " rows";
 
-  ready_tables_.emplace(table_name);
+  ready_tables_.insert(std::string(table_name));
   return existing_rows.value();
 }
 

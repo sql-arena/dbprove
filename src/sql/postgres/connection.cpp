@@ -364,7 +364,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
   } else if (pg_node_type == "Append") {
     node = std::make_unique<Union>(Union::Type::ALL);
   } else if (pg_node_type == "Merge Append") {
-    /* PG has a special node for distinct unions when the input is sorted */
+    /* PG has a special node for distinct unions when the input is sorted. */
     node = std::make_unique<Union>(Union::Type::DISTINCT);
   } else {
     return nullptr;

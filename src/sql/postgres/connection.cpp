@@ -234,12 +234,11 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     if (node_json.contains("Alias")) {
       relation_name = node_json["Alias"].get<std::string>();
     }
-
     node = std::make_unique<Scan>(relation_name);
   } else if (pg_node_type == "Bitmap Heap Scan" || pg_node_type == "Bitmap Index Scan") {
     /* PG does a bitmap intersection of indexes using e special operators.
      * They can be chained together and be arbitrarily nested
-     * We just care about the very top one as that is the actual outcome of the scan.
+     * We just care about the top one as that is the actual outcome of the scan.
      */
     std::string relation_name;
     if (node_json.contains("Relation Name")) {
@@ -279,8 +278,13 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       // TODO: Parse the strategy into the enum
       auto join_type_json = node_json["Join Type"].get<std::string>();
     }
-    if (node_json.contains("Join Filter") and join_condition.empty()) {
-      join_condition = node_json["Join Filter"].get<std::string>();
+    if (node_json.contains("Join Filter")) {
+      auto condition = node_json["Join Filter"].get<std::string>();
+      if (join_condition.empty()) {
+        join_condition = condition;
+      } else {
+        join_condition.append(" AND ").append(condition);
+      }
     }
     if (node_json.contains("Hash Cond")) {
       join_condition = node_json["Hash Cond"].get<std::string>();

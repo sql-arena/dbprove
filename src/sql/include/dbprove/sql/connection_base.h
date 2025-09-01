@@ -82,7 +82,7 @@ public:
    * Analyse and create statistics (if needed) on the table.
    * @param table_name Table to operate on.
    */
-  void analyse(std::string_view table_name);
+  virtual void analyse(std::string_view table_name);
 
   /**
    * Fetch the row count from a table in the most effective way available to the database.

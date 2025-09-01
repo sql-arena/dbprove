@@ -1,6 +1,6 @@
 /* TPC-H Q21 */
 SELECT s_name, COUNT(*) AS numwait
-FROM lineitem l1
+FROM tpch.lineitem l1
 INNER JOIN tpch.orders
     ON l1.l_orderkey = o_orderkey
 INNER JOIN tpch.supplier

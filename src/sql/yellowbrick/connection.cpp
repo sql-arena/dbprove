@@ -67,7 +67,9 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
   } else if (yb_node_type == "JOIN") {
     const auto strategy_xml = std::string_view(xml_node.attribute("strategy").as_string());
     const auto type_xml = std::string_view(xml_node.attribute("type").as_string());
-    const auto condition_xml = std::string(xml_node.attribute("criteria").as_string());
+    auto condition_xml = std::string(xml_node.attribute("criteria").as_string());
+    /* Yellowbrick puts the string "ON " in front of join criteria.*/
+    condition_xml = condition_xml.substr(3, condition_xml.size() - 3);
 
     auto strategy = (strategy_xml == "hash") ? Join::Strategy::HASH : Join::Strategy::LOOP;
     static const std::map<std::string_view, Join::Type> xml2type = {
@@ -153,6 +155,20 @@ std::unique_ptr<Node> buildExplainNode(xml_node& node_xml) {
   return node;
 }
 
+void flipJoins(Node& root) {
+  std::vector<Node*> join_nodes;
+  for (auto& node : root.depth_first()) {
+    if (node.type == NodeType::JOIN) {
+      join_nodes.push_back(&node);
+    }
+  }
+
+  for (const auto node : join_nodes) {
+    node->reverseChildren();
+  }
+}
+
+
 std::unique_ptr<Plan> buildExplainPlan(const std::string& explain_output) {
   xml_document doc;
   const auto result = doc.load_buffer(explain_output.c_str(), explain_output.size());
@@ -175,7 +191,7 @@ std::unique_ptr<Plan> buildExplainPlan(const std::string& explain_output) {
   if (!root_node) {
     throw ExplainException("Invalid EXPLAIN plan output, could not construct a plan from query");
   }
-
+  flipJoins(*root_node);
   // Create and return the plan object with timing information
   auto plan = std::make_unique<Plan>(std::move(root_node));
   plan->execution_time = execution_time;
@@ -190,5 +206,9 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   const auto explain_string = result.get<SqlString>().get();
 
   return buildExplainPlan(explain_string);
+}
+
+void Connection::analyse(const std::string_view table_name) {
+  execute("ANALYSE " + std::string(table_name) + ";\nYFLUSH" + std::string(table_name));
 }
 }

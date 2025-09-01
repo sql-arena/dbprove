@@ -2,7 +2,8 @@ project(sql VERSION 0.1.0 LANGUAGES C CXX)
 
 set(_targetName "dbprove_sql")
 add_library(${_targetName} STATIC
-        explain/sequence.h)
+        explain/sequence.h
+        explain/scan_materialised.cpp)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 
@@ -22,12 +23,12 @@ target_sources(${_targetName}
         explain/join.cpp
         explain/group_by.cpp
         explain/distribution.cpp
-        explain/scan_empty.cpp
         explain/plan.cpp
         explain/limit.cpp
         explain/projection.cpp
         explain/scan.cpp
         explain/scan_empty.cpp
+        explain/scan_materialised.cpp
         explain/sort.cpp
         explain/union.cpp
         explain/node.cpp

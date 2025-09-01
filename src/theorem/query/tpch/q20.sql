@@ -13,8 +13,8 @@ WHERE s_suppkey IN (SELECT ps_suppkey
                                          FROM tpch.lineitem
                                          WHERE l_partkey = ps_partkey
                                            AND l_suppkey = ps_suppkey
-                                           AND l_shipdate >= DATE ('1993-01-01')
-                                           AND l_shipdate < DATE ('1994-01-01')))
+                                           AND l_shipdate >= CAST('1993-01-01' AS DATE)
+                                           AND l_shipdate < CAST('1994-01-01' AS DATE)))
   AND n_name = 'KENYA'
 ORDER BY s_name;
 

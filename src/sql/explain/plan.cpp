@@ -48,8 +48,10 @@ RowCount Plan::rowsAggregated() const {
   double result = 0;
   for (const auto& n : planTree().depth_first()) {
     if (n.type == NodeType::GROUP_BY) {
-      // The input of an aggregate is the amount of rows added to the aggregate
-      result += n.firstChild()->rows_actual;
+      // The input of an aggregate is the amount of rows added to the aggregate.
+      if (n.childCount() > 0) {
+        result += n.firstChild()->rows_actual;
+      }
     }
   }
   return cutoff(result);

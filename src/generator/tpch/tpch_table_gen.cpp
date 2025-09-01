@@ -261,7 +261,7 @@ void partsupp_gen(GeneratorState& state) {
   c(partsupp, "PS_SUPPKEY");
   c(partsupp, "PS_AVAILQTY");
   c(partsupp, "PS_SUPPLYCOST");
-  c(partsupp, "PS_COMMENT");
+  c(partsupp, "PS_COMMENT", true);
 
   using namespace generator;
   Key p_partkey;

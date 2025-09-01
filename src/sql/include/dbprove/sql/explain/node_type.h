@@ -9,6 +9,7 @@ enum class NodeType {
   SELECT,
   SCAN,
   SCAN_EMPTY,
+  SCAN_MATERIALISED,
   UNION,
   PROJECTION,
   SELECTION,

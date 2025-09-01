@@ -7,6 +7,7 @@
 #include <duckdb.hpp>
 #include <memory>
 #include <regex>
+#include <scan_materialised.h>
 #include <stdexcept>
 
 
@@ -211,8 +212,13 @@ void Connection::bulkLoad(const std::string_view table, std::vector<std::filesys
 
   for (const auto& path : source_paths) {
     std::string copy_statement = "COPY " + std::string(table) +
-                                 " FROM '" + path.string() +
-                                 "' WITH (FORMAT 'csv', AUTO_DETECT true, STRICT_MODE false, HEADER true)";
+                                 " FROM '" + path.string() + "'"
+                                 "\nWITH (FORMAT 'csv', "
+                                 "DELIM '|', "
+                                 "AUTO_DETECT true, "
+                                 "HEADER true, "
+                                 "STRICT_MODE false "
+                                 ")";
     auto result = impl_->execute(copy_statement);
   }
 }
@@ -251,7 +257,32 @@ std::vector<Column> parseOrderColumns(const json& node_json) {
   return sort_keys;
 }
 
-std::unique_ptr<Node> createNodeFromJson(json& node_json) {
+struct ExplainContext {
+  /**
+   * Delimiters are expression that are used to materialise scans
+   */
+  std::map<size_t, std::string> delimiter_expressions;
+  std::stack<Node*> propagate_estimate;
+};
+
+std::string extractConditions(const json& extra_info) {
+  if (!extra_info["Conditions"].is_array()) {
+    return extra_info["Conditions"].get<std::string>();
+  }
+
+  std::string result;
+  for (size_t i = 0; i < extra_info["Conditions"].size(); ++i) {
+    auto c = extra_info["Conditions"][i];
+    result += c.get<std::string>();
+    if (c < extra_info["Conditions"].size() - 1) {
+      result += " AND ";
+    }
+  }
+  return result;
+}
+
+
+std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
   const auto operator_name = node_json["operator_name"].get<std::string>();
 
   const auto& extra_info = node_json["extra_info"];
@@ -260,8 +291,19 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
     // NOTE: Duckdb has an extra space in the SEQ_SCAN
     const auto table_name = node_json["extra_info"]["Table"].get<std::string>();
     node = std::make_unique<Scan>(table_name);
-  }
-  if (operator_name.contains("PROJECTION")) {
+  } else if (operator_name.contains("DELIM_SCAN")) {
+    // TODO: There is a reference inside this node which points at the thing which is being materialised
+    std::string materialised_expression;
+    auto index = extra_info["Delim Index"].get<std::string>();
+    auto delim_index = std::atol(index.c_str());
+
+    if (ctx.delimiter_expressions.contains(delim_index)) {
+      materialised_expression = ctx.delimiter_expressions[delim_index];
+    }
+    node = std::make_unique<ScanMaterialised>(materialised_expression);
+  } else if (operator_name == "COLUMN_DATA_SCAN") {
+    node = std::make_unique<ScanMaterialised>();
+  } else if (operator_name.contains("PROJECTION")) {
     std::vector<Column> projection_columns;
     for (auto& column : extra_info["Projections"]) {
       const std::string column_name = column.get<std::string>();
@@ -269,8 +311,8 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
     }
     node = std::make_unique<Projection>(projection_columns);
   }
-  if (operator_name.contains("HASH_JOIN")) {
-    auto join_condition = extra_info["Conditions"].get<std::string>();
+  if (operator_name.contains("HASH_JOIN") || operator_name == "NESTED_LOOP_JOIN") {
+    auto join_condition = extractConditions(extra_info);
 
     auto join_type = Join::Type::CROSS;
 
@@ -285,9 +327,21 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
     } else if (join_type_str.contains("FULL")) {
       join_type = Join::Type::FULL;
     }
+    auto strategy = operator_name.contains("HASH_JOIN") ? Join::Strategy::HASH : Join::Strategy::LOOP;
+    node = std::make_unique<Join>(join_type, strategy, join_condition);
+  } else if (operator_name.contains("RIGHT_DELIM_JOIN")
+             || operator_name.contains("LEFT_DELIM_JOIN")) {
+    const auto join_type_str = extra_info["Join Type"].get<std::string>();
+    auto join_type = join_type_str.contains("RIGHT")
+                       ? Join::Type::RIGHT_SEMI_INNER
+                       : Join::Type::LEFT_SEMI_INNER;
+    auto join_condition = extractConditions(extra_info);
+
+    auto index = extra_info["Delim Index"].get<std::string>();
+    auto delim_index = std::atol(index.c_str());
+    ctx.delimiter_expressions[delim_index] = join_condition;
     node = std::make_unique<Join>(join_type, Join::Strategy::HASH, join_condition);
-  }
-  if (operator_name == "TOP_N") {
+  } else if (operator_name == "TOP_N") {
     // DuckDB uses a special sort + limit node when asking for Top N
     std::unique_ptr<Sort> sortNode = nullptr;
     auto sort_keys = parseOrderColumns(node_json);
@@ -307,16 +361,13 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
     } else {
       node = std::move(limitNode);
     }
-  }
-  if (operator_name == "ORDER_BY") {
+  } else if (operator_name == "ORDER_BY") {
     auto sort_keys = parseOrderColumns(node_json);
     node = std::make_unique<Sort>(sort_keys);
-  }
-  if (operator_name == "FILTER") {
+  } else if (operator_name == "FILTER") {
     auto filter_condition = extra_info["Expression"].get<std::string>();
     node = std::make_unique<Selection>(filter_condition);
-  }
-  if (operator_name == "UNGROUPED_AGGREGATE") {
+  } else if (operator_name == "UNGROUPED_AGGREGATE") {
     // An aggregate without group by
     std::vector<Column> aggregate_columns;
     if (extra_info.contains("Aggregates")) {
@@ -325,8 +376,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
       }
     }
     node = std::make_unique<GroupBy>(GroupBy::Strategy::SIMPLE, std::vector<Column>({}), aggregate_columns);
-  }
-  if (operator_name == "HASH_GROUP_BY" || operator_name == "PERFECT_HASH_GROUP_BY") {
+  } else if (operator_name == "HASH_GROUP_BY" || operator_name == "PERFECT_HASH_GROUP_BY") {
     std::vector<Column> group_by_columns;
     if (extra_info.contains("Groups")) {
       for (auto& column : extra_info["Groups"]) {
@@ -340,14 +390,11 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
       }
     }
     node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, group_by_columns, aggregate_columns);
-  }
-  if (operator_name == "UNION") {
+  } else if (operator_name == "UNION") {
     node = std::make_unique<Union>(Union::Type::ALL);
-  }
-  if (operator_name == "EMPTY_RESULT") {
+  } else if (operator_name == "EMPTY_RESULT" || operator_name == "DUMMY_SCAN") {
     node = std::make_unique<ScanEmpty>();
-  }
-  if (operator_name == "EXPLAIN_ANALYZE") {
+  } else if (operator_name == "EXPLAIN_ANALYZE") {
     // Duck adds this fake node when explaining queries
     return nullptr;
   }
@@ -358,19 +405,27 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json) {
 
   if (extra_info.contains("Estimated Cardinality")) {
     auto cardinality_string = extra_info["Estimated Cardinality"].get<std::string>();
-    node->rows_estimated = std::atof(cardinality_string.c_str());
+    double estimate = std::atof(cardinality_string.c_str());
+    node->rows_estimated = estimate;
+    while (!ctx.propagate_estimate.empty()) {
+      ctx.propagate_estimate.top()->rows_estimated = estimate;
+      ctx.propagate_estimate.pop();
+    }
+  } else {
+    // HACK: Likely a bug in DuckDB. Some nodes do not have estimates, even though they clearly care about it
+    ctx.propagate_estimate.push(node.get());
   }
   node->rows_actual = node_json["operator_cardinality"].get<double>();
   return node;
 }
 
 
-std::unique_ptr<Node> buildExplainNode(json& node_json) {
+std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
   // Determine the node type from "Node Type" field
   if (!node_json.contains("operator_name")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
   }
-  auto node = createNodeFromJson(node_json);
+  auto node = createNodeFromJson(node_json, ctx);
   while (node == nullptr) {
     if (!node_json.contains("children")) {
       throw std::runtime_error(
@@ -382,12 +437,12 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
     }
     node_json = node_json["children"][0];
     const auto operator_name = node_json["operator_name"].get<std::string>();
-    node = createNodeFromJson(node_json);
+    node = createNodeFromJson(node_json, ctx);
   }
 
   if (node_json.contains("children")) {
     for (auto& child_json : node_json["children"]) {
-      auto child_node = buildExplainNode(child_json);
+      auto child_node = buildExplainNode(child_json, ctx);
       node->addChild(std::move(child_node));
     }
   }
@@ -433,8 +488,9 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
 
   auto& plan_json = json["children"];
 
+  ExplainContext ctx;
   /* Construct the tree*/
-  auto root_node = buildExplainNode(plan_json[0]);
+  auto root_node = buildExplainNode(plan_json[0], ctx);
 
   if (!root_node) {
     throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan");

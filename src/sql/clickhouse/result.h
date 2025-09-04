@@ -1,20 +1,27 @@
 #pragma once
-#include <vector>
-
 #include "result_base.h"
+#include <vector>
+#include <memory>
 
 namespace sql::clickhouse {
-  class Result: public ResultBase {
-    class Pimpl;
-    std::unique_ptr<Pimpl> impl_;
-    const std::vector<SqlVariant>& currentRow() const;
-    RowCount currentRowIndex_ = 0;
-  public:
-    explicit Result(void* handle);
-    RowCount rowCount() const override;
-    ColumnCount columnCount() const override;
+class Connection;
+class BlockHolder;
 
-  protected:
-    const RowBase& nextRow() override;
-  };
+class Result : public ResultBase {
+  class Pimpl;
+  std::unique_ptr<Pimpl> impl_;
+  RowCount currentRowIndex_ = 0;
+  SqlVariant getRowValue(size_t index) const;
+
+public:
+  explicit Result(std::unique_ptr<BlockHolder> holder);
+  RowCount rowCount() const override;
+  ColumnCount columnCount() const override;
+  ~Result() override;
+
+protected:
+  const RowBase& nextRow() override;
+  friend class Connection;
+  friend class Row;
+};
 }

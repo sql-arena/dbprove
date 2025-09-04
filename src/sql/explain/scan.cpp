@@ -1,6 +1,7 @@
 #include "scan.h"
 
-#include "glyphs.h"
+#include "include/dbprove/sql/explain/glyphs.h"
+
 static constexpr auto symbol_ = "📄";
 
 std::string sql::explain::Scan::compactSymbolic() const {

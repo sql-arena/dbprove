@@ -6,41 +6,30 @@
   },
   "configurePresets": [
     {
-      "name": "windows-default",
-      "displayName": "Windows x64 Debug",
-      "description": "Sets Ninja generator, compilers, x64 architecture, build and install directory, debug build type",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "architecture": {
-        "value": "x64",
-        "strategy": "external"
-      },
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays"
-      },
-      "vendor": {
-        "microsoft.com/VisualStudioSettings/CMake/1.0": {
-          "hostOS": [
-            "Windows"
-          ]
-        }
-      }
-    },
-    {
-      "name": "msvc",
-      "displayName": "MSVC with vcpkg",
-      "generator": "Ninja",
+      "name": "msvc_x64_vcpkg",
+      "displayName": "MSVC with vcpkg on x64",
+      "generator": "Visual Studio 17 2022",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl.exe",
+        "CMAKE_CXX_COMPILER": "cl.exe",
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/extern/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg-overlays"
       }
     }
+  ],
+  "buildPresets": [
+    {
+      "name": "build_msvc",
+      "displayName": "Build (msvc)",
+      "configurePreset": "msvc_x64_vcpkg",
+      "configuration": "Debug",
+      "targets": [
+        "ALL_BUILD"
+      ],
+      "jobs": 12,
+      "cleanFirst": false
+    }
   ]
 }
-7

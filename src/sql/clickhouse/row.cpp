@@ -1,6 +1,9 @@
 #include "row.h"
-
 #include "sql_exceptions.h"
+
+#include <clickhouse/client.h>
+
+namespace ch = clickhouse;
 
 namespace sql::clickhouse {
 SqlVariant Row::get(size_t index) const {
@@ -8,12 +11,15 @@ SqlVariant Row::get(size_t index) const {
     throw InvalidColumnsException("Attempted to access column at index " + std::to_string(index) +
                                   " but only " + std::to_string(columnCount()) + " columns are available.");
   }
-  // TODO: Implement parsing of the row data from whatever memory format the driver supplies
-  return SqlVariant();
+
+  return result_->getRowValue(index);
 }
 
 ColumnCount Row::columnCount() const {
-  // TODO: Implement the column counting
-  return 0;
+  return result_->columnCount();
+}
+
+Row::Row(Result* result)
+  : result_(result) {
 }
 }

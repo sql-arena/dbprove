@@ -1,4 +1,5 @@
 #include "spinner.h"
+#include <atomic>
 
 namespace dbprove::ux {
 void Spin() {

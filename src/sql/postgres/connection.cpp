@@ -65,7 +65,7 @@ public:
         PQclear(result);
 
         if (state.starts_with("42P01")) {
-          throw InvalidTableException(error_msg);
+          throw InvalidObjectException(error_msg);
         }
         if (state.starts_with("42")) {
           throw SyntaxException(error_msg, statement);
@@ -311,9 +311,8 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
         // Sort keys end with DESC (yeah, a string) if they are descending
         name = name.substr(0, name.size() - desc_suffix.size());
         sort_order = Column::Sorting::DESC;
-      }
-      Column c(name, sort_order);
-      sort_keys.push_back(c);
+      };
+      sort_keys.emplace_back(Column(name, sort_order));
     }
     node = std::make_unique<Sort>(sort_keys);
   } else if (pg_node_type == "Limit") {
@@ -354,7 +353,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       for (const auto& key : node_json["Output"]) {
         out.push_back(Column(key.get<std::string>()));
       }
-      std::unordered_set group_keys_set(group_keys.begin(), group_keys.end());
+      std::unordered_set<Column> group_keys_set(group_keys.begin(), group_keys.end());
       for (const auto& column : out) {
         // If the column is not found in group_keys_set, add it to non_group_keys
         if (!group_keys_set.contains(column)) {

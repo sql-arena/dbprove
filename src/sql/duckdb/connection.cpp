@@ -46,7 +46,7 @@ void handleDuckError(::duckdb::QueryResult* result) {
       break;
     case ::duckdb::ExceptionType::CATALOG: {
       // TODO: we can do better here
-      throw InvalidTableException(result->GetError());
+      throw InvalidObjectException(result->GetError());
       break;
     }
     case ::duckdb::ExceptionType::PARSER:

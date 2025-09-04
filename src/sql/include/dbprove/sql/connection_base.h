@@ -47,10 +47,10 @@ public:
   virtual std::unique_ptr<ResultBase> fetchMany(std::string_view statement) = 0;
   /// @brief Fetches a single row from the data.
   /// @throw If the statement does not return a single row
-  virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement) = 0;
+  virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement);
   /// @brief Fetches a single, scalar value from the database.
   /// @throw If the statement does not return a single row with a single column
-  virtual SqlVariant fetchScalar(std::string_view statement) = 0;
+  virtual SqlVariant fetchScalar(std::string_view statement);
 
   /**
    * @brief Run the query, discarding results and returning the query plan
@@ -77,6 +77,8 @@ public:
   void executeDdl(const std::string_view ddl) {
     execute(translateDialectDdl(ddl));
   }
+
+  virtual void createSchema(std::string_view schema_name);
 
   /**
    * Analyse and create statistics (if needed) on the table.

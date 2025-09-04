@@ -2,6 +2,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <cstdint>
 
 namespace sql {
 class Engine;

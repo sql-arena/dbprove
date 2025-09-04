@@ -8,8 +8,34 @@ const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
   return empty_map;
 }
 
+std::unique_ptr<RowBase> ConnectionBase::fetchRow(const std::string_view statement) {
+  const auto result = fetchAll(statement);
+  if (result->rowCount() == 0) {
+    throw EmptyResultException(statement);
+  }
+  if (result->rowCount() > 1) {
+    throw InvalidRowsException(
+        "Expected to find a single row in the data, but found: " + std::to_string(result->rowCount()),
+        statement);
+  }
+  const auto& first = *result->rows().begin();
+  return first.materialise();
+}
+
+SqlVariant ConnectionBase::fetchScalar(const std::string_view statement) {
+  const auto row = fetchRow(statement);
+  if (row->columnCount() != 1) {
+    throw InvalidColumnsException("Expected to find a single column in the data", statement);
+  }
+  return row->asVariant(0);
+}
+
 std::unique_ptr<explain::Plan> ConnectionBase::explain(std::string_view statement) {
   return nullptr;
+}
+
+void ConnectionBase::createSchema(std::string_view schema_name) {
+  execute("CREATE SCHEMA " + std::string(schema_name));
 }
 
 void ConnectionBase::analyse(std::string_view table_name) {
@@ -21,7 +47,7 @@ std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view tab
   try {
     auto v = fetchScalar(dumb_row_count);
     return v.get<SqlBigInt>();
-  } catch (InvalidTableException&) {
+  } catch (InvalidObjectException&) {
     return std::nullopt;
   }
 }

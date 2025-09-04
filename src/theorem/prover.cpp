@@ -5,6 +5,7 @@
 #include <dbprove/ux/ux.h>
 
 #include "init.h"
+#include <plog/Log.h>
 
 namespace dbprove::theorem {
 void run_theorem(const Theorem& theorem,
@@ -14,6 +15,7 @@ void run_theorem(const Theorem& theorem,
 }
 
 void writeVersion(RunCtx& input_state) {
+  PLOGI << "Reading Version...";
   const std::string version = input_state.factory.create()->version();
   input_state.writeCsv(std::vector<std::string_view>{
       input_state.engine.name(),

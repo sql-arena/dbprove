@@ -1,6 +1,7 @@
 #include "row.h"
 #include <bit>
 #include <vector>
+#include <cstring>
 #include "sql_exceptions.h"
 
 namespace sql::postgres {

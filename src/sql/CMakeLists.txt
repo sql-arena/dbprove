@@ -2,8 +2,7 @@ project(sql VERSION 0.1.0 LANGUAGES C CXX)
 
 set(_targetName "dbprove_sql")
 add_library(${_targetName} STATIC
-        explain/sequence.h
-        explain/scan_materialised.cpp)
+        clickhouse/block_holder.h)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 
@@ -19,6 +18,7 @@ target_sources(${_targetName}
         credential.cpp
         engine.cpp
         sql_exception.cpp
+        row_base.cpp
         explain/select.cpp
         explain/join.cpp
         explain/group_by.cpp
@@ -35,7 +35,7 @@ target_sources(${_targetName}
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         explain/group_by.h
         explain/cutoff.h
-        explain/glyphs.h
+        explain/sequence.h
 )
 
 target_precompile_headers(${_targetName}

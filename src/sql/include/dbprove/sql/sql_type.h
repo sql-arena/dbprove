@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <utility>
 #include <variant>
 #include <string>
 #include <stdexcept>
@@ -49,7 +50,7 @@ public:
   constexpr SqlTypeDef() = default;
 
   constexpr explicit SqlTypeDef(T v)
-    : value_(v) {
+    : value_(std::move(v)) {
   }
 
   [[nodiscard]] constexpr T get() const { return value_; }
@@ -143,7 +144,6 @@ public:
 };
 
 
-
 class SqlNull {
 public:
   static constexpr std::string_view name = "NULL";
@@ -174,13 +174,12 @@ public:
     return *this;
   }
 
-public:
-  explicit SqlVariant(const variant_type& v)
-    : data(v) {
+  explicit SqlVariant(variant_type v)
+    : data(std::move(v)) {
   }
 
   explicit SqlVariant(const size_t v)
-    : data(SqlBigInt(v)) {
+    : data(SqlBigInt(static_cast<int64_t>(v))) {
   }
 
   explicit SqlVariant(const int64_t v)
@@ -190,6 +189,15 @@ public:
   explicit SqlVariant(const int32_t v)
     : data(SqlInt(v)) {
   }
+
+  explicit SqlVariant(const int16_t v)
+    : data(SqlSmallInt(v)) {
+  }
+
+  explicit SqlVariant(const int8_t v)
+    : data(SqlTinyInt(v)) {
+  }
+
 
   explicit SqlVariant(const double v)
     : data(SqlDouble(v)) {
@@ -209,6 +217,13 @@ public:
 
   SqlVariant()
     : data(SqlNull()) {
+  }
+
+  [[nodiscard]] std::string asString() const {
+    if (is<SqlString>()) {
+      return get<SqlString>().get();
+    }
+    throw std::runtime_error("Value is not a string");
   }
 
   /// @brief Is the value of the templated type?

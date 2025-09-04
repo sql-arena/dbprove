@@ -61,6 +61,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       return "duck.db";
     case Type::Postgres: {
       return "postgres";
+    case Type::ClickHouse:
+      return "default";
     }
   }
   throw std::invalid_argument("No default database found");
@@ -123,7 +125,7 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
     case Type::Oracle:
       return 1521;
     case Type::ClickHouse:
-      return 8123;
+      return 9000; // ClickHouse only speaks its native protocol via C++
     case Type::DuckDB:
       return 42; // Dummy port, Duck is localhost
     default:

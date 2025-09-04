@@ -39,8 +39,8 @@ auto factories(std::string_view find = "") {
       databricksFactory};
 
   static std::map<std::string_view, sql::ConnectionFactory*> factories_map = {
-//      {"PostgreSQL", &postgresFactory},
-//      {"DuckDb", &duckdbFactory},
+      //      {"PostgreSQL", &postgresFactory},
+      //      {"DuckDb", &duckdbFactory},
       {"Databricks", &databricksFactory}
   };
 
@@ -140,9 +140,7 @@ auto explainAndRenderPlan(const std::string_view statement) {
   for (auto& driver : explain_drivers) {
     const auto connection = make_explain(driver);
     const auto plan = connection->explain(statement);
-    const auto symbolic = plan->render(Plan::RenderMode::MUGGLE);
-    std::cout << symbolic << std::endl;
-    CAPTURE(symbolic);
+    plan->render(std::cout, 120, Plan::RenderMode::MUGGLE);
     CAPTURE(driver);
     REQUIRE(plan != nullptr);
   }

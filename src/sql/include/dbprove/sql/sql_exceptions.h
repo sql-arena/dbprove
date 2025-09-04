@@ -33,6 +33,7 @@ enum class SqlState {
   INVALID_TABLE_42P01,
   PRODUCT_ERROR_56,
   RESOURCE_UNAVAILABLE_57,
+  INVALID
 };
 
 class Exception : public std::runtime_error {
@@ -144,9 +145,9 @@ public:
   }
 };
 
-class InvalidTableException final : public Exception {
+class InvalidObjectException final : public Exception {
 public:
-  explicit InvalidTableException(const std::string& error)
+  explicit InvalidObjectException(const std::string& error)
     : Exception(SqlState::INVALID_TABLE_42P01, error) {
   }
 };
@@ -209,6 +210,21 @@ class ExplainException final : public Exception {
 public:
   explicit ExplainException(const std::string& error)
     : Exception(SqlState::SYNTAX_ERROR_42, error) {
+  }
+};
+
+
+class ObjectExistsException final : public Exception {
+public:
+  explicit ObjectExistsException(const std::string& error)
+    : Exception(SqlState::INVALID_TABLE_42P01, error) {
+  }
+};
+
+class InvalidException final : public Exception {
+public:
+  explicit InvalidException(const std::string& error)
+    : Exception(SqlState::INVALID, error) {
   }
 };
 }

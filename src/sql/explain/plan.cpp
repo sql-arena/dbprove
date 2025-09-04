@@ -2,9 +2,11 @@
 #include "cutoff.h"
 #include "dbprove/common/pretty.h"
 
+#include <cmath>
 #include <iostream>
 #include <ranges>
 #include <rang.hpp>
+
 
 constexpr auto HASH_BUILD_CHILD = "└";
 constexpr auto VERTICAL_LINE = "│";

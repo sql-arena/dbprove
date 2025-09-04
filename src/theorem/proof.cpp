@@ -15,7 +15,7 @@ Proof& Proof::ensure(const std::string& table) {
 
 Proof& Proof::ensureSchema(const std::string& schema) {
   try {
-    state.factory.create()->execute("CREATE SCHEMA " + schema);
+    state.factory.create()->createSchema(schema);
   } catch (sql::Exception&) {
     // NOOP
   }

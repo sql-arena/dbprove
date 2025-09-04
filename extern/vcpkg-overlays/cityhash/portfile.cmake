@@ -8,22 +8,22 @@ vcpkg_from_github(
         HEAD_REF master
 )
 
-file(COPY "CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
-# Copy our custom byteswap header
-file(COPY "patches/byteswap.h" DESTINATION "${SOURCE_PATH}/src")
+configure_file("${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" "${SOURCE_PATH}/CMakeLists.txt" COPYONLY)
+configure_file("${CMAKE_CURRENT_LIST_DIR}/patches/byteswap.h" "${SOURCE_PATH}/src/byteswap.h" COPYONLY)
 
 
-if (VCPKG_TARGET_IS_WINDOWS)
-    file(COPY "config.h" DESTINATION "${SOURCE_PATH}/src")
-else ()
+# Platform-specific handling for byteswap.h
+if(VCPKG_TARGET_IS_WINDOWS)
+    configure_file("${CMAKE_CURRENT_LIST_DIR}/config.h" "${SOURCE_PATH}/src/config.h" COPYONLY)
+else()
     file(MAKE_DIRECTORY "${SOURCE_PATH}/out")
     vcpkg_execute_required_process(
             COMMAND "${SOURCE_PATH}/configure"
             WORKING_DIRECTORY "${SOURCE_PATH}/out"
             LOGNAME configure-${TARGET_TRIPLET}
     )
-    file(COPY "${SOURCE_PATH}/out/config.h" DESTINATION "${SOURCE_PATH}/src")
-endif ()
+    configure_file("${SOURCE_PATH}/out/config.h" "${SOURCE_PATH}/src/config.h" COPYONLY)
+endif()
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
         FEATURES

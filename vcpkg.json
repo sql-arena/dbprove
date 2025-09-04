@@ -1,22 +1,47 @@
 {
-  "$schema" : "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name" : "dbprove",
-  "version" : "0.1.0",
-  "builtin-baseline" : "ce613c41372b23b1f51333815feb3edd87ef8a8b",
-  "dependencies" : [ "libmariadb", "libpq", "sqlite3", "catch2", "rang", "cli11", "openssl", "clickhouse-cpp", "duckdb", "azure-identity-cpp", "curl", "jwt-cpp", "nlohmann-json", "zlib", "grpc", "protobuf", "icu", "cnl", "plog", {
-    "name" : "unixodbc",
-    "platform" : "!windows"
-  }, {
-    "name" : "libfort",
-    "version>=" : "0.4.2#1"
-  }, {
-    "name" : "vincentlaucsb-csv-parser",
-    "version>=" : "2.3.0"
-  }, {
-    "name" : "magic-enum",
-    "version>=" : "0.9.7#1"
-  }, {
-    "name" : "pugixml",
-    "version>=" : "1.15"
-  } ]
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "dbprove",
+  "version": "0.1.0",
+  "builtin-baseline": "b08f541526fdd8e771e9d047c1af91832f763ef2",
+  "dependencies": [
+    "libmariadb",
+    "libpq",
+    "sqlite3",
+    "catch2",
+    "rang",
+    "cli11",
+    "openssl",
+    "clickhouse-cpp",
+    "duckdb",
+    "azure-identity-cpp",
+    "curl",
+    "jwt-cpp",
+    "nlohmann-json",
+    "zlib",
+    "grpc",
+    "protobuf",
+    "icu",
+    "cnl",
+    "plog",
+    {
+      "name": "unixodbc",
+      "platform": "!windows"
+    },
+    {
+      "name": "libfort",
+      "version>=": "0.4.2#1"
+    },
+    {
+      "name": "vincentlaucsb-csv-parser",
+      "version>=": "2.3.0"
+    },
+    {
+      "name": "magic-enum",
+      "version>=": "0.9.7#1"
+    },
+    {
+      "name": "pugixml",
+      "version>=": "1.15"
+    }
+  ]
 }

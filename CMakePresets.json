@@ -33,7 +33,7 @@
     {
       "name": "msvc",
       "displayName": "MSVC with vcpkg",
-      "generator": "Visual Studio 17 2022",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/extern/vcpkg/scripts/buildsystems/vcpkg.cmake",
@@ -43,3 +43,4 @@
     }
   ]
 }
+7

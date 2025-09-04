@@ -1,17 +1,23 @@
 {
-  "version": 3,
+  "version": 7,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 25
   },
   "configurePresets": [
     {
+      "name": "vendor-vcpkg",
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
+      }
+    },
+    {
       "name": "windows-base",
       "description": "Target Windows with the Visual Studio development environment.",
       "hidden": true,
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "installDir": "${sourceDir}/install/${presetName}",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -23,11 +29,13 @@
       },
       "vendor": {
         "microsoft.com/VisualStudioSettings/CMake/1.0": {
-          "hostOS": [ "Windows" ]
+          "hostOS": [
+            "Windows"
+          ]
+        },
+        "jetbrains.com/clion": {
+          "toolchain": "Visual Studio"
         }
-      },
-      "environment": {
-        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
       },
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
@@ -58,24 +66,62 @@
     {
       "name": "msvc_x64_vcpkg",
       "hidden": true,
-      "inherits": [ "windows-base", "x64-platform", "v143-toolset" ]
+      "inherits": [
+        "windows-base",
+        "x64-platform",
+        "v143-toolset"
+      ]
+    },
+    {
+      "name": "msvc_x64_vcpkg_vendor_debug",
+      "inherits": [
+        "vendor-vcpkg",
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc_x64_vcpkg_vendor_release",
+      "inherits": [
+        "vendor-vcpkg",
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     },
     {
       "name": "msvc_x64_vcpkg_debug",
-      "inherits": [ "msvc_x64_vcpkg" ],
+      "inherits": [
+        "msvc_x64_vcpkg"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
       "name": "msvc_x64_vcpkg_release",
-      "inherits": [ "msvc_x64_vcpkg" ],
+      "inherits": [
+        "msvc_x64_vcpkg"
+      ],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],
   "buildPresets": [
+    {
+      "name": "build_msvc_vendor_debug",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_vendor_debug"
+    },
+    {
+      "name": "build_msvc_vendor_release",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_vendor_release"
+    },
     {
       "name": "build_msvc_debug",
       "displayName": "Default",
@@ -86,5 +132,6 @@
       "displayName": "Default",
       "configurePreset": "msvc_x64_vcpkg_release"
     }
-  ]
+  ],
+  "vendor": {}
 }

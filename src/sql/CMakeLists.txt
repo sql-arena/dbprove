@@ -67,6 +67,7 @@ add_subdirectory("duckdb")
 add_subdirectory("databricks")
 add_subdirectory("msodbc")
 add_subdirectory("yellowbrick")
+add_subdirectory("clickhouse")
 
 # Make sure boilerplate compiles. These are unmapped in Engine.h
 add_subdirectory("boilerplate")
@@ -82,6 +83,7 @@ target_link_libraries(${_targetName}
         dbprove::sql::databricks
         dbprove::sql::msodbc
         dbprove::sql::yellowbrick
+        dbprove::sql::clickhouse
 )
 
 

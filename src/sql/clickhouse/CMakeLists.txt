@@ -1,11 +1,20 @@
-find_path(CLICKHOUSE_INCLUDE_DIR clickhouse/client.h)
-find_library(CLICKHOUSE_LIB NAMES clickhouse-cpp-lib clickhouse_client)
+set(_targetName "dbprove_clickhouse_sql")
 
-add_library(clickhouse UNKNOWN IMPORTED GLOBAL)
-set_target_properties(clickhouse PROPERTIES
-        IMPORTED_LOCATION "${CLICKHOUSE_LIB}"
-        INTERFACE_INCLUDE_DIRECTORIES "${CLICKHOUSE_INCLUDE_DIR}"
+
+add_library(${_targetName} STATIC)
+add_library(dbprove::sql::clickhouse ALIAS ${_targetName})
+
+target_sources(${_targetName}
+        PRIVATE
+        result.cpp
+        connection.cpp
+        row.cpp
 )
 
-print_target_info(clickhouse)
-
+find_package(clickhouse-cpp CONFIG REQUIRED)
+target_link_libraries(${_targetName}
+        PRIVATE
+        clickhouse-cpp::clickhouse-cpp
+        dbprove::sql
+        dbprove::sql::driver
+)

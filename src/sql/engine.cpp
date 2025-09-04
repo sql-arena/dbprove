@@ -25,7 +25,9 @@ Engine::Engine(const std::string_view name) {
       {"utopia", Type::Utopia},
       {"yellowbrick", Type::Yellowbrick},
       {"yb", Type::Yellowbrick},
-      {"ybd", Type::Yellowbrick}
+      {"ybd", Type::Yellowbrick},
+      {"clickhouse", Type::ClickHouse},
+      {"ch", Type::ClickHouse}
   };
 
   const std::string name_lower = to_lower(name);
@@ -86,6 +88,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
     case Type::Yellowbrick:
       host = getEnvVar("YBHOST").value_or("localhost");
       break;
+    case Type::ClickHouse:
     case Type::DuckDB:
       return "localhost";
     default:
@@ -120,7 +123,7 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
     case Type::Oracle:
       return 1521;
     case Type::ClickHouse:
-      return 9000;
+      return 8123;
     case Type::DuckDB:
       return 42; // Dummy port, Duck is localhost
     default:
@@ -138,6 +141,8 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
       username = getEnvVar("YBUSER").value_or("yellowbrick");
       return username.value();
     }
+    case Type::ClickHouse:
+      return getEnvVar("CLICKHOUSE_USER").value_or("default");
     case Type::DuckDB:
       return "";
   }
@@ -152,6 +157,8 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
     case Type::Yellowbrick:
       password = getEnvVar("YBPASSWORD").value_or("yellowbrick");
       break;
+    case Type::ClickHouse:
+      password = getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
     default:
       break;
   }
@@ -191,6 +198,7 @@ Credential Engine::parseCredentials(
     case Type::MariaDB:
     case Type::Postgres:
     case Type::SQLServer:
+    case Type::ClickHouse:
     case Type::Yellowbrick:
     case Type::Oracle: {
       if (!username) {
@@ -216,6 +224,7 @@ std::string Engine::name() const {
   const static std::map<Type, std::string_view> canonical_names = {
       {Type::MariaDB, "MySQL"},
       {Type::Postgres, "PostgreSQL"},
+      {Type::ClickHouse, "ClickHouse"},
       {Type::SQLite, "SQLite"},
       {Type::Utopia, "Utopia"},
       {Type::DuckDB, "DuckDB"},

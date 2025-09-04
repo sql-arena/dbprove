@@ -5,6 +5,7 @@
 #include "msodbc/connection.h"
 #include "databricks/connection.h"
 #include "yellowbrick/connection.h"
+#include "clickhouse/connection.h"
 
 namespace sql {
 std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
@@ -26,6 +27,11 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       return std::make_unique<yellowbrick::Connection>(std::get<CredentialPassword>(credential_), engine_);
     case Engine::Type::SQLServer:
       return std::make_unique<msodbc::Connection>(credential_, engine_);
+    case Engine::Type::ClickHouse:
+      if (!std::holds_alternative<CredentialPassword>(credential_)) {
+        throw std::invalid_argument("ClickHouse engine requires a password credential");
+      }
+      return std::make_unique<clickhouse::Connection>(std::get<CredentialPassword>(credential_), engine_);
     case Engine::Type::DuckDB:
       return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_);
     case Engine::Type::Databricks:

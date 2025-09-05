@@ -1,35 +1,132 @@
 {
-  "version": 3,
+  "version": 7,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 25
   },
   "configurePresets": [
     {
-      "name": "msvc_x64_vcpkg",
-      "displayName": "MSVC with vcpkg on x64",
-      "generator": "Visual Studio 17 2022",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "name": "vendor-vcpkg",
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
+      }
+    },
+    {
+      "name": "windows-base",
+      "description": "Target Windows with the Visual Studio development environment.",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [
+            "Windows"
+          ]
+        },
+        "jetbrains.com/clion": {
+          "toolchain": "Visual Studio"
+        }
+      },
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "cl.exe",
-        "CMAKE_CXX_COMPILER": "cl.exe",
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/extern/vcpkg/scripts/buildsystems/vcpkg.cmake",
-        "VCPKG_TARGET_TRIPLET": "x64-windows",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg-overlays"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    },
+    {
+      "name": "x64-platform",
+      "hidden": true,
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "v143-toolset",
+      "hidden": true,
+      "toolset": {
+        "value": "v143,version=14.44,host=x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "msvc_x64_vcpkg",
+      "hidden": true,
+      "inherits": [
+        "windows-base",
+        "x64-platform",
+        "v143-toolset"
+      ]
+    },
+    {
+      "name": "msvc_x64_vcpkg_vendor_debug",
+      "inherits": [
+        "vendor-vcpkg",
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc_x64_vcpkg_vendor_release",
+      "inherits": [
+        "vendor-vcpkg",
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "msvc_x64_vcpkg_debug",
+      "inherits": [
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc_x64_vcpkg_release",
+      "inherits": [
+        "msvc_x64_vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "build_msvc",
-      "displayName": "Build (msvc)",
-      "configurePreset": "msvc_x64_vcpkg",
-      "configuration": "Debug",
-      "targets": [
-        "ALL_BUILD"
-      ],
-      "jobs": 12,
-      "cleanFirst": false
+      "name": "build_msvc_vendor_debug",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_vendor_debug"
+    },
+    {
+      "name": "build_msvc_vendor_release",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_vendor_release"
+    },
+    {
+      "name": "build_msvc_debug",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_debug"
+    },
+    {
+      "name": "build_msvc_release",
+      "displayName": "Default",
+      "configurePreset": "msvc_x64_vcpkg_release"
     }
-  ]
+  ],
+  "vendor": {}
 }

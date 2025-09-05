@@ -7,6 +7,7 @@
   "configurePresets": [
     {
       "name": "vendor-vcpkg",
+      "hidden": true,
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
       }

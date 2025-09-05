@@ -39,8 +39,7 @@
       },
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg-overlays",
-        "VCPKG_TARGET_TRIPLET": "x64-windows"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
       }
     },
     {
@@ -57,10 +56,6 @@
       "toolset": {
         "value": "v143,version=14.44,host=x64",
         "strategy": "external"
-      },
-      "environment": {
-        "VCPKG_PLATFORM_TOOLSET": "v143",
-        "VCPKG_PLATFORM_TOOLSET_VERSION": "14.44"
       }
     },
     {

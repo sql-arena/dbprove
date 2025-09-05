@@ -20,5 +20,6 @@ public:
   std::string version() override;
   void createSchema(std::string_view schema_name) override;
   std::string translateDialectDdl(const std::string_view ddl) const override;
+  void analyse(std::string_view table_name) override;
 };
 }

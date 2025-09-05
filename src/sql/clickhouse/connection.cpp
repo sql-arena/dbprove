@@ -28,6 +28,8 @@ void handleClickHouseException(ch::Client& client, const ch::ServerException& e)
   switch (e.GetCode()) {
     case 60:
       throw InvalidObjectException(e.what());
+    case 62:
+      throw SyntaxException(e.what());
     default:
       throw InvalidException("Unknown ClickHouse Error Code " + std::to_string(e.GetCode()) + " what " + e.what());
   }
@@ -180,5 +182,9 @@ std::string Connection::translateDialectDdl(const std::string_view ddl) const {
     result = std::regex_replace(result, std::regex(";"), "PRIMARY KEY (l_orderkey, l_linenumber);");
   }
   return result;
+}
+
+void Connection::analyse(std::string_view table_name) {
+  // ClickHouse has no need for Analyse because it does not have a planner
 }
 }

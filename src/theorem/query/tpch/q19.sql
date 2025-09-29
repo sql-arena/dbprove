@@ -1,7 +1,7 @@
 /* TPC-H Q19 */
 SELECT SUM(l_extendedprice * (1 - l_discount)) AS revenue
-FROM tpch.lineitem,
-     tpch.part
+FROM tpch.lineitem
+   , tpch.part
 WHERE (
     p_partkey = l_partkey
         AND p_brand = 'Brand#11'
@@ -28,4 +28,4 @@ WHERE (
         AND p_size BETWEEN 1 AND 15
         AND l_shipmode IN ('AIR', 'AIR REG')
         AND l_shipinstruct = 'DELIVER IN PERSON'
-    );
+    )

@@ -95,6 +95,19 @@ RowCount Plan::rowsFiltered() const {
   return cutoff(result);
 }
 
+void Plan::flipJoins() const {
+  std::vector<Node*> join_nodes;
+  for (auto& node : planTree().depth_first()) {
+    if (node.type == NodeType::JOIN) {
+      join_nodes.push_back(&node);
+    }
+  }
+
+  for (const auto node : join_nodes) {
+    node->reverseChildren();
+  }
+}
+
 int8_t estimateOrderOfMagnitude(double estimate, double actual) {
   actual = std::max(actual, 1.0);
   estimate = std::max(estimate, 1.0);
@@ -175,7 +188,7 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     out << dbprove::common::PrettyHumanCount(node.rowsEstimated()) << divider;
     out << dbprove::common::PrettyHumanCount(node.rowsActual()) << divider;
 
-    /* Coming back up the tree. If I am the last descendant of a union, I need to have my indentation removed */
+    /* Coming back up the tree. If I am the last descendant of a union, I need to have my indentation removed.*/
     if (!parent_split_nodes.empty() && node.depth() < parent_split_nodes.back().node->depth()) {
       const auto parent_type = parent_split_nodes.back().node->type;
       if (parent_type == NodeType::UNION || parent_type == NodeType::SEQUENCE) {
@@ -183,7 +196,7 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
       }
     }
 
-    /* Joins only indent the build side, to keep things compact */
+    /* Joins only indent the build side. Keep things compact.*/
     if (node.parent().type == NodeType::JOIN && node.parent().lastChild() == &node) {
       parent_split_nodes.pop_back();
     }

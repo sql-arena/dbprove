@@ -52,4 +52,30 @@ std::string Join::renderMuggle(size_t max_width) const {
   result += ellipsify(condition, max_width);
   return result;
 }
+
+Join::Type Join::typeFromString(const std::string_view type_string) {
+  const std::string type_lower = to_lower(type_string);
+  static const std::map<std::string_view, Join::Type> type_map = {
+      {"inner", Type::INNER},
+      {"left", Type::LEFT_OUTER},
+      {"left outer", Type::LEFT_OUTER},
+      {"right", Type::RIGHT_OUTER},
+      {"right anti", Type::RIGHT_ANTI},
+      {"anti right", Type::RIGHT_ANTI},
+      {"left anti", Type::LEFT_ANTI},
+      {"anti left", Type::LEFT_ANTI},
+      {"right outer", Type::RIGHT_OUTER},
+      {"semi right inner", Type::RIGHT_SEMI_INNER},
+      {"semi right outer", Type::RIGHT_SEMI_OUTER},
+      {"semi left inner", Type::LEFT_SEMI_INNER},
+      {"semi left outer", Type::LEFT_SEMI_OUTER},
+      {"semi", Type::LEFT_SEMI_INNER},
+      {"full", Type::FULL}
+  };
+
+  if (!type_map.contains(type_lower)) {
+    throw std::runtime_error("Join type '" + std::string(type_string) + "' could not be mapped");
+  }
+  return type_map.at(type_lower);
+}
 }

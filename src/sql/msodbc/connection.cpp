@@ -1,44 +1,47 @@
 #include "connection.h"
-#include "../include/dbprove/sql/credential.h"
-#include "../include/dbprove/sql/sql_exceptions.h"
-#include "../include/dbprove/sql/connection_base.h"
+#include "result.h"
+#include "sql_exceptions.h"
 
-class sql::msodbc::Connection::Pimpl {
+namespace sql::msodbc {
+class Connection::Pimpl {
 public:
-  Connection& connection;
-  const Credential& credential;
-
-  explicit Pimpl(Connection& connection)
-    : connection(connection)
-    , credential(connection.credential) {
-  }
+  explicit Pimpl() {}
 };
 
-sql::msodbc::Connection::Connection(const Credential& credential, const Engine& engine_type)
-  : ConnectionBase(credential, engine_type)
-  , impl_(std::make_unique<Pimpl>(*this)) {
+Connection::Connection(const Credential& credential, const Engine& engine)
+  : ConnectionBase(credential, engine)
+  , impl_(std::make_unique<Pimpl>()) {
 }
 
-sql::msodbc::Connection::~Connection() = default;
-
-void sql::msodbc::Connection::execute(std::string_view statement) {
+Connection::~Connection() {
 }
 
-std::unique_ptr<sql::ResultBase> sql::msodbc::Connection::fetchAll(std::string_view statement) {
+void Connection::execute(std::string_view statement) {
+}
+
+std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
+  // TODO: Talk to the engine and acquire the memory structure of the result, then pass it to result
+  return std::make_unique<Result>(nullptr);
+}
+
+std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
+  // TODO: Implement result set scrolling
+  return fetchAll(statement);
+}
+
+std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
   return nullptr;
 }
 
-std::unique_ptr<sql::ResultBase> sql::msodbc::Connection::fetchMany(std::string_view statement) {
-  return nullptr;
+SqlVariant Connection::fetchScalar(const std::string_view statement) {
+  const auto row = fetchRow(statement);
+  if (row->columnCount() != 1) {
+    throw InvalidColumnsException("Expected to find a single column in the data", statement);
+  }
+  return row->asVariant(0);
 }
 
-std::unique_ptr<sql::RowBase> sql::msodbc::Connection::fetchRow(std::string_view statement) {
-  return nullptr;
+void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
+  validateSourcePaths(source_paths);
 }
-
-sql::SqlVariant sql::msodbc::Connection::fetchScalar(std::string_view statement) {
-  return SqlVariant(42);
-}
-
-void sql::msodbc::Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
 }

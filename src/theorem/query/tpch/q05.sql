@@ -17,4 +17,4 @@ WHERE r_name = 'EUROPE'
   AND o_orderdate < DATE '1996-01-01'
   AND s_nationkey = c_nationkey
 GROUP BY n_name
-ORDER BY revenue DESC;
+ORDER BY revenue DESC

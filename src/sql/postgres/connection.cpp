@@ -275,8 +275,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 
     auto join_type = Join::Type::INNER;
     if (node_json.contains("Join Type")) {
-      // TODO: Parse the strategy into the enum
-      auto join_type_json = node_json["Join Type"].get<std::string>();
+      join_type = Join::typeFromString(node_json["Join Type"].get<std::string>());
     }
     if (node_json.contains("Join Filter")) {
       auto condition = node_json["Join Filter"].get<std::string>();
@@ -308,7 +307,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       auto name = col.get<std::string>();
       if (name.size() >= desc_suffix.size() &&
           name.substr(name.size() - desc_suffix.size()) == desc_suffix) {
-        // Sort keys end with DESC (yeah, a string) if they are descending
+        // Sort keys end with DESC (yeah, a string) if they’re descending.
         name = name.substr(0, name.size() - desc_suffix.size());
         sort_order = Column::Sorting::DESC;
       };

@@ -16,6 +16,5 @@ target_link_libraries(${_targetName}
         dbprove::sql
         dbprove::sql::driver
         dbprove::sql::postgres
-        pugixml::shared
         pugixml::pugixml
 )

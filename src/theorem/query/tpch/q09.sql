@@ -21,4 +21,4 @@ FROM (SELECT n_name                                                          AS 
 GROUP BY nation,
          o_year
 ORDER BY nation,
-         o_year DESC;
+         o_year DESC

@@ -7,6 +7,7 @@
 
 namespace sql {
 class ConnectionBase;
+
 /// @brief Factory class for creating connections using a specific engine
 /// New driver implementors of engines must extend this factory class and the `Engine` enum
 class ConnectionFactory {
@@ -19,16 +20,16 @@ public:
     : credential_(credential)
     , engine_(engine) {
   }
+
   ConnectionFactory(const ConnectionFactory& other)
-  : credential_(other.credential_)
-  , engine_(other.engine_)
-  , connectionCount_(other.connectionCount_.load()) {
+    : credential_(other.credential_)
+    , engine_(other.engine_)
+    , connectionCount_(other.connectionCount_.load()) {
   }
 
   ConnectionFactory() = delete;
 
   std::unique_ptr<ConnectionBase> create();
+  const Engine& engine() const { return engine_; }
 };
-
-
-}  // namespace sql
+} // namespace sql

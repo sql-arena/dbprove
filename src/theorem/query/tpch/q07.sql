@@ -27,5 +27,5 @@ GROUP BY supp_nation,
 ORDER BY supp_nation,
          cust_nation,
          l_year
-;
+
 

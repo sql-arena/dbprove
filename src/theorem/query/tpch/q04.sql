@@ -9,4 +9,4 @@ WHERE o_orderdate >= DATE '1995-02-01'
               WHERE l_orderkey = o_orderkey
                 AND l_commitdate < l_receiptdate)
 GROUP BY o_orderpriority
-ORDER BY o_orderpriority;
+ORDER BY o_orderpriority

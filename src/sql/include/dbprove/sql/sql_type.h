@@ -226,6 +226,30 @@ public:
     throw std::runtime_error("Value is not a string");
   }
 
+  [[nodiscard]] double asDouble() const {
+    if (is<SqlDouble>()) {
+      return get<SqlDouble>().get();
+    }
+    if (is<SqlFloat>()) {
+      return static_cast<double>(get<SqlFloat>().get());
+    }
+    throw std::runtime_error("Value is not a double or float");
+  }
+
+
+  [[nodiscard]] int64_t asInt8() const {
+    if (is<SqlBigInt>()) {
+      return get<SqlBigInt>().get();
+    }
+    if (is<SqlInt>()) {
+      return static_cast<int64_t>(get<SqlInt>().get());
+    }
+    if (is<SqlSmallInt>()) {
+      return static_cast<int64_t>(get<SqlSmallInt>().get());
+    }
+    throw std::runtime_error("Value is not an integer type");
+  }
+
   /// @brief Is the value of the templated type?
   template <typename T>
   bool is() const {

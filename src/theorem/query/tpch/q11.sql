@@ -16,5 +16,4 @@ HAVING SUM(ps_supplycost * ps_availqty)
               INNER JOIN tpch.nation
                   ON s_nationkey = n_nationkey
               WHERE n_name = 'JAPAN')
-ORDER BY v DESC;
-
+ORDER BY v DESC

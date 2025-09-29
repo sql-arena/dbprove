@@ -13,7 +13,7 @@ std::string PrettyHumanCount(const size_t count) {
   } else if (count < 1000'000'000'000'000'000) {
     result = std::to_string(count / 1000'000'000'000'000) + "T";
   } else {
-    return "      ∞";
+    return "       ∞";
   }
 
   if (result.size() < TARGET_SIZE) {

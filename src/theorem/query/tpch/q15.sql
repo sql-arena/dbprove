@@ -15,4 +15,4 @@ INNER JOIN revenue
     ON s_suppkey = supplier_no
 WHERE total_revenue = (SELECT MAX(total_revenue)
                        FROM revenue)
-ORDER BY s_suppkey;
+ORDER BY s_suppkey

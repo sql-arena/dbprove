@@ -22,4 +22,4 @@ WHERE o_orderstatus = 'F'
   AND n_name = 'GERMANY'
 GROUP BY s_name
 ORDER BY numwait DESC,
-         s_name;
+         s_name

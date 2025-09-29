@@ -16,5 +16,6 @@ FROM (SELECT LEFT(c_phone,2) AS cntrycode,
                         FROM tpch.orders
                         WHERE o_custkey = c_custkey)) AS custsale
 GROUP BY cntrycode
-ORDER BY cntrycode;
+ORDER BY cntrycode
+
 

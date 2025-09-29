@@ -22,10 +22,10 @@ Connection::Connection(const CredentialPassword& credential, const Engine& engin
 }
 
 std::string Connection::version() {
-  const auto versionString = fetchScalar("SELECT version()").get<SqlString>().get();
-  const std::regex versionRegex(R"(\d+\.\d+\.\d+)");
+  const auto version_string = fetchScalar("SELECT version()").get<SqlString>().get();
+  const std::regex version_regex(R"(\d+\.\d+\.\d+)");
   std::smatch match;
-  if (std::regex_search(versionString, match, versionRegex)) {
+  if (std::regex_search(version_string, match, version_regex)) {
     return match[1];
   }
   return "Unknown";
@@ -40,6 +40,15 @@ std::string Connection::translateDialectDdl(const std::string_view ddl) const {
 
 using namespace pugi;
 using namespace explain;
+
+
+std::string cleanExpression(std::string expression) {
+  expression = std::regex_replace(expression, std::regex("&lt;"), "<");
+  expression = std::regex_replace(expression, std::regex("&gt;"), ">");
+  expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
+  expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");
+  return expression;
+}
 
 std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
   const auto yb_node_type = std::string(xml_node.name());
@@ -69,29 +78,10 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
     const auto type_xml = std::string_view(xml_node.attribute("type").as_string());
     auto condition_xml = std::string(xml_node.attribute("criteria").as_string());
     /* Yellowbrick puts the string "ON " in front of join criteria.*/
-    condition_xml = condition_xml.substr(3, condition_xml.size() - 3);
+    condition_xml = cleanExpression(condition_xml.substr(3, condition_xml.size() - 3));
 
     auto strategy = (strategy_xml == "hash") ? Join::Strategy::HASH : Join::Strategy::LOOP;
-    static const std::map<std::string_view, Join::Type> xml2type = {
-        {"inner", Join::Type::INNER},
-        {"left", Join::Type::LEFT_OUTER},
-        {"left outer", Join::Type::LEFT_OUTER},
-        {"right", Join::Type::RIGHT_OUTER},
-        {"right anti", Join::Type::RIGHT_ANTI},
-        {"anti right", Join::Type::RIGHT_ANTI},
-        {"left anti", Join::Type::LEFT_ANTI},
-        {"anti left", Join::Type::LEFT_ANTI},
-        {"right outer", Join::Type::RIGHT_OUTER},
-        {"semi right inner", Join::Type::RIGHT_SEMI_INNER},
-        {"semi right outer", Join::Type::RIGHT_SEMI_OUTER},
-        {"semi left inner", Join::Type::LEFT_SEMI_INNER},
-        {"semi left outer", Join::Type::LEFT_SEMI_OUTER},
-        {"full", Join::Type::FULL}
-    };
-    if (!xml2type.contains(type_xml)) {
-      throw ExplainException("Unrecognised JOIN type in Yellowbrick explain: " + std::string(type_xml));
-    }
-    auto type = xml2type.at(type_xml);
+    auto type = Join::typeFromString(type_xml);
     node = std::make_unique<Join>(type, strategy, condition_xml);
   } else if (yb_node_type == "GROUP_BY") {
     // TODO: Handle the case of simple strategy
@@ -101,7 +91,13 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
     node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, columns_keys, aggregations);
   } else if (yb_node_type == "SCAN") {
     const auto table_name = xml_node.attribute("table_name").as_string();
+
     node = std::make_unique<Scan>(table_name);
+
+    const auto filter = xml_node.attribute("filter");
+    if (!filter.empty()) {
+      node->filter_condition = std::string(cleanExpression(filter.as_string()));
+    }
   } else if (yb_node_type == "SEQUENCE") {
     node = std::make_unique<Sequence>();
   } else if (yb_node_type == "FILTER") {
@@ -209,6 +205,6 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
 }
 
 void Connection::analyse(const std::string_view table_name) {
-  execute("ANALYSE " + std::string(table_name) + ";\nYFLUSH" + std::string(table_name));
+  execute("ANALYSE " + std::string(table_name) + ";\nYFLUSH " + std::string(table_name));
 }
 }

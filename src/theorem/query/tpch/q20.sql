@@ -16,5 +16,5 @@ WHERE s_suppkey IN (SELECT ps_suppkey
                                            AND l_shipdate >= CAST('1993-01-01' AS DATE)
                                            AND l_shipdate < CAST('1994-01-01' AS DATE)))
   AND n_name = 'KENYA'
-ORDER BY s_name;
+ORDER BY s_name
 

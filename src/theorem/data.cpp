@@ -11,6 +11,11 @@ void DataExplain::render(Proof& proof) {
   using namespace sql::explain;
   auto& out = proof.console();
   ux::Header(out, "Query Plan", 10);
+  if (!plan) {
+    throw std::runtime_error("No plan available for theorem: " + proof.theorem.name
+                             + " this indicates an error in the client library for Engine: "
+                             + proof.factory().engine().name());
+  }
   plan->render(out, ux::Terminal::width());
 
   const auto joined = plan->rowsJoined();

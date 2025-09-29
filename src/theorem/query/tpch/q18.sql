@@ -20,4 +20,4 @@ GROUP BY c_name,
          o_orderdate,
          o_totalprice
 ORDER BY o_totalprice DESC,
-         o_orderdate;
+         o_orderdate

@@ -194,14 +194,14 @@ public:
 
   size_t childCount() const { return children_.size(); }
 
-  const T* firstChild() const {
+  T* firstChild() const {
     if (children_.empty()) {
       return nullptr;
     }
     return children_.front().get();
   }
 
-  const T* lastChild() const {
+  T* lastChild() const {
     if (children_.empty()) {
       return nullptr;
     }

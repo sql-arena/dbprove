@@ -1,8 +1,10 @@
 set(_targetName "dbprove_sql_dudkdb")
 add_library(${_targetName} STATIC)
 add_library(dbprove::sql::duckdb ALIAS ${_targetName})
-find_package(duckdb REQUIRED)
+
+set(DuckDB_USE_STATIC_LIBS ON)
 add_compile_definitions(DUCKDB_STATIC_LINK)
+find_package(duckdb CONFIG REQUIRED)
 
 
 target_sources(${_targetName} PRIVATE
@@ -15,7 +17,6 @@ target_link_libraries(${_targetName}
         duckdb_static
         dbprove::sql::driver
         dbprove::sql)
-target_compile_definitions(${_targetName} PRIVATE DUCKDB_STATIC_LINK)
 
 
 print_target_info(duckdb)

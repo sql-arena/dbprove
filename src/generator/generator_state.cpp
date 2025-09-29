@@ -1,6 +1,5 @@
 #include "generator_state.h"
 #include "generated_table.h"
-#include "../sql/msodbc/connection.h"
 #include <dbprove/sql/sql.h>
 #include <plog/Log.h>
 

@@ -20,9 +20,10 @@ protected:
   }
 
 public:
+  static constexpr double UNKNOWN = -INFINITY;
   const NodeType type;
   double rows_estimated = 0.0;
-  double rows_actual = 0.0;
+  double rows_actual = UNKNOWN;
   double cost;
   std::string filter_condition;
   std::vector<std::string> columns_input;

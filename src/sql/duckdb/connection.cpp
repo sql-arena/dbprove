@@ -128,13 +128,12 @@ public:
       db_connection = std::make_unique<::duckdb::Connection>(*db);
     } catch (const ::duckdb::IOException& e) {
       throw ConnectionException(credential, std::string(e.what()));
-    }
-    catch (const ::duckdb::Exception& e) {
+    } catch (const ::duckdb::Exception& e) {
       throw std::runtime_error("Failed to connect to DuckDB: " + std::string(e.what()));
     }
   }
 
-  std::unique_ptr<::duckdb::QueryResult> execute(const std::string_view statement) const {
+  [[nodiscard]] std::unique_ptr<::duckdb::QueryResult> execute(const std::string_view statement) const {
     try {
       const auto mapped_statement = connection.mapTypes(statement);
       auto result = db_connection->Query(std::string(mapped_statement));
@@ -227,6 +226,24 @@ void Connection::bulkLoad(const std::string_view table, std::vector<std::filesys
 using namespace sql::explain;
 using namespace nlohmann;
 
+std::string parseFilter(json filter) {
+  if (filter.is_string()) {
+    return filter.get<std::string>();
+  }
+  if (!filter.is_array()) {
+    throw ExplainException("Cannot parse filter: " + filter.dump());
+  }
+  std::string result;
+  for (size_t i = 0; i < filter.size(); ++i) {
+    if (i > 0) {
+      result += " AND ";
+    }
+    result += filter[i].get<std::string>();
+  }
+  return result;
+}
+
+
 std::pair<std::string, Column::Sorting> parseSortString(const std::string& column_data) {
   if (column_data.ends_with(" ASC")) {
     return std::make_pair(column_data.substr(0, column_data.size() - 4), Column::Sorting::ASC);
@@ -263,6 +280,7 @@ struct ExplainContext {
    */
   std::map<size_t, std::string> delimiter_expressions;
   std::stack<Node*> propagate_estimate;
+  std::stack<Node*> propagate_actual;
 };
 
 std::string extractConditions(const json& extra_info) {
@@ -285,12 +303,19 @@ std::string extractConditions(const json& extra_info) {
 std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
   const auto operator_name = node_json["operator_name"].get<std::string>();
 
+  const double actual_rows = node_json["operator_cardinality"].get<double>();
   const auto& extra_info = node_json["extra_info"];
   std::unique_ptr<Node> node;
   if (operator_name.contains("SEQ_SCAN")) {
     // NOTE: Duckdb has an extra space in the SEQ_SCAN
     const auto table_name = node_json["extra_info"]["Table"].get<std::string>();
+
+    std::string filter;
+    if (extra_info.contains("Filters")) {
+      filter = parseFilter(extra_info["Filters"]);
+    }
     node = std::make_unique<Scan>(table_name);
+    node->filter_condition = filter;
   } else if (operator_name.contains("DELIM_SCAN")) {
     // TODO: There is a reference inside this node which points at the thing which is being materialised
     std::string materialised_expression;
@@ -310,27 +335,18 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
       projection_columns.push_back(Column(column_name));
     }
     node = std::make_unique<Projection>(projection_columns);
-  }
-  if (operator_name.contains("HASH_JOIN") || operator_name == "NESTED_LOOP_JOIN") {
+  } else if (operator_name.contains("HASH_JOIN")
+             || operator_name == "NESTED_LOOP_JOIN") {
     auto join_condition = extractConditions(extra_info);
-
-    auto join_type = Join::Type::CROSS;
 
     const auto join_type_str = extra_info["Join Type"].get<std::string>();
 
-    if (join_type_str.contains("INNER")) {
-      join_type = Join::Type::INNER;
-    } else if (join_type_str.contains("LEFT")) {
-      join_type = Join::Type::LEFT_OUTER;
-    } else if (join_type_str.contains("RIGHT")) {
-      join_type = Join::Type::RIGHT_OUTER;
-    } else if (join_type_str.contains("FULL")) {
-      join_type = Join::Type::FULL;
-    }
+    auto join_type = Join::typeFromString(join_type_str);
     auto strategy = operator_name.contains("HASH_JOIN") ? Join::Strategy::HASH : Join::Strategy::LOOP;
     node = std::make_unique<Join>(join_type, strategy, join_condition);
   } else if (operator_name.contains("RIGHT_DELIM_JOIN")
-             || operator_name.contains("LEFT_DELIM_JOIN")) {
+             ||
+             operator_name.contains("LEFT_DELIM_JOIN")) {
     const auto join_type_str = extra_info["Join Type"].get<std::string>();
     auto join_type = join_type_str.contains("RIGHT")
                        ? Join::Type::RIGHT_SEMI_INNER
@@ -343,23 +359,22 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     node = std::make_unique<Join>(join_type, Join::Strategy::HASH, join_condition);
   } else if (operator_name == "TOP_N") {
     // DuckDB uses a special sort + limit node when asking for Top N
-    std::unique_ptr<Sort> sortNode = nullptr;
+    std::unique_ptr<Sort> sortNode;
     auto sort_keys = parseOrderColumns(node_json);
-    if (sort_keys.size() > 0) {
+    if (!sort_keys.empty()) {
       sortNode = std::make_unique<Sort>(sort_keys);
     }
 
     auto limit_string = extra_info["Top"].get<std::string>();
     auto limit = std::atol(limit_string.c_str());
-    auto limitNode = std::make_unique<Limit>(limit);
+    node = std::make_unique<Limit>(limit);
     // For some reason, Duck does not estimate a cardinality for this type
-    limitNode->rows_estimated = limit;
-
+    node->rows_estimated = limit;
     if (sortNode) {
-      sortNode->addChild(std::move(limitNode));
-      node = std::move(sortNode);
-    } else {
-      node = std::move(limitNode);
+      sortNode->rows_actual = Node::UNKNOWN;
+      sortNode->rows_estimated = limit;
+      ctx.propagate_actual.push(sortNode.get());
+      node->addChild(std::move(sortNode));
     }
   } else if (operator_name == "ORDER_BY") {
     auto sort_keys = parseOrderColumns(node_json);
@@ -403,25 +418,36 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     throw std::runtime_error("Unknown operator type: " + operator_name);
   }
 
+  node->rows_actual = actual_rows;
   if (extra_info.contains("Estimated Cardinality")) {
     auto cardinality_string = extra_info["Estimated Cardinality"].get<std::string>();
     double estimate = std::atof(cardinality_string.c_str());
     node->rows_estimated = estimate;
+    if (node->rows_actual == Node::UNKNOWN) {
+      node->rows_actual = actual_rows;
+    }
     while (!ctx.propagate_estimate.empty()) {
       ctx.propagate_estimate.top()->rows_estimated = estimate;
       ctx.propagate_estimate.pop();
     }
-  } else {
+  } else if (node->rows_estimated == 0) {
     // HACK: Likely a bug in DuckDB. Some nodes do not have estimates, even though they clearly care about it
     ctx.propagate_estimate.push(node.get());
   }
-  node->rows_actual = node_json["operator_cardinality"].get<double>();
+
+  if (node->rows_actual != Node::UNKNOWN) {
+    while (!ctx.propagate_actual.empty()) {
+      ctx.propagate_actual.top()->rows_actual = actual_rows;
+      ctx.propagate_actual.pop();
+    }
+  }
+
   return node;
 }
 
 
 std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
-  // Determine the node type from "Node Type" field
+  // Determine the node type from the "Node Type" field
   if (!node_json.contains("operator_name")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
   }
@@ -440,42 +466,28 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
     node = createNodeFromJson(node_json, ctx);
   }
 
+  Node* last_child = node.get();
+  while (last_child->childCount() > 0) {
+    last_child = last_child->firstChild();
+  }
+
   if (node_json.contains("children")) {
-    for (auto& child_json : node_json["children"]) {
+    auto children = node_json["children"];
+    for (auto& child_json : children) {
       auto child_node = buildExplainNode(child_json, ctx);
-      node->addChild(std::move(child_node));
+      last_child->addChild(std::move(child_node));
     }
   }
 
   return node;
 }
 
-/**
- * In DuckDB, joins are the "wrong way around"
- *  By convention, the build side is the FIRST child, but duck makes it
- *  the second.
- *
- *  Correct for this
- */
-void flipJoins(Node& root) {
-  std::vector<Node*> join_nodes;
-  for (auto& node : root.depth_first()) {
-    if (node.type == NodeType::JOIN) {
-      join_nodes.push_back(&node);
-    }
-  }
-
-  for (const auto node : join_nodes) {
-    node->reverseChildren();
-  }
-}
-
 std::unique_ptr<Plan> buildExplainPlan(json& json) {
   if (!json.contains("children")) {
-    throw std::runtime_error("Invalid EXPLAIN format. Expected to find a children node");
+    throw std::runtime_error("Invalid EXPLAIN format. Expected to find a 'children' node");
   }
 
-  /* High lever stats about the query */
+  /* High level stats about the query */
   double planning_time = 0.0;
   double execution_time = 0.0;
 
@@ -500,8 +512,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
   auto plan = std::make_unique<Plan>(std::move(root_node));
   plan->planning_time = planning_time;
   plan->execution_time = execution_time;
-
-  flipJoins(plan->planTree());
+  plan->flipJoins();
   return plan;
 }
 

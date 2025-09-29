@@ -24,4 +24,4 @@ GROUP BY c_custkey,
          n_name,
          c_address,
          c_comment
-ORDER BY revenue DESC;
+ORDER BY revenue DESC

@@ -7,7 +7,6 @@ message(STATUS "Triplet          : ${VCPKG_TARGET_TRIPLET}")
 
 option(DBPROVE_ENABLE_TESTING "Enable testing" ${PROJECT_IS_TOP_LEVEL})
 
-add_compile_definitions(DUCKDB_STATIC_LINK)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

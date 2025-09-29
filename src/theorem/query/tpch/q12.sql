@@ -21,6 +21,6 @@ WHERE l_shipmode IN ('AIR', 'TRUCK')
   AND l_receiptdate >= DATE '1994-01-01'
   AND l_receiptdate < DATE '1995-01-01'
 GROUP BY l_shipmode
-ORDER BY l_shipmode;
+ORDER BY l_shipmode
 
 

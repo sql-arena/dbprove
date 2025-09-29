@@ -1,6 +1,5 @@
 #include "scan.h"
-
-#include "include/dbprove/sql/explain/glyphs.h"
+#include "glyphs.h"
 
 static constexpr auto symbol_ = "📄";
 

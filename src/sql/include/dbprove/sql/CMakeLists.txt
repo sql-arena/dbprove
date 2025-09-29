@@ -14,7 +14,6 @@ target_sources(${_targetName}
         sql.h
         explain/node.h
         explain/node_type.h
-        explain/glyphs.h
         explain/column.h
 )
 

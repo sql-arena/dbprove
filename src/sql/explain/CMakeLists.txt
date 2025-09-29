@@ -1,0 +1,20 @@
+target_sources(${_targetName}
+        PRIVATE
+        select.cpp
+        join.cpp
+        group_by.cpp
+        distribution.cpp
+        plan.cpp
+        limit.cpp
+        projection.cpp
+        scan.cpp
+        scan_empty.cpp
+        scan_materialised.cpp
+        sort.cpp
+        union.cpp
+        node.cpp
+        PRIVATE FILE_SET internal TYPE HEADERS FILES
+        group_by.h
+        cutoff.h
+        sequence.h
+)

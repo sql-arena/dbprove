@@ -19,25 +19,8 @@ target_sources(${_targetName}
         engine.cpp
         sql_exception.cpp
         row_base.cpp
-        explain/select.cpp
-        explain/join.cpp
-        explain/group_by.cpp
-        explain/distribution.cpp
-        explain/plan.cpp
-        explain/limit.cpp
-        explain/projection.cpp
-        explain/scan.cpp
-        explain/scan_empty.cpp
-        explain/scan_materialised.cpp
-        explain/sort.cpp
-        explain/union.cpp
-        explain/node.cpp
-        PRIVATE FILE_SET internal TYPE HEADERS FILES
-        explain/group_by.h
-        explain/cutoff.h
-        explain/sequence.h
-
 )
+add_subdirectory("explain")
 
 target_precompile_headers(${_targetName}
         PRIVATE

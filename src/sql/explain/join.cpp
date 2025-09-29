@@ -1,6 +1,6 @@
 #include "join.h"
 
-#include "include/dbprove/sql/explain/glyphs.h"
+#include "glyphs.h"
 
 namespace sql::explain {
 std::string Join::compactSymbolic() const {

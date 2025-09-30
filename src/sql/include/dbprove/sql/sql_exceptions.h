@@ -24,6 +24,7 @@ enum class SqlState {
   WARNING_01,
   NO_DATA_02,
   CONNECTION_08,
+  CONNECTION_CLOSED_08003,
   DATA_EXCEPTION_22,
   INVALID_CURSOR_24,
   INVALID_AUTHORIZATION_SPECIFICATION_28,
@@ -93,6 +94,20 @@ public:
                 "When trying to access: " + render_credential(credential) + " the connector threw:\n" + message) {
   }
 };
+
+
+/**
+ * @brief Thrown when a connection to the database is closed, but a user tries to execute on it
+ */
+class ConnectionClosedException final : public Exception {
+public:
+  explicit ConnectionClosedException(
+      const Credential& credential)
+    : Exception(SqlState::CONNECTION_CLOSED_08003,
+                "The connection to " + render_credential(credential) + " is closed") {
+  }
+};
+
 
 /**
  * @brief Thrown when a SQL statement is malformed

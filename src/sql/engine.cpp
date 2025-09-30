@@ -18,6 +18,7 @@ Engine::Engine(const std::string_view name) {
       {"pg", Type::Postgres},
       {"sqlite", Type::SQLite},
       {"sqlserver", Type::SQLServer},
+      {"sql server", Type::SQLServer},
       {"duckdb", Type::DuckDB},
       {"duck", Type::DuckDB},
       {"utopia", Type::Utopia},
@@ -231,7 +232,8 @@ std::string Engine::name() const {
       {Type::Utopia, "Utopia"},
       {Type::DuckDB, "DuckDB"},
       {Type::Databricks, "Databricks"},
-      {Type::Yellowbrick, "Yellowbrick"}
+      {Type::Yellowbrick, "Yellowbrick"},
+      {Type::SQLServer, "SQL Server"}
   };
   if (!canonical_names.contains(type())) {
     throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");

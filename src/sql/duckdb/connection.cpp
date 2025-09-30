@@ -133,7 +133,18 @@ public:
     }
   }
 
-  [[nodiscard]] std::unique_ptr<::duckdb::QueryResult> execute(const std::string_view statement) const {
+  void close() {
+    db_connection = nullptr;
+  }
+
+  void check_connection() {
+    if (!db_connection) {
+      throw ConnectionClosedException(credential);
+    }
+  }
+
+  [[nodiscard]] std::unique_ptr<::duckdb::QueryResult> execute(const std::string_view statement) {
+    check_connection();
     try {
       const auto mapped_statement = connection.mapTypes(statement);
       auto result = db_connection->Query(std::string(mapped_statement));
@@ -536,5 +547,9 @@ std::string Connection::version() {
     return match[1];
   }
   return "Unknown";
+}
+
+void Connection::close() {
+  impl_->close();
 }
 }

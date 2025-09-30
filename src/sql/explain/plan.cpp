@@ -78,6 +78,10 @@ RowCount Plan::rowsProcessed() const {
   return rowsAggregated() + rowsJoined() + rowsSorted();
 }
 
+RowCount Plan::rowsReturned() const {
+  return 0; // TODO
+}
+
 RowCount Plan::rowsScanned() const {
   return countRowsByNode(planTree(), NodeType::SCAN);
 }

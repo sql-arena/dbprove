@@ -5,6 +5,8 @@ add_library(dbprove::sql::sqlite ALIAS ${_targetName})
 
 target_sources(${_targetName} PRIVATE
         connection.cpp
+        result.cpp
+        row.cpp
 )
 
 target_link_libraries(${_targetName}

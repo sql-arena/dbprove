@@ -1,13 +1,12 @@
 #pragma once
 #include "node.h"
 #include <memory>
-#include <ostream>
 #include <magic_enum/magic_enum.hpp>
 
 
 namespace sql::explain {
 /**
- * Represents the high level operations that roughly map to node types
+ * Represents the high-level operations that roughly map to node types
  */
 enum class Operation {
   Join = 0, Aggregate = 1, Sort = 2, Scan = 3, Filter = 4, UNKNOWN = 99
@@ -72,13 +71,15 @@ public:
 
   /**
    * Some engines render children of joins the other way around than we prefer.
-   * Those engines can call this method
+   * Those engines can call this method.
    */
   void flipJoins() const;
   /**
    * Render the plan to human-readable format
+   * @param out Render into this
+   * @param max_width Will be truncate behind that with ellipsis
    * @param mode Mode to use for rendering
    */
-  void render(std::ostream& out, size_t max_width, RenderMode mode = RenderMode::MUGGLE) const;;
+  void render(std::ostream& out, size_t max_width, RenderMode mode = RenderMode::MUGGLE) const;
 };
 }

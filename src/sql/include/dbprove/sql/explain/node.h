@@ -8,15 +8,17 @@
 namespace sql::explain {
 /**
  *
- * @brief a plan node in the Explain tree
+ * @brief Plan node in the Explain tree
  *
- * @notes double is used for row estimation. It is possible (and likely in many cases) for query planners to estimate
+ * @notes double is used for row estimation.
+ * It is possible (and likely frequent) for query planners to estimate
  * something that is bigger than MAX_INT64
  */
 class Node : public TreeNode<Node> {
 protected:
   explicit Node(const NodeType type)
-    : type(type) {
+    : type(type)
+    , cost(0) {
   }
 
 public:

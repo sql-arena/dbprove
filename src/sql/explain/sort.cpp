@@ -1,4 +1,5 @@
 #include "sort.h"
+#include "glyphs.h"
 
 static constexpr const char* symbol_ = "τ";
 static constexpr const char* asc_ = "↑";
@@ -27,7 +28,7 @@ std::string Sort::compactSymbolic() const {
 
 std::string Sort::renderMuggle(size_t max_width) const {
   std::string result = "SORT ";
-  result += Column::join(columns_sorted, ", ", max_width);
+  result += join(columns_sorted, ", ", max_width);
   return result;
 }
 }

@@ -1,6 +1,8 @@
 project(test_connectivity LANGUAGES CXX)
 enable_testing()
-add_executable(test_connectivity connection.cpp)
+add_executable(test_connectivity
+        connection.cpp
+        explain.cpp)
 find_package(Catch2 CONFIG REQUIRED)
 
 target_link_libraries(test_connectivity

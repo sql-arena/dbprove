@@ -6,6 +6,8 @@
 #include "databricks/connection.h"
 #include "yellowbrick/connection.h"
 #include "clickhouse/connection.h"
+#include "mariadb/connection.h"
+#include "sqlite/connection.h"
 
 namespace sql {
 std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
@@ -36,6 +38,10 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_);
     case Engine::Type::Databricks:
       return std::make_unique<databricks::Connection>(std::get<CredentialAccessToken>(credential_), engine_);
+    case Engine::Type::MariaDB:
+      return std::make_unique<mariadb::Connection>(std::get<CredentialPassword>(credential_), engine_);
+    case Engine::Type::SQLite:
+      return std::make_unique<sqlite::Connection>(std::get<CredentialNone>(credential_), engine_);
     default:
       throw std::invalid_argument("Unsupported engine type: " + engine_.name());
   }

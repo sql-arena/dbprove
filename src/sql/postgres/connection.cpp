@@ -31,9 +31,24 @@ public:
     }
     conn = PQconnectdb(connection_string.c_str());
 
+    check_connection();
+  }
+
+  void safeClose() {
+    if (conn) {
+      PQfinish(conn);
+      conn = nullptr;
+    }
+  }
+
+  void check_connection() {
+    if (conn == nullptr) {
+      throw ConnectionClosedException(credential);
+    }
+
     if (PQstatus(conn) != CONNECTION_OK) {
       const std::string error = PQerrorMessage(conn);
-      PQfinish(conn);
+      safeClose();
       throw ConnectionException(credential, error);
     }
   }
@@ -54,7 +69,7 @@ public:
 
       default:
         const std::string error_msg = PQerrorMessage(this->conn);
-        assert(error_msg.size() > 0);
+        assert(!error_msg.empty());
         const char* sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
         std::string state;
         if (sqlstate == nullptr) {
@@ -74,7 +89,8 @@ public:
     }
   }
 
-  PGresult* execute(const std::string_view statement) const {
+  PGresult* execute(const std::string_view statement) {
+    check_connection();
     const auto mapped_statement = connection.mapTypes(statement);
     PGresult* result = PQexecParams(conn,
                                     mapped_statement.c_str(),
@@ -88,7 +104,8 @@ public:
     return result;
   }
 
-  [[maybe_unused]] auto executeRaw(const std::string_view statement) const {
+  [[maybe_unused]] auto executeRaw(const std::string_view statement) {
+    check_connection();
     const auto mapped_statement = connection.mapTypes(statement);
     PGresult* result = PQexec(conn, mapped_statement.data());
     const auto status = PQresultStatus(result);
@@ -181,11 +198,11 @@ void sql::postgres::Connection::bulkLoad(
     }
 
     // First, we need to tell PG that a copy stream is coming. This puts the server into a special mode
-    std::string copyQuery = "COPY "
-                            + std::string(table)
-                            + " FROM STDIN"
-                            + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
-    const auto ready_status = impl_->executeRaw(copyQuery);
+    std::string copy_query = "COPY "
+                             + std::string(table)
+                             + " FROM STDIN"
+                             + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
+    const auto ready_status = impl_->executeRaw(copy_query);
     assert(ready_status == PGRES_COPY_IN); // We better have handled this already
 
     // Chunk file content to the database (synchronously) with 1MB chunks so we can hide latency
@@ -206,7 +223,7 @@ void sql::postgres::Connection::bulkLoad(
 
     // After our final row (which is marked by PQOutCopyEnd) we now get a result back telling us if it worked
     const auto final_result = PQgetResult(cn);
-    impl_->check_return(final_result, copyQuery);
+    impl_->check_return(final_result, copy_query);
     PQclear(PQgetResult(cn));
     // Drain the connection - the usual libpq pointless logic
     while (PGresult* leftover = PQgetResult(cn)) {
@@ -248,7 +265,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       relation_name = node_json["Alias"].get<std::string>();
     }
     if (relation_name.empty()) {
-      // One of the lower bitmap operations, we already rendered the scan
+      // One of the lower bitmap operations, we already rendered the scan.
       return nullptr;
     }
     node = std::make_unique<Scan>(relation_name);
@@ -263,7 +280,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       join_strategy = Join::Strategy::HASH;
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
-      // Loops may have an index scan as a child. In that case, the join condition is on the scan
+      // Loops may have an index scan as a child. In that case, the join condition is on the scan.
       auto loop_child = node_json["Plans"][1];
       if (loop_child["Node Type"] == "Index Scan") {
         join_condition = loop_child["Index Cond"].get<std::string>();
@@ -294,7 +311,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       join_condition = join_condition.substr(1, join_condition.length() - 2);
     }
     if (join_condition.empty()) {
-      // PG does not use the notion of cross join, it simply has loop join without conditions.
+      // PG does not use the notion of cross-join, it simply has loop join without conditions.
       join_type = Join::Type::CROSS;
     }
 
@@ -307,7 +324,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       auto name = col.get<std::string>();
       if (name.size() >= desc_suffix.size() &&
           name.substr(name.size() - desc_suffix.size()) == desc_suffix) {
-        // Sort keys end with DESC (yeah, a string) if they’re descending.
+        // Sort keys end with “DESC” (yeah, a string) if they’re descending.
         name = name.substr(0, name.size() - desc_suffix.size());
         sort_order = Column::Sorting::DESC;
       };
@@ -336,8 +353,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
         throw std::runtime_error("Did not know GROUP BY strategy " + strategy);
       }
     } else if (node_json.contains("Group Key")) {
-      // The strategy field is only present if the strategy is Hash or if there is an aggregate
-      // value
+      // The strategy field is only present if the strategy is Hash or if an aggregate is present
       group_strategy = GroupBy::Strategy::SORT_MERGE;
     }
 
@@ -388,15 +404,15 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
   }
 
   /* PG can loop over the same sub-plan multiple times.
-   * It does not estimate the expected loops, but it does report the actual loops during ANALYSE.
-   * Because the sub-plan is run multiple times, the row counts we are dealing with going through
-   * the node is : (#loops * #rows)
+   * It doesn't estimate the expected loops, but it does report the actual loops during ANALYSE.
+   * Because we run the sub-plan multiple times, the row counts we’re dealing with going through
+   * the node is: (#loops * #rows)
    *
    * Since we don't want to unfairly skew estimate vs actual, we multiply both by the loop count.
    *
    * The `rows_actual` is the AVERAGE per loop.
    * Instead of using a double for an average value, like a sane human, Postgres uses an integer.
-   * That then means that the value can be rounded DOWN to zero - misrepresenting the actual. For those cases
+   * That then means that the value rounds DOWN to zero - misrepresenting the actual. For those cases
    * we then have to fall back to the loop count.
    */
   if (node_json.contains("Actual Loops")) {
@@ -423,7 +439,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 
 
 std::unique_ptr<Node> buildExplainNode(json& node_json) {
-  // Determine the node type from "Node Type" field
+  // Determine the node type from the “Node Type” field
   if (!node_json.contains("Node Type")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
   }
@@ -500,7 +516,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
     throw std::runtime_error("Invalid EXPLAIN JSON format");
   }
 
-  /* High lever stats about the query */
+  /* High lever stats about the query*/
   double planning_time = 0.0;
   double execution_time = 0.0;
 
@@ -550,4 +566,8 @@ std::string sql::postgres::Connection::version() {
     return match[1];
   }
   return "Unknown";
+}
+
+void sql::postgres::Connection::close() {
+  impl_->safeClose();
 }

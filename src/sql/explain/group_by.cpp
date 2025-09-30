@@ -1,4 +1,5 @@
 #include "group_by.h"
+#include "glyphs.h"
 static constexpr const char* symbol_ = "γ";
 
 namespace sql::explain {
@@ -24,9 +25,9 @@ std::string GroupBy::compactSymbolic() const {
   result += strategyName();
   result += ")";
   result += "{";
-  result += Column::join(group_keys, ", ");
+  result += join(group_keys, ", ");
   result += " ; ";
-  result += Column::join(aggregates, ", ");
+  result += join(aggregates, ", ");
   result += "}";
 
   return result;
@@ -37,11 +38,11 @@ std::string GroupBy::renderMuggle(size_t max_width) const {
   result += to_upper(strategyName());
   result += " (";
   const auto first_aggregate_size = group_keys.size() > 0 ? group_keys[0].name.size() : 0;
-  result += Column::join(group_keys, ", ", max_width - first_aggregate_size);
+  result += join(group_keys, ", ", max_width - first_aggregate_size);
   result += ")";
   result += " AGGREGATE (";
   max_width -= result.size();
-  result += Column::join(aggregates, ", ", max_width - 1);
+  result += join(aggregates, ", ", max_width - 1);
   result += ")";
   return result;
 }

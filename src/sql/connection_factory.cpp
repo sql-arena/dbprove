@@ -41,7 +41,10 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
     case Engine::Type::MariaDB:
       return std::make_unique<mariadb::Connection>(std::get<CredentialPassword>(credential_), engine_);
     case Engine::Type::SQLite:
-      return std::make_unique<sqlite::Connection>(std::get<CredentialNone>(credential_), engine_);
+      if (!std::holds_alternative<CredentialFile>(credential_)) {
+        throw std::invalid_argument("SQLite engine requires a file credential");
+      }
+      return std::make_unique<sqlite::Connection>(std::get<CredentialFile>(credential_), engine_);
     default:
       throw std::invalid_argument("Unsupported engine type: " + engine_.name());
   }

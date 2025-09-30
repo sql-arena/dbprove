@@ -17,14 +17,14 @@ constexpr std::string_view kTwoColsOneRow = "SELECT 1 AS a, 2 AS b";
 constexpr std::string_view kTwoRows = "SELECT 1 AS i UNION ALL SELECT 2 AS i ORDER BY i";
 
 
-TEST_CASE("Connectivity Works", "[Connection]") {
+TEST_CASE("Connectivity Works", "[connection]") {
   for (auto& factory : factories()) {
     const auto connection = factory.create();
     CHECK_NOTHROW(connection->execute("SELECT 1"));
   }
 }
 
-TEST_CASE("Connection Close Works", "[Connection]") {
+TEST_CASE("Connection Close Works", "[connection]") {
   for (auto& factory : factories()) {
     const auto connection = factory.create();
     connection->close();
@@ -33,7 +33,33 @@ TEST_CASE("Connection Close Works", "[Connection]") {
   }
 }
 
-TEST_CASE("Fetch Row", "[Query]") {
+
+TEST_CASE("Fetch Result", "[query]") {
+  for (auto& factory : factories()) {
+    const auto connection = factory.create();
+    const auto r = connection->fetchAll(
+        "/* test_result */ SELECT 1 AS i, 'a' AS s "
+        "UNION ALL SELECT 2 AS i, 'b' AS s "
+        "UNION ALL SELECT 3 AS i, 'c' AS s "
+        "ORDER BY i");
+    CAPTURE(connection->engine().name());
+    CHECK(r->columnCount() == 2);
+    CAPTURE(r->columnCount());
+    auto row_number = 0;
+    for (const auto& row : r->rows()) {
+      CHECK(row.asSqlType<sql::SqlInt>(0).get() == row_number + 1);
+      auto expected = std::string(1, 'a' + row_number);
+      auto actual = row.asSqlType<sql::SqlString>(1).get();
+      CHECK(actual == expected);
+      ++row_number;
+    }
+    CHECK(row_number == 3);
+    // Depending on the driver, the row count may not be known until all rows have been fetched.
+    CHECK(r->rowCount() == 3);
+  }
+}
+
+TEST_CASE("Fetch Row", "[query]") {
   for (auto& factory : factories()) {
     const auto connection = factory.create();
     const auto row = connection->fetchRow("/* test_row */ SELECT 1 AS i, 'abc' AS s, CAST(0.42 AS DOUBLE) AS d");
@@ -48,7 +74,7 @@ TEST_CASE("Fetch Row", "[Query]") {
   }
 }
 
-TEST_CASE("Fetch scalar", "[Query]") {
+TEST_CASE("Fetch scalar", "[query]") {
   for (auto& factory : factories()) {
     const auto connection = factory.create();
     auto v = connection->fetchScalar("/* test_scalar */ SELECT 1 AS i");
@@ -61,26 +87,10 @@ TEST_CASE("Fetch scalar", "[Query]") {
   }
 }
 
-TEST_CASE("Fetch Result", "[Query]") {
+TEST_CASE("Fetch Types", "[query]") {
   for (auto& factory : factories()) {
     const auto connection = factory.create();
-    const auto r = connection->fetchAll(
-        "/* test_result */ SELECT 1 AS i, 'a' AS s "
-        "UNION ALL SELECT 2 AS i, 'b' AS s "
-        "UNION ALL SELECT 3 AS i, 'c' AS s "
-        "ORDER BY i");
-    CAPTURE(connection->engine().name());
-    CHECK(r->rowCount() == 3);
-    CHECK(r->columnCount() == 2);
-    CAPTURE("Shape Correct");
-    auto row_number = 0;
-    for (const auto& row : r->rows()) {
-      /*
-          CHECK(row.asSqlType<sql::SqlInt>(0).get() == row_number + 1);
-          CHECK(row.asSqlType<sql::SqlText>(1).get() == std::to_string('a' + row_number));
-        */
-      ++row_number;
-    }
+    connection->execute(resource::sql_type_sql);
+    auto data = connection->fetchAll("SELECT * FROM sql_types");
   }
 }
-

@@ -17,6 +17,7 @@ Engine::Engine(const std::string_view name) {
       {"azurefabricwarehouse", Type::SQLServer},
       {"pg", Type::Postgres},
       {"sqlite", Type::SQLite},
+      {"sqlite3", Type::SQLite},
       {"sqlserver", Type::SQLServer},
       {"sql server", Type::SQLServer},
       {"duckdb", Type::DuckDB},
@@ -60,6 +61,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
     }
     case Type::DuckDB:
       return "duck.db";
+    case Type::SQLite:
+      return "sqlite.db";
     case Type::Postgres: {
       return "postgres";
     case Type::ClickHouse:
@@ -93,6 +96,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       break;
     case Type::ClickHouse:
     case Type::DuckDB:
+    case Type::SQLite:
       return "localhost";
     default:
       host = getEnvVar("BASE_URL",
@@ -128,6 +132,7 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
     case Type::ClickHouse:
       return 9000; // ClickHouse only speaks its native protocol via C++
     case Type::DuckDB:
+    case Type::SQLite:
       return 42; // Dummy port, Duck is localhost
     default:
       return 0;
@@ -147,6 +152,7 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
     case Type::ClickHouse:
       return getEnvVar("CLICKHOUSE_USER").value_or("default");
     case Type::DuckDB:
+    case Type::SQLite:
       return "";
   }
   return username.value_or("");
@@ -212,6 +218,7 @@ Credential Engine::parseCredentials(
     case Type::Utopia:
       return sql::CredentialNone();
     case Type::DuckDB:
+    case Type::SQLite:
       return sql::CredentialFile(database);
     case Type::Databricks: {
       if (!token) {

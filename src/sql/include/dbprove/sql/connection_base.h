@@ -41,15 +41,15 @@ public:
 
   /// @brief Run statement and return
   virtual void execute(std::string_view statement) = 0;
-  /// @brief Fetches a single results from the database.
+  /// @brief Fetches a single result from the database.
   virtual std::unique_ptr<ResultBase> fetchAll(std::string_view statement) = 0;
   /// @brief Fetches multiple results from the data
   virtual std::unique_ptr<ResultBase> fetchMany(std::string_view statement) = 0;
   /// @brief Fetches a single row from the data.
-  /// @throw If the statement does not return a single row
+  /// @throw If the statement doesn't return a single row
   virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement);
   /// @brief Fetches a single, scalar value from the database.
-  /// @throw If the statement does not return a single row with a single column
+  /// @throw If the statement doesn't return a single row with a single column.
   virtual SqlVariant fetchScalar(std::string_view statement);
 
   /**

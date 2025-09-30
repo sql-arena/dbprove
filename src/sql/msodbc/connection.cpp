@@ -1,3 +1,4 @@
+#include <cassert>
 #include <vector>
 // The SQL odbc library needs some strange INT definitions
 #ifdef _WIN32
@@ -71,6 +72,85 @@ public:
         , connection, SQL_HANDLE_DBC
         );
   }
+
+  void check_return(const SQLRETURN return_value, SQLHANDLE handle) {
+    if (return_value == SQL_SUCCESS
+        || return_value == SQL_SUCCESS_WITH_INFO
+        || return_value == SQL_NO_DATA
+    ) {
+      return;
+    }
+    assert(return_value != SQL_INVALID_HANDLE);
+    assert(return_value != SQL_STILL_EXECUTING);
+
+    SQLCHAR state_buf[6] = {};
+    SQLCHAR message_buf[256] = {};
+    SQLINTEGER nativeError = 0;
+    SQLSMALLINT textLength = 0;
+
+    const auto ret = SQLGetDiagRec(SQL_HANDLE_STMT,
+                                   handle, 1,
+                                   state_buf,
+                                   &nativeError,
+                                   message_buf,
+                                   sizeof(message_buf),
+                                   &textLength);
+    if (ret != SQL_SUCCESS && ret != SQL_SUCCESS_WITH_INFO) {
+      throw std::runtime_error("Failed to retrieve error information");
+    }
+    const std::string state = reinterpret_cast<const char*>(state_buf);
+    const std::string message = reinterpret_cast<const char*>(message_buf);
+    if (state.rfind("08", 0)) {
+      throw ConnectionException(credential, message);
+    }
+  }
+
+  void check_connection_not_closed() {
+    if (!connection) {
+      throw ConnectionClosedException(credential);
+    }
+  }
+
+  void executeRaw(const std::string_view statement) {
+    check_connection_not_closed();
+    SQLHSTMT statement_handle = nullptr;
+    check_connection(
+        SQLAllocHandle(SQL_HANDLE_STMT, connection, &statement_handle),
+        connection, SQL_HANDLE_DBC
+        );
+
+    const auto ret = SQLExecDirect(statement_handle,
+                                   reinterpret_cast<SQLCHAR*>(const_cast<char*>(statement.data())),
+                                   static_cast<SQLINTEGER>(statement.size()));
+    check_return(ret, statement_handle);
+    SQLFreeHandle(SQL_HANDLE_STMT, statement_handle);
+  }
+
+  std::unique_ptr<Result> execute(const std::string_view statement) {
+    check_connection_not_closed();
+    SQLHSTMT statement_handle = nullptr;
+    check_connection(
+        SQLAllocHandle(SQL_HANDLE_STMT, connection, &statement_handle),
+        connection, SQL_HANDLE_DBC
+        );
+    const auto ret = SQLExecDirect(
+        statement_handle,
+        reinterpret_cast<SQLCHAR*>(const_cast<char*>(statement.data())),
+        static_cast<SQLINTEGER>(statement.size())
+        );
+    check_return(ret, statement_handle);
+    return std::make_unique<Result>(statement_handle);
+  }
+
+  void close() {
+    if (!connection) {
+      return;
+    }
+    SQLDisconnect(connection);
+    SQLFreeHandle(SQL_HANDLE_DBC, connection);
+    SQLFreeHandle(SQL_HANDLE_ENV, env);
+    connection = nullptr;
+  }
 };
 
 Connection::Connection(const Credential& credential, const Engine& engine)
@@ -82,29 +162,16 @@ Connection::~Connection() {
   close();
 }
 
-void Connection::execute(std::string_view statement) {
+void Connection::execute(const std::string_view statement) {
+  impl_->executeRaw(statement);
 }
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
-  // TODO: Talk to the engine and acquire the memory structure of the result, then pass it to result
-  return std::make_unique<Result>(nullptr);
+  return impl_->execute(statement);
 }
 
 std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  // TODO: Implement result set scrolling
   return fetchAll(statement);
-}
-
-std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-  return nullptr;
-}
-
-SqlVariant Connection::fetchScalar(const std::string_view statement) {
-  const auto row = fetchRow(statement);
-  if (row->columnCount() != 1) {
-    throw InvalidColumnsException("Expected to find a single column in the data", statement);
-  }
-  return row->asVariant(0);
 }
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
@@ -117,6 +184,7 @@ std::string Connection::version() {
 }
 
 void Connection::close() {
+  impl_->close();
   ConnectionBase::close();
 }
 }

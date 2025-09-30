@@ -16,6 +16,8 @@ public:
   virtual RowCount rowCount() const = 0;
   virtual ColumnCount columnCount() const = 0;
   RowIterable rows();
+  /// @brief Get the type of a column by its index
+  SqlTypeKind columnType(size_t index) const;
 
 protected:
   /// @brief return the next row or nullptr if no more rows
@@ -26,6 +28,7 @@ protected:
 
   friend class RowIterator;
   friend class ColumnIterator;
+  std::vector<SqlTypeKind> columnTypes_;
 };
 
 

@@ -73,6 +73,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\tools\pythonpkg\tests\fast\data\stress_test.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.3.2-f18acc3e28.clean\.github\config\uncovered_files.csv">
           <value>
             <Attribute>
@@ -91,6 +98,13 @@
           <value>
             <Attribute>
               <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.3.2-f18acc3e28.clean\tools\pythonpkg\tests\fast\data\stress_test.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
             </Attribute>
           </value>
         </entry>

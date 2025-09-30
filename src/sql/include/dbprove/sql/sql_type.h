@@ -5,6 +5,8 @@
 #include <string>
 #include <stdexcept>
 
+#include <magic_enum/magic_enum.hpp>
+
 namespace sql {
 using RowCount = uint64_t;
 using ColumnCount = uint64_t;
@@ -36,8 +38,13 @@ enum class SqlTypeKind {
   SQL_NULL
 };
 
+constexpr auto to_string(SqlTypeKind kind) {
+  return magic_enum::enum_name(kind);
+}
+
 class SqlType {
 public:
+  static constexpr size_t MAX_STRING_LENGTH = 64 * 1024;
   virtual ~SqlType() = default;
 };
 
@@ -174,6 +181,9 @@ public:
     return *this;
   }
 
+  explicit SqlVariant(const SqlDecimal& v)
+    : data(v) {
+  }
   explicit SqlVariant(variant_type v)
     : data(std::move(v)) {
   }

@@ -15,4 +15,5 @@ target_link_libraries(${_targetName}
         PRIVATE
         dbprove::sql
         dbprove::sql::driver
+        unofficial::libmariadb
 )

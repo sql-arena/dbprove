@@ -3,12 +3,14 @@
 
 namespace sql::mariadb {
 class Result::Pimpl {
+public:
   void* handle_;
 
-public:
   explicit Pimpl(void* handle)
     : handle_(handle) {
   }
+
+  ~Pimpl() = default;
 };
 
 Result::Result(void* handle)
@@ -23,6 +25,9 @@ RowCount Result::rowCount() const {
 ColumnCount Result::columnCount() const {
   // TODO: Implement
   return 0;
+}
+
+Result::~Result() {
 }
 
 const RowBase& Result::nextRow() {

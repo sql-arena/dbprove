@@ -5,7 +5,20 @@
 namespace sql::boilerplate {
 class Connection::Pimpl {
 public:
-  explicit Pimpl() {}
+  explicit Pimpl() {
+  }
+
+  void executeRaw(const std::string_view statement) {
+    // TODO: Implement
+  }
+
+  void close() {
+    // TODO: Implement
+  }
+
+  ~Pimpl() {
+    close();
+  };
 };
 
 Connection::Connection(const Credential& credential, const Engine& engine)
@@ -14,9 +27,11 @@ Connection::Connection(const Credential& credential, const Engine& engine)
 }
 
 Connection::~Connection() {
+  impl_->close();
 }
 
 void Connection::execute(std::string_view statement) {
+  return impl_->executeRaw(statement);
 }
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
@@ -25,20 +40,7 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 }
 
 std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  // TODO: Implement result set scrolling
   return fetchAll(statement);
-}
-
-std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-  return nullptr;
-}
-
-SqlVariant Connection::fetchScalar(const std::string_view statement) {
-  const auto row = fetchRow(statement);
-  if (row->columnCount() != 1) {
-    throw InvalidColumnsException("Expected to find a single column in the data", statement);
-  }
-  return row->asVariant(0);
 }
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {

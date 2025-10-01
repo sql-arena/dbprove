@@ -59,6 +59,27 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\data\csv\real\imdb_movie_info_escaped.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf100\85.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\85.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\test\sakila\data\film.csv">
           <value>
             <Attribute>
@@ -84,6 +105,27 @@
           <value>
             <Attribute>
               <option name="separator" value="&#9;" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.3.2-f18acc3e28.clean\data\csv\real\imdb_movie_info_escaped.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.3.2-f18acc3e28.clean\extension\tpcds\dsdgen\answers\sf100\85.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.3.2-f18acc3e28.clean\extension\tpcds\dsdgen\answers\sf1\85.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
             </Attribute>
           </value>
         </entry>

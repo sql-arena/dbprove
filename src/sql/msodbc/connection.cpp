@@ -174,6 +174,22 @@ std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view stateme
   return fetchAll(statement);
 }
 
+std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
+  /* Because the TDS protocol is streaming, we don't know the number of rows until we have scrolled though the cursor */
+  const auto result = fetchAll(statement);
+  std::unique_ptr<MaterialisedRow> first_row = nullptr;
+  for (auto& row : result->rows()) {
+    if (first_row) {
+      throw InvalidRowsException("Expected to find a single row in the data, but found more than one", statement);
+    }
+    first_row = row.materialise();
+  }
+  if (!first_row) {
+    throw EmptyResultException(statement);
+  }
+  return first_row;
+}
+
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
 }

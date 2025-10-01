@@ -2,8 +2,7 @@
 #include "result.h"
 #include "sql_exceptions.h"
 #include <mysql/mysql.h>
-#include <mysql/errmsg.h>
-#include <nlohmann/detail/meta/type_traits.hpp>
+
 
 namespace sql::mariadb {
 class Connection::Pimpl {
@@ -19,14 +18,14 @@ public:
     if (!conn) {
       throw std::runtime_error("Failed to initialize construct MySQL connection");
     }
-    if (mysql_real_connect(conn,
-                           credential.host.c_str(),
-                           credential.username.c_str(),
-                           credential.password.value_or("").c_str(),
-                           credential.database.c_str(),
-                           credential.port,
-                           nullptr,
-                           0)) {
+    if (!mysql_real_connect(conn,
+                            credential.host.c_str(),
+                            credential.username.c_str(),
+                            credential.password.value_or("").c_str(),
+                            credential.database.c_str(),
+                            credential.port,
+                            nullptr,
+                            0)) {
       std::string error_msg = mysql_error(conn);
       throw ConnectionException(credential, error_msg);
     }
@@ -42,8 +41,8 @@ public:
     if (error == 0) {
       return;
     }
-    std::string error_msg = mysql_error(conn);
-    auto error_code = mysql_errno(conn);
+    const std::string error_msg = mysql_error(conn);
+    const auto error_code = mysql_errno(conn);
     switch (error_code) {
       // TODO: Fill this in
       default:

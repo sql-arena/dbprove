@@ -17,8 +17,5 @@ public:
   }
 
   ColumnCount columnCount() const override;
-
-private:
-  mutable char buffer_[SqlType::MAX_STRING_LENGTH]; ///< Need this for bounce buffer during parse
 };
 }

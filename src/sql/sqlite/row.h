@@ -3,11 +3,19 @@
 
 
 namespace sql::sqlite {
-    class Row : public RowBase {
-    protected:
-        [[nodiscard]] SqlVariant get(size_t index) const override;
+class Result;
 
-    public:
-        ColumnCount columnCount() const override;
-    };
+class Row final : public RowBase {
+  Result* result_;
+
+protected:
+  [[nodiscard]] SqlVariant get(size_t index) const override;
+
+public:
+  explicit Row(Result* result)
+    : result_(result) {
+  }
+
+  ColumnCount columnCount() const override;
+};
 }

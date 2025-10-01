@@ -45,6 +45,12 @@ public:
     check_return(results, error_message);
   }
 
+  std::unique_ptr<Result> execute(const std::string_view statement) const {
+    sqlite3_stmt* stmt = nullptr;
+    check_return(sqlite3_prepare_v2(db, statement.data(), -1, &stmt, nullptr), nullptr);
+    return std::make_unique<Result>(stmt);
+  }
+
   void close() {
     if (db) {
       sqlite3_close(db);
@@ -70,8 +76,7 @@ void Connection::execute(std::string_view statement) {
 }
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
-  // TODO: Talk to the engine and acquire the memory structure of the result, then pass it to result
-  return std::make_unique<Result>(nullptr);
+  return impl_->execute(statement);
 }
 
 std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {

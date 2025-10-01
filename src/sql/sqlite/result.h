@@ -4,10 +4,14 @@
 #include "result_base.h"
 
 namespace sql::sqlite {
-class Result : public ResultBase {
+class Row;
+
+class Result final : public ResultBase {
+  friend class Row;
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
   const std::vector<SqlVariant>& currentRow() const;
+  SqlVariant columnData(size_t index) const;
   RowCount currentRowIndex_ = 0;
 
 public:

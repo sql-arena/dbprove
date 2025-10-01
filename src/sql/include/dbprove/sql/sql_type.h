@@ -184,6 +184,7 @@ public:
   explicit SqlVariant(const SqlDecimal& v)
     : data(v) {
   }
+
   explicit SqlVariant(variant_type v)
     : data(std::move(v)) {
   }
@@ -270,6 +271,12 @@ public:
   template <typename T>
   T get() const {
     return std::get<T>(data);
+  }
+
+  [[nodiscard]] SqlTypeKind kind() const {
+    if (std::holds_alternative<SqlInt>(data)) {
+      return SqlTypeKind::INT;
+    }
   }
 };
 }

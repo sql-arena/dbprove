@@ -34,6 +34,29 @@ public:
     return get(index).get<T>();
   }
 
+  template <>
+  SqlInt asSqlType(const size_t index) const {
+    const auto v = get(index);
+    if (v.is<SqlSmallInt>()) {
+      return SqlInt(v.get<SqlSmallInt>().get());
+    }
+    if (v.is<SqlInt>()) {
+      return v.get<SqlInt>();
+    }
+    if (v.is<SqlBigInt>()) {
+      const auto i8 = v.get<SqlBigInt>().get();
+      if (i8 < std::numeric_limits<int32_t>::min()) {
+        throw std::runtime_error("Value is too small  to fit in an int32");
+      }
+      if (i8 > std::numeric_limits<int32_t>::max()) {
+        throw std::runtime_error("Value is too large  to fit in an int32");
+      }
+      return SqlInt(static_cast<int32_t>(i8));
+    }
+
+    throw std::runtime_error("Attempting to access non integer as SqlInt at index " + std::to_string(index));
+  }
+
   [[nodiscard]] SqlVariant asVariant(const size_t index) const {
     return get(index);
   }
@@ -53,6 +76,7 @@ public:
     }
     return v.get<SqlDouble>().get();
   }
+
 
   std::unique_ptr<MaterialisedRow> materialise() const;
 

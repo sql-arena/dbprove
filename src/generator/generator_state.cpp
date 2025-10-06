@@ -1,5 +1,9 @@
 #include "generator_state.h"
+
+#include <filter.h>
+
 #include "generated_table.h"
+#include "dbprove/sql/connection_factory.h"
 #include <dbprove/sql/sql.h>
 #include <plog/Log.h>
 
@@ -9,6 +13,17 @@ available_tables() {
   static std::map<std::string_view, GeneratedTable*> registry;
   return registry;
 }
+
+auto& pk_to_fk() {
+  static std::map<std::string_view, std::vector<sql::ForeignKey>> map;
+  return map;
+}
+
+auto& fk_to_pk() {
+  static std::map<std::string_view, std::vector<sql::ForeignKey>> map;
+  return map;
+}
+
 
 GeneratorState::GeneratorState(const std::filesystem::path& basePath)
   : basePath_(basePath) {
@@ -31,10 +46,12 @@ void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql:
     std::unique_ptr<sql::ConnectionBase> cn = conn.create();
     generate(table_name);
     load(table_name, *cn);
+
+    declareKeys(table_name, *cn);
   }
 }
 
-bool GeneratorState::contains(std::string_view table_name) const {
+bool GeneratorState::contains(const std::string_view table_name) {
   sql::checkTableName(table_name);
   return available_tables().contains(table_name);
 }
@@ -47,7 +64,7 @@ sql::RowCount generator::GeneratorState::generate(const std::string_view table_n
         "Generator not found for table: " + std::string(table_name));
   }
 
-  auto target_row_count = table(table_name).row_count;
+  const auto target_row_count = table(table_name).row_count;
   const auto file_name = csvPath(table_name);
   if (exists(file_name) && file_size(file_name) > 0) {
     // NOTE: even a zero row file will still have a header.
@@ -97,10 +114,30 @@ sql::RowCount GeneratorState::load(const std::string_view table_name, sql::Conne
   return existing_rows.value();
 }
 
-void GeneratorState::registerGeneration(const std::string_view table_name, const std::filesystem::path& path) {
+void GeneratorState::registerGeneration(const std::string_view table_name, const std::filesystem::path& path) const {
   sql::checkTableName(table_name);
   table(table_name).path = path;
   table(table_name).is_generated = true;
+}
+
+void GeneratorState::declareKeys(const std::string_view table_name, sql::ConnectionBase& conn) const {
+  // Key up anything I point at that already exists
+  if (fk_to_pk().contains(table_name)) {
+    for (auto& fk : fk_to_pk().at(table_name)) {
+      if (ready_tables_.contains(fk.pk_table_name)) {
+        conn.declareForeignKey(table_name, fk.fk_columns, fk.pk_table_name, fk.pk_columns);
+      }
+    }
+  }
+
+  // Key up anything existing, which points at me
+  if (pk_to_fk().contains(table_name)) {
+    for (auto& pk : pk_to_fk().at(table_name)) {
+      if (ready_tables_.contains(pk.fk_table_name)) {
+        conn.declareForeignKey(pk.fk_table_name, pk.fk_columns, table_name, pk.pk_columns);
+      }
+    }
+  }
 }
 
 GeneratedTable& GeneratorState::table(
@@ -118,5 +155,15 @@ Registrar::Registrar(const std::string_view table_name, const std::string_view d
                      const sql::RowCount rows) {
   sql::checkTableName(table_name);
   available_tables().emplace(table_name, new GeneratedTable{table_name, ddl, f, rows});
+}
+
+
+KeyRegistrar::KeyRegistrar(std::string_view fk_table_name, const std::vector<std::string_view>& fk_column_names,
+                           std::string_view pk_table_name, const std::vector<std::string_view>& pk_column_names) {
+  sql::checkTableName(fk_table_name);
+  sql::checkTableName(pk_table_name);
+  const sql::ForeignKey fk{fk_table_name, fk_column_names, pk_table_name, pk_column_names};
+  fk_to_pk()[fk_table_name].push_back(fk);
+  pk_to_fk()[pk_table_name].push_back(fk);
 }
 }

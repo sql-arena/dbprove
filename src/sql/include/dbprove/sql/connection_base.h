@@ -93,12 +93,24 @@ public:
    */
   virtual std::optional<RowCount> tableRowCount(const std::string_view table);
 
-  /// @brief Creates a foreign key (if available)
+  /**
+   * Create a foreign key.
+   * Engines that don't support this mustn't throw but just return
+   *
+   * Trying to create a foreign key which already exists is not an error.
+   *
+   * Implemetors overriding this function must use `foreignKeyName` to generate the name of the key.
+   * @param fk_table Foreign table
+   * @param fk_columns Foreign column
+   * @param pk_table The table being pointed at
+   * @param pk_columns Columns contained by fk_columns in the same order
+   */
   virtual void declareForeignKey(std::string_view fk_table,
                                  std::span<std::string_view> fk_columns,
                                  std::string_view pk_table,
-                                 std::span<std::string_view> pk_columns) const {
-  }
+                                 std::span<std::string_view> pk_columns);
+
+  static std::string foreignKeyName(std::string_view table_name);
 
   /// @brief Given DDL, updates types to match the engine
   virtual std::string translateDialectDdl(const std::string_view ddl) const {

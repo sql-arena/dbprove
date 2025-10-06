@@ -13,14 +13,9 @@ public:
     HASH, RANDOM, REPLICATED
   };
 
-  explicit Column(std::string name)
-    : name(std::move(name)) {
-  }
+  explicit Column(std::string name);
 
-  explicit Column(std::string name, const Sorting sorting)
-    : name(std::move(name))
-    , sorting(sorting) {
-  }
+  explicit Column(const std::string& name, const Sorting sorting);
 
   ~Column() = default;
   Column(const Column&) = default;

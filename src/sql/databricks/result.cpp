@@ -4,6 +4,8 @@
 #include <iostream>
 
 #include <vector>
+
+#include "dbprove/sql/sql_exceptions.h"
 #include <nlohmann/json.hpp>
 
 namespace sql::databricks {

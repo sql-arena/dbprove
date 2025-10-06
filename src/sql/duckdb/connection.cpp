@@ -10,6 +10,8 @@
 #include <scan_materialised.h>
 #include <stdexcept>
 
+#include "explain/plan.h"
+
 
 namespace sql::duckdb {
 void handleDuckError(::duckdb::QueryResult* result) {
@@ -326,7 +328,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
       filter = parseFilter(extra_info["Filters"]);
     }
     node = std::make_unique<Scan>(table_name);
-    node->filter_condition = filter;
+    node->setFilter(filter);
   } else if (operator_name.contains("DELIM_SCAN")) {
     // TODO: There is a reference inside this node which points at the thing which is being materialised
     std::string materialised_expression;

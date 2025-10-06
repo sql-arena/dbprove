@@ -6,7 +6,7 @@ namespace sql::explain {
 constexpr std::string_view kEllipsis = "...";
 
 inline std::string ellipsify(std::string s, const size_t max_width) {
-  if (s.size() > max_width) {
+  if (s.size() <= max_width) {
     return std::move(s);
   }
   const std::string result = std::move(s);

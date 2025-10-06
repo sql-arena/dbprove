@@ -36,14 +36,11 @@ std::string GroupBy::compactSymbolic() const {
 std::string GroupBy::renderMuggle(size_t max_width) const {
   std::string result = "GROUP BY ";
   result += to_upper(strategyName());
-  result += " (";
   const auto first_aggregate_size = group_keys.size() > 0 ? group_keys[0].name.size() : 0;
   result += join(group_keys, ", ", max_width - first_aggregate_size);
-  result += ")";
-  result += " AGGREGATE (";
+  result += " AGGREGATE ";
   max_width -= result.size();
   result += join(aggregates, ", ", max_width - 1);
-  result += ")";
   return result;
 }
 }

@@ -273,6 +273,7 @@ public:
     return std::get<T>(data);
   }
 
+
   [[nodiscard]] SqlTypeKind kind() const {
     if (std::holds_alternative<SqlInt>(data)) {
       return SqlTypeKind::INT;

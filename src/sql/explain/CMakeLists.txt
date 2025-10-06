@@ -1,5 +1,6 @@
 target_sources(${_targetName}
         PRIVATE
+        column.cpp
         select.cpp
         join.cpp
         group_by.cpp

@@ -61,6 +61,7 @@ TEST_CASE("Fetch Result", "[query]") {
 
 TEST_CASE("Fetch Row", "[query]") {
   for (auto& factory : factories()) {
+    CAPTURE(factory.engine().name());
     const auto connection = factory.create();
     const auto row = connection->fetchRow("/* test_row */ SELECT 1 AS i, 'abc' AS s, CAST(0.42 AS DOUBLE) AS d");
     CHECK(row->asSqlType<sql::SqlInt>(0).get() == 1);
@@ -76,10 +77,10 @@ TEST_CASE("Fetch Row", "[query]") {
 
 TEST_CASE("Fetch scalar", "[query]") {
   for (auto& factory : factories()) {
+    CAPTURE(factory.engine().name());
     const auto connection = factory.create();
     auto v = connection->fetchScalar("/* test_scalar */ SELECT 1 AS i");
-    CHECK(v.is<sql::SqlInt>());
-    CHECK(v.get<sql::SqlInt>().get() == 1);
+    CHECK(v.asInt8() == 1);
     REQUIRE_THROWS_AS(connection->fetchScalar(kZeroRows), sql::EmptyResultException);
     REQUIRE_THROWS_AS(connection->fetchScalar(kTwoColsZeroRow), sql::EmptyResultException);
     REQUIRE_THROWS_AS(connection->fetchScalar(kTwoRows), sql::InvalidRowsException);

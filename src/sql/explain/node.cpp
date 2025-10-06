@@ -37,4 +37,8 @@ RowCount Node::rowsEstimated() const {
 RowCount Node::rowsActual() const {
   return cutoff(rows_actual);
 }
+
+void Node::setFilter(const std::string& filter) {
+  filter_condition = cleanExpression(filter);
+}
 }

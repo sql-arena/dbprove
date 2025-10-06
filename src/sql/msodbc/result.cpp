@@ -113,7 +113,8 @@ Result::Result(void* handle)
       {SQL_INTEGER, SqlTypeKind::INT},
       {SQL_BIGINT, SqlTypeKind::BIGINT},
       {SQL_REAL, SqlTypeKind::REAL},
-      {SQL_DOUBLE, SqlTypeKind::DOUBLE}
+      {SQL_DOUBLE, SqlTypeKind::DOUBLE},
+      {SQL_FLOAT, SqlTypeKind::DOUBLE}
   };
 
   for (SQLUSMALLINT i = 1; i <= columnCount(); ++i) {

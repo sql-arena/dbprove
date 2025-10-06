@@ -16,6 +16,8 @@ namespace sql::explain {
  */
 class Node : public TreeNode<Node> {
 protected:
+  std::string filter_condition;
+
   explicit Node(const NodeType type)
     : type(type)
     , cost(0) {
@@ -27,12 +29,12 @@ public:
   double rows_estimated = 0.0;
   double rows_actual = UNKNOWN;
   double cost;
-  std::string filter_condition;
   std::vector<std::string> columns_input;
   std::vector<std::string> columns_output;
 
   RowCount rowsEstimated() const;;
   RowCount rowsActual() const;
+  void setFilter(const std::string& filter);
 
   /// @brief Return the compact, symbolic representation of the node
   virtual std::string compactSymbolic() const = 0;

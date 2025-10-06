@@ -11,6 +11,8 @@
 #include "sort.h"
 #include "group_by.h"
 #include "sequence.h"
+#include "sql_exceptions.h"
+#include "explain/plan.h"
 
 namespace sql::explain {
 class GroupBy;
@@ -42,14 +44,6 @@ using namespace pugi;
 using namespace explain;
 
 
-std::string cleanExpression(std::string expression) {
-  expression = std::regex_replace(expression, std::regex("&lt;"), "<");
-  expression = std::regex_replace(expression, std::regex("&gt;"), ">");
-  expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
-  expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");
-  return expression;
-}
-
 std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
   const auto yb_node_type = std::string(xml_node.name());
 
@@ -78,7 +72,7 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
     const auto type_xml = std::string_view(xml_node.attribute("type").as_string());
     auto condition_xml = std::string(xml_node.attribute("criteria").as_string());
     /* Yellowbrick puts the string "ON " in front of join criteria.*/
-    condition_xml = cleanExpression(condition_xml.substr(3, condition_xml.size() - 3));
+    condition_xml = sql::cleanExpression(condition_xml.substr(3, condition_xml.size() - 3));
 
     auto strategy = (strategy_xml == "hash") ? Join::Strategy::HASH : Join::Strategy::LOOP;
     auto type = Join::typeFromString(type_xml);
@@ -96,7 +90,7 @@ std::unique_ptr<Node> createNodeFromYbXml(const xml_node& xml_node) {
 
     const auto filter = xml_node.attribute("filter");
     if (!filter.empty()) {
-      node->filter_condition = std::string(cleanExpression(filter.as_string()));
+      node->setFilter(filter.as_string());
     }
   } else if (yb_node_type == "SEQUENCE") {
     node = std::make_unique<Sequence>();

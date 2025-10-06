@@ -163,31 +163,15 @@ Connection::~Connection() {
 }
 
 void Connection::execute(const std::string_view statement) {
-  impl_->executeRaw(statement);
+  impl_->executeRaw(mapTypes(statement));
 }
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
-  return impl_->execute(statement);
+  return impl_->execute(mapTypes(statement));
 }
 
 std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
   return fetchAll(statement);
-}
-
-std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-  /* Because the TDS protocol is streaming, we don't know the number of rows until we have scrolled though the cursor */
-  const auto result = fetchAll(statement);
-  std::unique_ptr<MaterialisedRow> first_row = nullptr;
-  for (auto& row : result->rows()) {
-    if (first_row) {
-      throw InvalidRowsException("Expected to find a single row in the data, but found more than one", statement);
-    }
-    first_row = row.materialise();
-  }
-  if (!first_row) {
-    throw EmptyResultException(statement);
-  }
-  return first_row;
 }
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
@@ -202,5 +186,10 @@ std::string Connection::version() {
 void Connection::close() {
   impl_->close();
   ConnectionBase::close();
+}
+
+const ConnectionBase::TypeMap& Connection::typeMap() const {
+  static const TypeMap map = {{"DOUBLE", "FLOAT(53)"}, {"STRING", "VARCHAR"}};
+  return map;
 }
 }

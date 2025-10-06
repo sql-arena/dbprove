@@ -1,11 +1,19 @@
 #pragma once
-
-#include "connection_factory.h"
 #include "connection_base.h"
-#include "result_base.h"
-#include "row_base.h"
-#include "sql_type.h"
 #include "explain/column.h"
-#include "explain/node.h"
-#include "explain/plan.h"
-#include "sql_exceptions.h"
+
+namespace sql {
+struct ForeignKey {
+  std::string_view fk_table_name;
+  std::vector<std::string_view> fk_columns;
+  std::string_view pk_table_name;
+  std::vector<std::string_view> pk_columns;
+};
+
+/**
+ * Cleans up an expression by removing unnecessary whitespace, newlines, tabs etc.
+ * @param expression Expression to clean
+ * @return A better formatted expression
+ */
+std::string cleanExpression(std::string expression);
+}

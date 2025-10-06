@@ -1,4 +1,5 @@
 #include "theorem.h"
+#include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
 
 namespace dbprove::theorem {

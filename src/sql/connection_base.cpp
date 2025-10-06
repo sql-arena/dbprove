@@ -1,4 +1,7 @@
 #include "connection_base.h"
+
+#include <regex>
+
 #include "sql_exceptions.h"
 #include "explain/plan.h"
 
@@ -10,16 +13,17 @@ const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
 
 std::unique_ptr<RowBase> ConnectionBase::fetchRow(const std::string_view statement) {
   const auto result = fetchAll(statement);
-  if (result->rowCount() == 0) {
+  std::unique_ptr<MaterialisedRow> first_row = nullptr;
+  for (auto& row : result->rows()) {
+    if (first_row) {
+      throw InvalidRowsException("Expected to find a single row in the data, but found more than one", statement);
+    }
+    first_row = std::move(row.materialise());
+  }
+  if (!first_row) {
     throw EmptyResultException(statement);
   }
-  if (result->rowCount() > 1) {
-    throw InvalidRowsException(
-        "Expected to find a single row in the data, but found: " + std::to_string(result->rowCount()),
-        statement);
-  }
-  const auto& first = *result->rows().begin();
-  return first.materialise();
+  return first_row;
 }
 
 SqlVariant ConnectionBase::fetchScalar(const std::string_view statement) {
@@ -52,7 +56,26 @@ std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view tab
   }
 }
 
-std::string ConnectionBase::mapTypes(std::string_view statement) const {
+
+void ConnectionBase::declareForeignKey(const std::string_view fk_table, const std::span<std::string_view> fk_columns,
+                                       const std::string_view pk_table, const std::span<std::string_view> pk_columns) {
+  const std::string statement = "ALTER TABLE " + std::string(fk_table) +
+                                " ADD CONSTRAINT " + foreignKeyName(fk_table) +
+                                " FOREIGN KEY (" + join(fk_columns, ", ") + ")" +
+                                " REFERENCES " + std::string(pk_table) + "(" + join(pk_columns, ", ") + ")";
+
+  try {
+    execute(statement);
+  } catch (InvalidObjectException&) {
+    /* NOOP */
+  }
+}
+
+std::string ConnectionBase::foreignKeyName(std::string_view table_name) {
+  return "fk_" + std::regex_replace(std::string(table_name), std::regex("\\."), "_");
+}
+
+std::string ConnectionBase::mapTypes(const std::string_view statement) const {
   std::string result(statement);
 
   for (const auto& [key, value] : typeMap()) {
@@ -77,3 +100,5 @@ void ConnectionBase::validateSourcePaths(const std::vector<std::filesystem::path
   }
 }
 }
+
+

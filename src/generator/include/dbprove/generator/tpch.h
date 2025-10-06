@@ -14,3 +14,7 @@ REGISTER_GENERATOR("tpch.lineitem", resource::lineitem_sql, orders_lineitem_gen,
 REGISTER_GENERATOR("tpch.nation", resource::nation_sql, nation_gen, std::size(tpch_nations));
 REGISTER_GENERATOR("tpch.region", resource::region_sql, region_gen, std::size(tpch_regions));
 
+REGISTER_FK("tpch.lineitem", ("l_orderkey"), "tpch.orders", ("o_orderkey"));
+REGISTER_FK("tpch.lineitem", ("l_partkey", "l_suppkey"), "tpch.partsupp", ("ps_partkey", "ps_suppkey"));
+
+

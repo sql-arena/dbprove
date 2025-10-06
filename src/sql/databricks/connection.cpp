@@ -1,6 +1,7 @@
 #include "connection.h"
 #include "result.h"
 #include "row.h"
+#include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
 
 #include <curl/curl.h>

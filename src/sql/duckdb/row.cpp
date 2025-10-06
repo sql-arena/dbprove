@@ -1,5 +1,6 @@
 #include "row.h"
 #include "result.h"
+#include "sql_exceptions.h"
 #include <dbprove/sql/sql.h>
 #include <duckdb/common/types/data_chunk.hpp>
 #include <duckdb/common/types/hugeint.hpp>
@@ -13,10 +14,10 @@ Row::Row(const Row& row, Result* owningResult)
 }
 
 
-Row::~Row()
-{
+Row::~Row() {
   delete ownsResult_;
 }
+
 ColumnCount Row::columnCount() const {
   return dataChunk_->ColumnCount();
 }

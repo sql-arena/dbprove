@@ -11,6 +11,8 @@
 #include <regex>
 #include <unordered_set>
 
+#include "explain/plan.h"
+
 
 class sql::postgres::Connection::Pimpl {
 public:
@@ -79,7 +81,9 @@ public:
         }
         PQclear(result);
 
-        if (state.starts_with("42P01")) {
+        if (state.starts_with("42P01") // The Table  already exists
+            || state.starts_with("42710") // The Foreign Key already exists
+        ) {
           throw InvalidObjectException(error_msg);
         }
         if (state.starts_with("42")) {
@@ -143,29 +147,6 @@ std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchMany(const std:
   PGresult* result = impl_->execute(statement);
   // TODO: Figure out how multi result protocol works, for now, grab first result
   return std::make_unique<Result>(result);
-}
-
-std::unique_ptr<sql::RowBase> sql::postgres::Connection::fetchRow(const std::string_view statement) {
-  PGresult* result = impl_->execute(statement);
-  const auto row_count = PQntuples(result);
-  if (row_count == 0) {
-    PQclear(result);
-    throw EmptyResultException(statement);
-  }
-  if (row_count > 1) {
-    PQclear(result);
-    throw InvalidRowsException("Expected to find a single row in the data, but found: " + std::to_string(row_count),
-                               statement);
-  }
-  return std::make_unique<Row>(result);
-}
-
-sql::SqlVariant sql::postgres::Connection::fetchScalar(const std::string_view statement) {
-  const auto row = fetchRow(statement);
-  if (row->columnCount() != 1) {
-    throw InvalidColumnsException("Expected to find a single column in the data", statement);
-  }
-  return row->asVariant(0);
 }
 
 void check_bulk_return(const int status, const PGconn* conn) {
@@ -309,6 +290,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
         join_condition.front() == '(' &&
         join_condition.back() == ')') {
       join_condition = join_condition.substr(1, join_condition.length() - 2);
+      join_condition = sql::cleanExpression(join_condition);
     }
     if (join_condition.empty()) {
       // PG does not use the notion of cross-join, it simply has loop join without conditions.
@@ -424,7 +406,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 
   // Filter conditions
   if (node_json.contains("Filter")) {
-    node->filter_condition = node_json["Filter"].get<std::string>();
+    node->setFilter(node_json["Filter"].get<std::string>());
   }
 
   // Output columns

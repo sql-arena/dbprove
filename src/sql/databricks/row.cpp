@@ -1,6 +1,7 @@
 #include "row.h"
 #include <dbprove/sql/sql.h>
 #include "result.h"
+#include "dbprove/sql/sql_exceptions.h"
 
 namespace sql::databricks {
 Row::~Row() {

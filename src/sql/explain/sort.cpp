@@ -1,5 +1,6 @@
 #include "sort.h"
 #include "glyphs.h"
+#include "sql_exceptions.h"
 
 static constexpr const char* symbol_ = "τ";
 static constexpr const char* asc_ = "↑";

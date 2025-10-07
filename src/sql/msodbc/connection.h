@@ -12,9 +12,11 @@ public:
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchMany(std::string_view statement) override;
-  void bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) override;
   std::string version() override;
+  void bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) override;
   void close() override;
   const TypeMap& typeMap() const override;
+  const char* connectionString() const;
+  void analyse(std::string_view table_name) override;
 };
 }

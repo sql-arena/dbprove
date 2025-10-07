@@ -97,6 +97,18 @@ public:
 
 
 /**
+ * Thrown if bulk loading fails
+ */
+class BulkException final : public Exception {
+public:
+  explicit BulkException(
+      const std::string& message)
+    : Exception(SqlState::CONNECTION_08, message) {
+  }
+};
+
+
+/**
  * @brief Thrown when a connection to the database is closed, but a user tries to execute on it
  */
 class ConnectionClosedException final : public Exception {

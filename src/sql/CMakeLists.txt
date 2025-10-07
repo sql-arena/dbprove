@@ -1,10 +1,7 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
 
 set(_targetName "dbprove_sql")
-add_library(${_targetName} STATIC
-        clickhouse/block_holder.h
-        expression.cpp
-        explain/column.cpp)
+add_library(${_targetName} STATIC)
 add_library(dbprove::sql ALIAS ${_targetName})
 find_package(Cnl CONFIG REQUIRED)
 
@@ -21,6 +18,8 @@ target_sources(${_targetName}
         engine.cpp
         sql_exception.cpp
         row_base.cpp
+        expression.cpp
+        sql_type.cpp
 )
 add_subdirectory("explain")
 
@@ -45,6 +44,8 @@ target_include_directories(sql_driver_headers
         INTERFACE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/explain>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)
+
+target_embed_files(${_targetName} SQL_FILES information_schema/data_type.sql)
 
 # Drivers
 add_subdirectory("postgres")

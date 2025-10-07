@@ -5,8 +5,9 @@
 namespace sql::mariadb {
 SqlVariant Row::get(const size_t index) const {
   if (index >= columnCount()) {
-    throw InvalidColumnsException("Attempted to access column at index " + std::to_string(index) +
-                                  " but only " + std::to_string(columnCount()) + " columns are available.");
+    throw InvalidColumnsException(
+        "Attempted to access column at index " + std::to_string(index) + " but only " + std::to_string(columnCount()) +
+        " columns are available.");
   }
 
   const auto type = result_->columnType(index);
@@ -18,8 +19,6 @@ SqlVariant Row::get(const size_t index) const {
     return SqlVariant();
   }
   switch (type) {
-    case SqlTypeKind::TINYINT:
-      return SqlVariant(static_cast<int8_t>(std::stoi(data)));
     case SqlTypeKind::SMALLINT:
       return SqlVariant(static_cast<int16_t>(std::stoi(data)));
     case SqlTypeKind::INT:

@@ -56,9 +56,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
 
     // 2 char operators
-    if (i + 1 < expr.size() &&
-        ((expr[i] == '<' && expr[i + 1] == '>') ||
-         (expr[i] == '!' && expr[i + 1] == '='))) {
+    if (i + 1 < expr.size() && ((expr[i] == '<' && expr[i + 1] == '>') || (expr[i] == '!' && expr[i + 1] == '='))) {
       tokens.push_back({TokenType::Operator, std::string(1, expr[i]) + std::string(1, expr[i + 1])});
       i += 2; // Advance past both characters
       continue;
@@ -76,8 +74,7 @@ std::vector<Token> tokenize(const std::string& expr) {
       throw std::runtime_error("Invalid character in expression, expected a literal: " + std::string(1, expr[i]));
     }
     std::string literal;
-    while (i < expr.size()
-           && (std::isalnum(expr[i]) || valid_literal.contains(expr[i]))) {
+    while (i < expr.size() && (std::isalnum(expr[i]) || valid_literal.contains(expr[i]))) {
       literal += expr[i++];
     }
 
@@ -127,8 +124,7 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
     if (tokens[i].type != TokenType::LeftParen) {
       continue;
     }
-    if (tokens[i + 1].type == TokenType::Literal
-        && tokens[i + 2].type == TokenType::RightParen) {
+    if (tokens[i + 1].type == TokenType::Literal && tokens[i + 2].type == TokenType::RightParen) {
       // Lonely literal inside parenthesis
       removeMatching(tokens, i);
     }
@@ -144,8 +140,7 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
     removeMatching(tokens, i);
   }
 
-  if (tokens[0].type == TokenType::LeftParen
-      && tokens[0].matching == tokens.size() - 1) {
+  if (tokens[0].type == TokenType::LeftParen && tokens[0].matching == tokens.size() - 1) {
     // Entire expressin in paranthesis
     removeMatching(tokens, 0);
   }
@@ -176,6 +171,20 @@ std::string render(const std::vector<Token>& tokens) {
     }
   }
   return result;
+}
+
+Table splitTable(std::string_view table_name) {
+  const size_t delimiter = table_name.find('.');
+  if (delimiter == std::string::npos) {
+    throw std::invalid_argument("Table name must be qualified with a schema (e.g., 'schema_name.table_name').");
+  }
+  auto schema = table_name.substr(0, delimiter);
+  auto table = table_name.substr(delimiter + 1);
+  if (schema.empty() || table.empty()) {
+    throw std::invalid_argument("Schema and table names cannot be empty.");
+  }
+
+  return Table{std::string(schema), std::string(table)};
 }
 
 std::string cleanExpression(std::string expression) {

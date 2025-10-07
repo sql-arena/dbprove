@@ -15,6 +15,12 @@ REGISTER_GENERATOR("tpch.nation", resource::nation_sql, nation_gen, std::size(tp
 REGISTER_GENERATOR("tpch.region", resource::region_sql, region_gen, std::size(tpch_regions));
 
 REGISTER_FK("tpch.lineitem", ("l_orderkey"), "tpch.orders", ("o_orderkey"));
+REGISTER_FK("tpch.lineitem", ("l_partkey"), "tpch.part", ("p_partkey"));
+REGISTER_FK("tpch.lineitem", ("l_suppkey"), "tpch.supplier", ("s_suppkey"));
 REGISTER_FK("tpch.lineitem", ("l_partkey", "l_suppkey"), "tpch.partsupp", ("ps_partkey", "ps_suppkey"));
-
-
+REGISTER_FK("tpch.orders", ("o_custkey"), "tpch.customer", ("c_custkey"));
+REGISTER_FK("tpch.partsupp", ("ps_partkey"), "tpch.part", ("p_partkey"));
+REGISTER_FK("tpch.partsupp", ("ps_suppkey"), "tpch.supplier", ("s_suppkey"));
+REGISTER_FK("tpch.supplier", ("s_nationkey"), "tpch.nation", ("n_nationkey"));
+REGISTER_FK("tpch.customer", ("c_nationkey"), "tpch.nation", ("n_nationkey"));
+REGISTER_FK("tpch.nation", ("n_regionkey"), "tpch.region", ("r_regionkey"));

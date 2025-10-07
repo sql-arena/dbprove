@@ -10,6 +10,13 @@ struct ForeignKey {
   std::vector<std::string_view> pk_columns;
 };
 
+struct Table {
+  std::string schema_name;
+  std::string table_name;
+};
+
+Table splitTable(std::string_view table_name);
+
 /**
  * Cleans up an expression by removing unnecessary whitespace, newlines, tabs etc.
  * @param expression Expression to clean
@@ -17,3 +24,4 @@ struct ForeignKey {
  */
 std::string cleanExpression(std::string expression);
 }
+

@@ -32,13 +32,28 @@ public:
   }
 };
 
-void check(const SQLRETURN result) {
+void check(const SQLRETURN result, SQLHSTMT handle) {
   switch (result) {
     case SQL_SUCCESS:
     case SQL_SUCCESS_WITH_INFO:
       return;
-    default:
-      throw InvalidTypeException("Failed to execute parse typet.");
+    default: {
+      std::string error_message = "Failed to execute parse type.";
+      if (handle) {
+        SQLCHAR sql_state[6] = {0};
+        SQLINTEGER native_error = 0;
+        SQLCHAR message_text[256] = {0};
+        SQLSMALLINT text_length = 0;
+        if (SQLGetDiagRec(SQL_HANDLE_STMT, handle, 1, sql_state, &native_error, message_text, sizeof(message_text),
+                          &text_length) == SQL_SUCCESS) {
+          error_message += " [SQLState: ";
+          error_message += reinterpret_cast<char*>(sql_state);
+          error_message += "] ";
+          error_message += reinterpret_cast<char*>(message_text);
+        }
+      }
+      throw InvalidTypeException(error_message);
+    }
   }
 }
 
@@ -47,43 +62,39 @@ SqlVariant Result::odbc2SqlVariant(const size_t index) {
   const auto h = impl_->handle_;
   const auto i = static_cast<SQLUSMALLINT>(index + 1); // 1-based array
   const auto type_kind = columnType(index);
+  SQLLEN indicator = 0;
   switch (type_kind) {
-    case SqlTypeKind::TINYINT: {
-      int8_t value = 0;
-      check(SQLGetData(h, i, SQL_C_CHAR, &value, sizeof(value), nullptr));
-      return SqlVariant(value);
-    }
     case SqlTypeKind::SMALLINT: {
       int16_t value = 0;
-      check(SQLGetData(h, i, SQL_C_SHORT, &value, sizeof(value), nullptr));
+      check(SQLGetData(h, i, SQL_C_SHORT, &value, sizeof(value), &indicator), h);
       return SqlVariant(value);
     }
     case SqlTypeKind::INT: {
       int32_t value = 0;
-      check(SQLGetData(h, i, SQL_C_LONG, &value, sizeof(value), nullptr));
+      check(SQLGetData(h, i, SQL_C_LONG, &value, sizeof(value), &indicator), h);
       return SqlVariant(value);
     }
     case SqlTypeKind::BIGINT: {
       int64_t value = 0;
-      check(SQLGetData(h, i, SQL_C_SBIGINT, &value, sizeof(value), nullptr));
+      check(SQLGetData(h, i, SQL_C_SBIGINT, &value, sizeof(value), &indicator), h);
       return SqlVariant(value);
     }
     case SqlTypeKind::REAL: {
       float value = 0.0;
-      check(SQLGetData(h, i, SQL_C_FLOAT, &value, sizeof(value), nullptr));
+      check(SQLGetData(h, i, SQL_C_FLOAT, &value, sizeof(value), &indicator), h);
       return SqlVariant(value);
     }
     case SqlTypeKind::DOUBLE: {
       double value = 0.0;
-      check(SQLGetData(h, i, SQL_C_DOUBLE, &value, sizeof(value), nullptr));
+      check(SQLGetData(h, i, SQL_C_DOUBLE, &value, sizeof(value), &indicator), h);
       return SqlVariant(value);
     }
     case SqlTypeKind::DECIMAL: {
-      check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), nullptr));
+      check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
       return static_cast<SqlVariant>(SqlDecimal(std::string(bounceBuffer_)));
     }
     case SqlTypeKind::STRING: {
-      check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), nullptr));
+      check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
       return SqlVariant(std::string(bounceBuffer_));
     }
     case SqlTypeKind::SQL_NULL:
@@ -107,28 +118,29 @@ void Result::parseRow() {
 
 Result::Result(void* handle)
   : impl_(std::make_unique<Pimpl>(handle, this)) {
-  static std::map<SQLSMALLINT, SqlTypeKind> type_map = {
-      {SQL_VARCHAR, SqlTypeKind::STRING},
-      {SQL_SMALLINT, SqlTypeKind::SMALLINT},
-      {SQL_INTEGER, SqlTypeKind::INT},
-      {SQL_BIGINT, SqlTypeKind::BIGINT},
-      {SQL_REAL, SqlTypeKind::REAL},
-      {SQL_DOUBLE, SqlTypeKind::DOUBLE},
-      {SQL_FLOAT, SqlTypeKind::DOUBLE}
-  };
+  static std::map<SQLSMALLINT, SqlTypeKind> type_map = {{SQL_VARCHAR, SqlTypeKind::STRING},
+                                                        {SQL_WCHAR, SqlTypeKind::STRING},
+                                                        {SQL_WLONGVARCHAR, SqlTypeKind::STRING},
+                                                        {SQL_WVARCHAR, SqlTypeKind::STRING},
+                                                        {SQL_SMALLINT, SqlTypeKind::SMALLINT},
+                                                        {SQL_TINYINT, SqlTypeKind::SMALLINT},
+                                                        {SQL_INTEGER, SqlTypeKind::INT},
+                                                        {SQL_BIGINT, SqlTypeKind::BIGINT},
+                                                        {SQL_REAL, SqlTypeKind::REAL},
+                                                        {SQL_DOUBLE, SqlTypeKind::DOUBLE},
+                                                        {SQL_FLOAT, SqlTypeKind::DOUBLE},
+                                                        {SQL_DECIMAL, SqlTypeKind::DECIMAL},
+                                                        {SQL_TYPE_TIME, SqlTypeKind::TIME},
+                                                        {SQL_TYPE_DATE, SqlTypeKind::DATE},
+                                                        {SQL_TYPE_TIMESTAMP, SqlTypeKind::DATETIME}};
 
   for (SQLUSMALLINT i = 1; i <= columnCount(); ++i) {
     SQLSMALLINT dataType = 0;
-    const auto ret = SQLDescribeCol(
-        handle,
-        i,
-        nullptr, 0, nullptr,
-        &dataType,
-        nullptr, nullptr, nullptr
-        );
+    const auto ret = SQLDescribeCol(handle, i, nullptr, 0, nullptr, &dataType, nullptr, nullptr, nullptr);
     if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO) {
       if (!type_map.contains(dataType)) {
-        throw InvalidTypeException("Unsupported ODBC driver type: " + std::to_string(dataType));
+        throw InvalidTypeException(
+            "Unsupported Type in Microsoft ODBC driver. The Type Enum is: " + std::to_string(dataType));
       }
       columnTypes_.push_back(type_map[dataType]);
     } else {
@@ -162,8 +174,9 @@ const RowBase& Result::nextRow() {
       ++currentRowIndex_;
       return *impl_->currentRow_;
     default:
-      throw std::runtime_error("Failed to fetch row next row from SQL Server. "
-                               "The last row was index: " + std::to_string(currentRowIndex_));
+      throw std::runtime_error(
+          "Failed to fetch row next row from SQL Server. " "The last row was index: " +
+          std::to_string(currentRowIndex_));
   }
 }
 }

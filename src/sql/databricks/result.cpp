@@ -38,9 +38,6 @@ void Result::parseRows(const json& result) {
 
     for (size_t colIdx = 0; colIdx < row.size(); ++colIdx) {
       switch (columnTypes_[colIdx]) {
-        case SqlTypeKind::TINYINT:
-          currentRow.push_back(SqlVariant(static_cast<int8_t>(std::stoi(row[colIdx].get<std::string>()))));
-          break;
         case SqlTypeKind::SMALLINT:
           currentRow.push_back(SqlVariant(static_cast<int16_t>(std::stoi(row[colIdx].get<std::string>()))));
           break;

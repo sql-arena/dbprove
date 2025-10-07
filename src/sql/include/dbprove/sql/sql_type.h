@@ -4,30 +4,22 @@
 #include <variant>
 #include <string>
 #include <stdexcept>
-
 #include <magic_enum/magic_enum.hpp>
 
 namespace sql {
 using RowCount = uint64_t;
 using ColumnCount = uint64_t;
 
+/**
+ * Check if a table is in the canonical naming
+ * @param table table to check
+ */
+void checkTableName(std::string_view table);
 
-inline void checkTableName(const std::string_view table) {
-  for (const auto& c : table) {
-    if (c >= 'A' && c <= 'Z') {
-      throw std::runtime_error("Only lowercase table names are allowed");
-    }
-    if (std::isspace(c)) {
-      throw std::runtime_error("No whitespace allowed in tables");
-    }
-    if (c == '\"' || c == '\'') {
-      throw std::runtime_error("No quotes in table names");
-    }
-  }
-}
-
+/**
+ * Canonical SQL Types supported
+ */
 enum class SqlTypeKind {
-  TINYINT,
   SMALLINT,
   INT,
   BIGINT,
@@ -35,12 +27,69 @@ enum class SqlTypeKind {
   DOUBLE,
   DECIMAL,
   STRING,
+  DATE,
+  TIME,
+  DATETIME,
   SQL_NULL
 };
 
-constexpr auto to_string(SqlTypeKind kind) {
+/**
+ * Translate from alternative names of types to a canonical SqLTypeKind
+ * @param type_name The type to translate
+ * @return A matching SqlTypeKind if available
+ */
+SqlTypeKind to_sql_type_kind(std::string_view type_name);
+
+
+/**
+ * Modifier to a type allowing further specification of the type
+ */
+struct SqlTypeModifier {
+  struct Decimal {
+    uint8_t precision;
+    uint8_t scale;
+  };
+
+  struct String {
+    size_t length;
+  };
+
+  struct None {
+  };
+
+  std::variant<Decimal, String, None> value;
+
+  SqlTypeModifier()
+    : value(None{}) {
+  }
+
+  explicit SqlTypeModifier(const uint8_t precision, const uint8_t scale)
+    : value(Decimal{precision, scale}) {
+  }
+
+  explicit SqlTypeModifier(const size_t length)
+    : value(String{length}) {
+  }
+};
+
+constexpr auto to_string(const SqlTypeKind kind) {
   return magic_enum::enum_name(kind);
 }
+
+struct SqlTypeMeta {
+  SqlTypeKind kind;
+  SqlTypeModifier modifier;
+
+  size_t length() const {
+    if (kind != SqlTypeKind::STRING) {
+      return 0;
+    }
+    if (!std::holds_alternative<SqlTypeModifier::String>(modifier.value)) {
+      throw std::invalid_argument("Expected to find a String type to retrieve length");
+    }
+    return std::get<SqlTypeModifier::String>(modifier.value).length;
+  }
+};
 
 class SqlType {
 public:
@@ -62,14 +111,12 @@ public:
 
   [[nodiscard]] constexpr T get() const { return value_; }
 
-  template <typename U>
-    requires std::is_convertible_v<T, U> && (sizeof(U) >= sizeof(T))
+  template <typename U> requires std::is_convertible_v<T, U> && (sizeof(U) >= sizeof(T))
   constexpr operator U() const {
     return static_cast<U>(value_);
   }
 
-  template <typename U>
-    requires std::is_convertible_v<U, T>
+  template <typename U> requires std::is_convertible_v<U, T>
   constexpr SqlTypeDef& operator=(U raw) {
     value_ = static_cast<T>(raw);
     return *this;
@@ -78,11 +125,6 @@ public:
   friend constexpr auto operator<=>(const SqlTypeDef&, const SqlTypeDef&) = default;
 };
 
-
-struct SqlTinyIntTag {
-  static constexpr std::string_view name = "TINYINT";
-  static constexpr auto kind = SqlTypeKind::TINYINT;
-};
 
 struct SqlSmallIntTag {
   static constexpr std::string_view name = "SMALLINT";
@@ -115,7 +157,6 @@ struct SqlDoubleTag {
 };
 
 
-using SqlTinyInt = SqlTypeDef<std::int8_t, SqlTinyIntTag>;
 using SqlSmallInt = SqlTypeDef<std::int16_t, SqlSmallIntTag>;
 using SqlInt = SqlTypeDef<std::int32_t, SqlIntTag>;
 using SqlBigInt = SqlTypeDef<std::int64_t, SqlBigIntTag>;
@@ -158,15 +199,8 @@ public:
 };
 
 class SqlVariant {
-  using variant_type = std::variant<SqlTinyInt,
-                                    SqlSmallInt,
-                                    SqlInt,
-                                    SqlBigInt,
-                                    SqlFloat,
-                                    SqlDouble,
-                                    SqlDecimal,
-                                    SqlNull,
-                                    SqlString>;
+  using variant_type = std::variant<SqlSmallInt, SqlInt, SqlBigInt, SqlFloat, SqlDouble, SqlDecimal, SqlNull, SqlString>
+  ;
   variant_type data;
 
 public:
@@ -204,11 +238,6 @@ public:
   explicit SqlVariant(const int16_t v)
     : data(SqlSmallInt(v)) {
   }
-
-  explicit SqlVariant(const int8_t v)
-    : data(SqlTinyInt(v)) {
-  }
-
 
   explicit SqlVariant(const double v)
     : data(SqlDouble(v)) {
@@ -271,6 +300,11 @@ public:
   template <typename T>
   T get() const {
     return std::get<T>(data);
+  }
+
+  template <>
+  SqlBigInt get() const {
+    return SqlBigInt(asInt8());
   }
 
 

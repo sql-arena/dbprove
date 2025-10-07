@@ -18,6 +18,7 @@ Engine::Engine(const std::string_view name) {
       {"pg", Type::Postgres},
       {"sqlite", Type::SQLite},
       {"sqlite3", Type::SQLite},
+      {"mssql", Type::SQLServer},
       {"sqlserver", Type::SQLServer},
       {"sql server", Type::SQLServer},
       {"duckdb", Type::DuckDB},
@@ -59,6 +60,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       }
       return "yellowbrick";
     }
+    case Type::SQLServer:
+      return "tempdb";
     case Type::DuckDB:
       return "duck.db";
     case Type::SQLite:
@@ -97,6 +100,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
     case Type::ClickHouse:
     case Type::DuckDB:
     case Type::SQLite:
+    case Type::SQLServer:
       return "localhost";
     default:
       host = getEnvVar("BASE_URL",
@@ -149,6 +153,10 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
       username = getEnvVar("YBUSER").value_or("yellowbrick");
       return username.value();
     }
+    case Type::MariaDB:
+      return getEnvVar("MYSQL_USER").value_or("root");
+    case Type::SQLServer:
+      return "sa";
     case Type::ClickHouse:
       return getEnvVar("CLICKHOUSE_USER").value_or("default");
     case Type::DuckDB:
@@ -168,6 +176,10 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
       break;
     case Type::ClickHouse:
       password = getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
+    case Type::SQLServer:
+      return "password";
+    case Type::MariaDB:
+      password = getEnvVar("MYSQL_PWD");
     default:
       break;
   }

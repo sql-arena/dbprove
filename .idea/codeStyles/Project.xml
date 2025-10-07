@@ -14,6 +14,8 @@
       <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/PLACE_CATCH_ON_NEW_LINE/@EntryValue" value="false" type="bool" />
       <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/PLACE_WHILE_ON_NEW_LINE/@EntryValue" value="false" type="bool" />
       <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/SIMPLE_EMBEDDED_STATEMENT_STYLE/@EntryValue" value="LINE_BREAK" type="string" />
+      <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/KEEP_USER_LINEBREAKS/@EntryValue" value="false" type="bool" />
+      <option name="/Default/CodeStyle/CodeFormatting/CppFormatting/WRAP_BRACED_INIT_LIST_STYLE/@EntryValue" value="CHOP_IF_LONG" type="string" />
     </RiderCodeStyleSettings>
     <SqlCodeStyleSettings version="7">
       <option name="KEYWORD_CASE" value="2" />

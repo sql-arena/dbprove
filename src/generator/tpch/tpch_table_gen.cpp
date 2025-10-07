@@ -44,13 +44,13 @@ void reportProgress(const std::string_view table_name, T current, T target) {
 }
 
 template <typename T>
-void reportProgress(const std::string_view table_name, T current, T target,
-                    const std::string_view secondary_table_name, T secondary_current) {
+void reportProgress(const std::string_view table_name, T current, T target, const std::string_view secondary_table_name,
+                    T secondary_current) {
   constexpr T num_reports = 10;
   const T report_interval = target / num_reports;
   if (current % report_interval == 0 && current > 0) {
-    PLOGI << "Table: " << table_name << " input generated " << current << " rows so far"
-    << " and " + std::string(secondary_table_name) + " " + std::to_string(secondary_current) + " rows";
+    PLOGI << "Table: " << table_name << " input generated " << current << " rows so far" << " and " +
+ std::string(secondary_table_name) + " " + std::to_string(secondary_current) + " rows";
   }
 }
 
@@ -67,8 +67,7 @@ uint64_t supplier_for_part(const uint64_t part_key, const uint64_t i) {
 }
 
 double price_for_part(const uint64_t part_key) {
-  return (90000.0 + (part_key / 10) % 20001 + 100.0 * (part_key % 1000)) /
-         100.0;
+  return (90000.0 + (part_key / 10) % 20001 + 100.0 * (part_key % 1000)) / 100.0;
 }
 
 template <typename T>
@@ -130,7 +129,7 @@ void supplier_gen(GeneratorState& state) {
   const auto file_name = state.csvPath("tpch.supplier");
   std::ofstream supplier(file_name);
   Key s_suppkey;
-  Formatter s_name("Supplie{:09}r");
+  Formatter s_name("Supplier{:09}");
   VString s_address(10, 40);
   ForeignKey s_nationkey(0, 24);
   DoubleRange s_acctbal(-999.99, 9999.99);
@@ -169,11 +168,9 @@ void supplier_gen(GeneratorState& state) {
       } else {
         second_string = "Recommends";
       }
-      auto customer_offset = s_comment_chance.random(
-          comment.size() - s_comment_customer.size() - second_string.size());
+      auto customer_offset = s_comment_chance.random(comment.size() - s_comment_customer.size() - second_string.size());
       comment.replace(customer_offset, second_string.size(), s_comment_customer);
-      auto second_string_offset = s_comment_chance.random(
-          comment.size() - s_comment_customer.size() - customer_offset);
+      auto second_string_offset = s_comment_chance.random(comment.size() - s_comment_customer.size() - customer_offset);
       comment.replace(customer_offset + second_string_offset, second_string.size(), second_string);
       assert(comment.size() <= 100);
     }
@@ -190,27 +187,98 @@ void part_gen(GeneratorState& state) {
   using namespace generator;
   Key p_partkey;
 
-  constexpr std::string_view p_name_strings[] = {
-      "almond", "antique", "aquamarine", "azure", "beige", "bisque", "black",
-      "blanched", "blue",
-      "blush", "brown", "burlywood", "burnished", "chartreuse", "chiffon",
-      "chocolate", "coral",
-      "cornflower", "cornsilk", "cream", "cyan", "dark", "deep", "dim",
-      "dodger", "drab", "firebrick",
-      "floral", "forest", "frosted", "gainsboro", "ghost", "goldenrod", "green",
-      "grey", "honeydew",
-      "hot", "indian", "ivory", "khaki", "lace", "lavender", "lawn", "lemon",
-      "light", "lime", "linen",
-      "magenta", "maroon", "medium", "metallic", "midnight", "mint", "misty",
-      "moccasin", "navajo",
-      "navy", "olive", "orange", "orchid", "pale", "papaya", "peach", "peru",
-      "pink", "plum", "powder",
-      "puff", "purple", "red", "rose", "rosy", "royal", "saddle", "salmon",
-      "sandy", "seashell", "sienna",
-      "sky", "slate", "smoke", "snow", "spring", "steel", "tan", "thistle",
-      "tomato", "turquoise", "violet",
-      "wheat", "white", "yellow"
-  };
+  constexpr std::string_view p_name_strings[] = {"almond",
+                                                 "antique",
+                                                 "aquamarine",
+                                                 "azure",
+                                                 "beige",
+                                                 "bisque",
+                                                 "black",
+                                                 "blanched",
+                                                 "blue",
+                                                 "blush",
+                                                 "brown",
+                                                 "burlywood",
+                                                 "burnished",
+                                                 "chartreuse",
+                                                 "chiffon",
+                                                 "chocolate",
+                                                 "coral",
+                                                 "cornflower",
+                                                 "cornsilk",
+                                                 "cream",
+                                                 "cyan",
+                                                 "dark",
+                                                 "deep",
+                                                 "dim",
+                                                 "dodger",
+                                                 "drab",
+                                                 "firebrick",
+                                                 "floral",
+                                                 "forest",
+                                                 "frosted",
+                                                 "gainsboro",
+                                                 "ghost",
+                                                 "goldenrod",
+                                                 "green",
+                                                 "grey",
+                                                 "honeydew",
+                                                 "hot",
+                                                 "indian",
+                                                 "ivory",
+                                                 "khaki",
+                                                 "lace",
+                                                 "lavender",
+                                                 "lawn",
+                                                 "lemon",
+                                                 "light",
+                                                 "lime",
+                                                 "linen",
+                                                 "magenta",
+                                                 "maroon",
+                                                 "medium",
+                                                 "metallic",
+                                                 "midnight",
+                                                 "mint",
+                                                 "misty",
+                                                 "moccasin",
+                                                 "navajo",
+                                                 "navy",
+                                                 "olive",
+                                                 "orange",
+                                                 "orchid",
+                                                 "pale",
+                                                 "papaya",
+                                                 "peach",
+                                                 "peru",
+                                                 "pink",
+                                                 "plum",
+                                                 "powder",
+                                                 "puff",
+                                                 "purple",
+                                                 "red",
+                                                 "rose",
+                                                 "rosy",
+                                                 "royal",
+                                                 "saddle",
+                                                 "salmon",
+                                                 "sandy",
+                                                 "seashell",
+                                                 "sienna",
+                                                 "sky",
+                                                 "slate",
+                                                 "smoke",
+                                                 "snow",
+                                                 "spring",
+                                                 "steel",
+                                                 "tan",
+                                                 "thistle",
+                                                 "tomato",
+                                                 "turquoise",
+                                                 "violet",
+                                                 "wheat",
+                                                 "white",
+                                                 "yellow"};
   Set<std::string_view> p_name(p_name_strings);
   Formatter p_mfgr("Manufacturer{}");
   IntegerRange p_mfgr_random(1, 5);
@@ -305,9 +373,7 @@ void customer_gen(GeneratorState& state) {
   ForeignKey c_nationkey(0, 24);
   TpchPhone c_phone;
   DoubleRange c_acctbal(-999.99, 9999.99);
-  constexpr std::string_view segments[] = {"AUTOMOBILE", "BUILDING",
-                                           "FURNITURE", "HOUSEHOLD",
-                                           "MACHINERY"};
+  constexpr std::string_view segments[] = {"AUTOMOBILE", "BUILDING", "FURNITURE", "HOUSEHOLD", "MACHINERY"};
   Set<std::string_view> c_mktsegment(segments);
   TpchText c_comment(29, 116);
 
@@ -327,7 +393,7 @@ void customer_gen(GeneratorState& state) {
 
 
 std::unique_ptr<std::ostream> SafeStream(std::filesystem::path file) {
-  if (exists(file) || file_size(file) == 0) {
+  if (exists(file)) {
     return std::make_unique<NullStream>();
   }
   return std::make_unique<std::ofstream>(file);
@@ -387,21 +453,17 @@ void orders_lineitem_gen(GeneratorState& state) {
   IntegerRange<> l_shipdate_offset(1, 121);
   IntegerRange<> l_commitdate_offset(30, 90);
   IntegerRange<> l_receiptdate_offset(1, 30);
-  constexpr std::string_view instructions[] = {"DELIVER IN PERSON",
-                                               "COLLECT COD", "NONE",
-                                               "TAKE BACK RETURN"};
+  constexpr std::string_view instructions[] = {"DELIVER IN PERSON", "COLLECT COD", "NONE", "TAKE BACK RETURN"};
   Set<std::string_view> l_shipinstruct(instructions);
   constexpr std::string_view returnflags[] = {"R", "A"};
   Set<std::string_view> l_returnflag(returnflags);
-  constexpr std::string_view shipmodes[] = {"REG AIR", "AIR", "RAIL", "SHIP",
-                                            "TRUCK", "MAIL", "FOB"};
+  constexpr std::string_view shipmodes[] = {"REG AIR", "AIR", "RAIL", "SHIP", "TRUCK", "MAIL", "FOB"};
   Set<std::string_view> l_shipmode(shipmodes);
   TpchText l_comment(10, 43);
   TpchText o_comment(19, 78);
   IntegerRange<> o_clerk_random(1, TPCH_SF * 1000);
   Formatter o_clerk("Clerk{:09}");
-  constexpr std::string_view priorities[] = {"1-URGENT", "2-HIGH", "3-MEDIUM",
-                                             "4-NOT SPECIFIED", "5-LOW"};
+  constexpr std::string_view priorities[] = {"1-URGENT", "2-HIGH", "3-MEDIUM", "4-NOT SPECIFIED", "5-LOW"};
   Set<std::string_view> o_orderpriority(priorities);
 
   size_t lineitem_count = 0;

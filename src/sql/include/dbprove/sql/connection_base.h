@@ -70,8 +70,7 @@ public:
    * @param source_path
    */
   void bulkLoad(const std::string_view table, const std::filesystem::path& source_path) {
-    bulkLoad(table,
-             std::vector({source_path}));
+    bulkLoad(table, std::vector({source_path}));
   }
 
   void executeDdl(const std::string_view ddl) {
@@ -105,10 +104,8 @@ public:
    * @param pk_table The table being pointed at
    * @param pk_columns Columns contained by fk_columns in the same order
    */
-  virtual void declareForeignKey(std::string_view fk_table,
-                                 std::span<std::string_view> fk_columns,
-                                 std::string_view pk_table,
-                                 std::span<std::string_view> pk_columns);
+  virtual void declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns,
+                                 std::string_view pk_table, std::span<std::string_view> pk_columns);
 
   static std::string foreignKeyName(std::string_view table_name);
 
@@ -116,6 +113,14 @@ public:
   virtual std::string translateDialectDdl(const std::string_view ddl) const {
     return std::string(mapTypes(ddl));
   }
+
+  /**
+   * Get all the the column types for a table
+   * @param table The table to describe columns from
+   * @return Vector of types in the column order in the table
+   */
+  virtual std::vector<SqlTypeMeta> describeColumnTypes(std::string_view table);
+
 
   const Credential credential;
 

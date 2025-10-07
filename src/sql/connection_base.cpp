@@ -4,6 +4,7 @@
 
 #include "sql_exceptions.h"
 #include "explain/plan.h"
+#include "embedded_sql.h"
 
 namespace sql {
 const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
@@ -59,10 +60,9 @@ std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view tab
 
 void ConnectionBase::declareForeignKey(const std::string_view fk_table, const std::span<std::string_view> fk_columns,
                                        const std::string_view pk_table, const std::span<std::string_view> pk_columns) {
-  const std::string statement = "ALTER TABLE " + std::string(fk_table) +
-                                " ADD CONSTRAINT " + foreignKeyName(fk_table) +
-                                " FOREIGN KEY (" + join(fk_columns, ", ") + ")" +
-                                " REFERENCES " + std::string(pk_table) + "(" + join(pk_columns, ", ") + ")";
+  const std::string statement = "ALTER TABLE " + std::string(fk_table) + " ADD CONSTRAINT " + foreignKeyName(fk_table) +
+                                " FOREIGN KEY (" + join(fk_columns, ", ") + ")" + " REFERENCES " + std::string(pk_table)
+                                + "(" + join(pk_columns, ", ") + ")";
 
   try {
     execute(statement);
@@ -73,6 +73,31 @@ void ConnectionBase::declareForeignKey(const std::string_view fk_table, const st
 
 std::string ConnectionBase::foreignKeyName(std::string_view table_name) {
   return "fk_" + std::regex_replace(std::string(table_name), std::regex("\\."), "_");
+}
+
+
+std::vector<SqlTypeMeta> ConnectionBase::describeColumnTypes(std::string_view table) {
+  const auto [schema_name, table_name] = splitTable(table);
+  std::string sql = std::regex_replace(std::string(resource::data_type_sql), std::regex("\\{table_name\\}"),
+                                       table_name);
+  sql = std::regex_replace(sql, std::regex("\\{schema_name\\}"), schema_name);
+
+  std::vector<SqlTypeMeta> result;
+  for (auto& row : fetchAll(sql)->rows()) {
+    auto engine_type = to_upper(row[0].asString());
+    const auto sql_type = to_sql_type_kind(engine_type);
+    switch (sql_type) {
+      case SqlTypeKind::STRING: {
+        const auto length = row[1].asInt8();
+        result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier(length)});
+        break;
+      }
+      default:
+        result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier()});
+        break;
+    }
+  }
+  return result;
 }
 
 std::string ConnectionBase::mapTypes(const std::string_view statement) const {
@@ -100,5 +125,3 @@ void ConnectionBase::validateSourcePaths(const std::vector<std::filesystem::path
   }
 }
 }
-
-

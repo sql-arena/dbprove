@@ -23,6 +23,7 @@ public:
     return get(index);
   }
 
+  std::string dump() const;
   virtual ColumnCount columnCount() const = 0;
 
   template <typename T>

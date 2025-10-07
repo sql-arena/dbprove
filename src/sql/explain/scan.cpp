@@ -3,6 +3,11 @@
 
 static constexpr auto symbol_ = "📄";
 
+sql::explain::Scan::Scan(const std::string& table_name)
+  : Node(NodeType::SCAN)
+  , table_name(cleanExpression(table_name)) {
+}
+
 std::string sql::explain::Scan::compactSymbolic() const {
   return table_name;
 }

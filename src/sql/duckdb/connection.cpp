@@ -192,10 +192,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return std::make_unique<Result>(std::move(result));
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
-}
-
 std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
   auto result = new Result(impl_->execute(statement));
   const auto row_count = result->rowCount();
@@ -223,14 +219,8 @@ void Connection::bulkLoad(const std::string_view table, std::vector<std::filesys
   validateSourcePaths(source_paths);
 
   for (const auto& path : source_paths) {
-    std::string copy_statement = "COPY " + std::string(table) +
-                                 " FROM '" + path.string() + "'"
-                                 "\nWITH (FORMAT 'csv', "
-                                 "DELIM '|', "
-                                 "AUTO_DETECT true, "
-                                 "HEADER true, "
-                                 "STRICT_MODE false "
-                                 ")";
+    std::string copy_statement = "COPY " + std::string(table) + " FROM '" + path.string() + "'" "\nWITH (FORMAT 'csv', "
+                                 "DELIM '|', " "AUTO_DETECT true, " "HEADER true, " "STRICT_MODE false " ")";
     auto result = impl_->execute(copy_statement);
   }
 }
@@ -348,8 +338,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
       projection_columns.push_back(Column(column_name));
     }
     node = std::make_unique<Projection>(projection_columns);
-  } else if (operator_name.contains("HASH_JOIN")
-             || operator_name == "NESTED_LOOP_JOIN") {
+  } else if (operator_name.contains("HASH_JOIN") || operator_name == "NESTED_LOOP_JOIN") {
     auto join_condition = extractConditions(extra_info);
 
     const auto join_type_str = extra_info["Join Type"].get<std::string>();
@@ -357,13 +346,9 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     auto join_type = Join::typeFromString(join_type_str);
     auto strategy = operator_name.contains("HASH_JOIN") ? Join::Strategy::HASH : Join::Strategy::LOOP;
     node = std::make_unique<Join>(join_type, strategy, join_condition);
-  } else if (operator_name.contains("RIGHT_DELIM_JOIN")
-             ||
-             operator_name.contains("LEFT_DELIM_JOIN")) {
+  } else if (operator_name.contains("RIGHT_DELIM_JOIN") || operator_name.contains("LEFT_DELIM_JOIN")) {
     const auto join_type_str = extra_info["Join Type"].get<std::string>();
-    auto join_type = join_type_str.contains("RIGHT")
-                       ? Join::Type::RIGHT_SEMI_INNER
-                       : Join::Type::LEFT_SEMI_INNER;
+    auto join_type = join_type_str.contains("RIGHT") ? Join::Type::RIGHT_SEMI_INNER : Join::Type::LEFT_SEMI_INNER;
     auto join_condition = extractConditions(extra_info);
 
     auto index = extra_info["Delim Index"].get<std::string>();
@@ -530,8 +515,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
 }
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
-  const std::string explain_query = "PRAGMA enable_profiling = 'json';\n"
-                                    "PRAGMA profiling_mode = 'detailed';\n"
+  const std::string explain_query = "PRAGMA enable_profiling = 'json';\n" "PRAGMA profiling_mode = 'detailed';\n"
                                     "EXPLAIN (ANALYSE, FORMAT JSON)\n" + std::string(statement);
   const auto result = fetchRow(explain_query);
 

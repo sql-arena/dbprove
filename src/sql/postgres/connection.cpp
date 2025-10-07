@@ -23,11 +23,8 @@ public:
   explicit Pimpl(Connection& connection, const CredentialPassword& credential)
     : connection(connection)
     , credential(credential) {
-    std::string connection_string =
-        "host=" + credential.host +
-        " dbname=" + credential.database +
-        " user=" + credential.username +
-        " port=" + std::to_string(credential.port);
+    std::string connection_string = "host=" + credential.host + " dbname=" + credential.database + " user=" + credential
+                                    .username + " port=" + std::to_string(credential.port);
     if (credential.password.has_value()) {
       connection_string += " password=" + credential.password.value();
     }
@@ -96,14 +93,7 @@ public:
   PGresult* execute(const std::string_view statement) {
     check_connection();
     const auto mapped_statement = connection.mapTypes(statement);
-    PGresult* result = PQexecParams(conn,
-                                    mapped_statement.c_str(),
-                                    0,
-                                    nullptr,
-                                    nullptr,
-                                    nullptr,
-                                    nullptr,
-                                    1);
+    PGresult* result = PQexecParams(conn, mapped_statement.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1);
     check_return(result, statement);
     return result;
   }
@@ -142,22 +132,14 @@ std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchAll(const std::
   return std::make_unique<Result>(result);
 }
 
-
-std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchMany(const std::string_view statement) {
-  PGresult* result = impl_->execute(statement);
-  // TODO: Figure out how multi result protocol works, for now, grab first result
-  return std::make_unique<Result>(result);
-}
-
 void check_bulk_return(const int status, const PGconn* conn) {
   if (status != 1) {
     throw std::runtime_error("Failed to send data to the database " + std::string(PQerrorMessage(conn)));
   }
 }
 
-void sql::postgres::Connection::bulkLoad(
-    const std::string_view table,
-    const std::vector<std::filesystem::path> source_paths) {
+void sql::postgres::Connection::bulkLoad(const std::string_view table,
+                                         const std::vector<std::filesystem::path> source_paths) {
   /*
    * Copying data into Postgres:
    *
@@ -179,10 +161,8 @@ void sql::postgres::Connection::bulkLoad(
     }
 
     // First, we need to tell PG that a copy stream is coming. This puts the server into a special mode
-    std::string copy_query = "COPY "
-                             + std::string(table)
-                             + " FROM STDIN"
-                             + " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
+    std::string copy_query = "COPY " + std::string(table) + " FROM STDIN" +
+                             " WITH (FORMAT csv, DELIMITER '|', NULL '', HEADER)";
     const auto ready_status = impl_->executeRaw(copy_query);
     assert(ready_status == PGRES_COPY_IN); // We better have handled this already
 
@@ -250,9 +230,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       return nullptr;
     }
     node = std::make_unique<Scan>(relation_name);
-  } else if (pg_node_type == "Hash Join"
-             || pg_node_type == "Nested Loop"
-             || pg_node_type == "Merge Join") {
+  } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
     std::string join_condition;
 
     Join::Strategy join_strategy;
@@ -286,9 +264,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     if (node_json.contains("Hash Cond")) {
       join_condition = node_json["Hash Cond"].get<std::string>();
     }
-    if (!join_condition.empty() &&
-        join_condition.front() == '(' &&
-        join_condition.back() == ')') {
+    if (!join_condition.empty() && join_condition.front() == '(' && join_condition.back() == ')') {
       join_condition = join_condition.substr(1, join_condition.length() - 2);
       join_condition = sql::cleanExpression(join_condition);
     }
@@ -304,8 +280,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       const std::string desc_suffix = " DESC";
       auto sort_order = Column::Sorting::ASC;
       auto name = col.get<std::string>();
-      if (name.size() >= desc_suffix.size() &&
-          name.substr(name.size() - desc_suffix.size()) == desc_suffix) {
+      if (name.size() >= desc_suffix.size() && name.substr(name.size() - desc_suffix.size()) == desc_suffix) {
         // Sort keys end with “DESC” (yeah, a string) if they’re descending.
         name = name.substr(0, name.size() - desc_suffix.size());
         sort_order = Column::Sorting::DESC;
@@ -428,12 +403,8 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
 
   auto node = createNodeFromPgType(node_json);
   const auto node_type = node_json["Node Type"].get<std::string>();
-  if (node == nullptr
-      && (node_type == "BitmapAnd"
-          || node_type == "Bitmap Index Scan"
-          || node_type == "Bitmap Heap Scan"
-      )
-  ) {
+  if (node == nullptr && (node_type == "BitmapAnd" || node_type == "Bitmap Index Scan" || node_type ==
+                          "Bitmap Heap Scan")) {
     // We already handled the first bitmap operation.
     return nullptr;
   }

@@ -22,8 +22,10 @@ public:
   RowCount rowCount() const override;
   ColumnCount columnCount() const override;
   friend class Row;
+  ResultBase* nextResult() override;
 
 protected:
   const RowBase& nextRow() override;
+  void initResult(void* handle);
 };
 }

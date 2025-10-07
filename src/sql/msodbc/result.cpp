@@ -26,6 +26,10 @@ public:
   explicit Pimpl(void* handle, Result* result)
     : handle_(handle)
     , currentRow_(std::make_unique<Row>(result, handle)) {
+    initColumnCount();
+  }
+
+  void initColumnCount() {
     SQLSMALLINT col_count = 0;
     SQLNumResultCols(handle_, &col_count);
     columnCount_ = col_count;
@@ -105,6 +109,7 @@ SqlVariant Result::odbc2SqlVariant(const size_t index) {
 
 void Result::parseRow() {
   if (currentRowIndex_ == 0) {
+    rowData_.clear();
     for (size_t i = 0; i < columnCount(); ++i) {
       rowData_.push_back(odbc2SqlVariant(i));
     }
@@ -116,8 +121,7 @@ void Result::parseRow() {
   }
 }
 
-Result::Result(void* handle)
-  : impl_(std::make_unique<Pimpl>(handle, this)) {
+void Result::initResult(void* handle) {
   static std::map<SQLSMALLINT, SqlTypeKind> type_map = {{SQL_VARCHAR, SqlTypeKind::STRING},
                                                         {SQL_WCHAR, SqlTypeKind::STRING},
                                                         {SQL_WLONGVARCHAR, SqlTypeKind::STRING},
@@ -133,8 +137,11 @@ Result::Result(void* handle)
                                                         {SQL_TYPE_TIME, SqlTypeKind::TIME},
                                                         {SQL_TYPE_DATE, SqlTypeKind::DATE},
                                                         {SQL_TYPE_TIMESTAMP, SqlTypeKind::DATETIME}};
-
-  for (SQLUSMALLINT i = 1; i <= columnCount(); ++i) {
+  columnTypes_.clear();
+  impl_->initColumnCount();
+  const auto column_count = columnCount();
+  currentRowIndex_ = 0;
+  for (SQLUSMALLINT i = 1; i <= column_count; ++i) {
     SQLSMALLINT dataType = 0;
     const auto ret = SQLDescribeCol(handle, i, nullptr, 0, nullptr, &dataType, nullptr, nullptr, nullptr);
     if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO) {
@@ -150,6 +157,11 @@ Result::Result(void* handle)
   }
 }
 
+Result::Result(void* handle)
+  : impl_(std::make_unique<Pimpl>(handle, this)) {
+  initResult(handle);
+}
+
 Result::~Result() {
   SQLFreeHandle(SQL_HANDLE_STMT, impl_->handle_);
 }
@@ -160,6 +172,14 @@ RowCount Result::rowCount() const {
 
 ColumnCount Result::columnCount() const {
   return impl_->columnCount_;
+}
+
+ResultBase* Result::nextResult() {
+  if (SQLMoreResults(impl_->handle_) == SQL_NO_DATA) {
+    return nullptr;
+  }
+  initResult(impl_->handle_);
+  return this;
 }
 
 

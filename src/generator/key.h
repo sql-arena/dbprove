@@ -9,7 +9,7 @@ class Key {
 
 public:
   Key()
-    : current_(0) {
+    : current_(1) {
   }
 
   /// @brief Skip past keys

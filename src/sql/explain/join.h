@@ -24,12 +24,7 @@ public:
     CROSS
   };
 
-  explicit Join(const Type type, const Strategy join_strategy, std::string condition)
-    : Node(NodeType::JOIN)
-    , strategy(join_strategy)
-    , type(type)
-    , condition(std::move(condition)) {
-  }
+  explicit Join(const Type type, const Strategy join_strategy, std::string condition);
 
   [[nodiscard]] std::string compactSymbolic() const override;
 

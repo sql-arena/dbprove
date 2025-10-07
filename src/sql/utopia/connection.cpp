@@ -32,13 +32,11 @@ const utopia::UtopiaConfig& getConfig(std::string_view statement) {
   comment_text.erase(0, comment_text.find_first_not_of(" \t\r\n"));
   comment_text.erase(comment_text.find_last_not_of(" \t\r\n") + 1);
 
-  static const std::map<std::string_view, UtopiaConfig> data = {
-      {"n10", {UtopiaData::N10, 0}},
-      {"CLI-1", {UtopiaData::NOOP, 10}},
-      {"test_scalar", {UtopiaData::TEST_VALUE, 0}},
-      {"test_row", {UtopiaData::TEST_ROW, 0}},
-      {"test_result", {UtopiaData::TEST_RESULT, 0}}
-  };
+  static const std::map<std::string_view, UtopiaConfig> data = {{"n10", {UtopiaData::N10, 0}},
+                                                                {"CLI-1", {UtopiaData::NOOP, 10}},
+                                                                {"test_scalar", {UtopiaData::TEST_VALUE, 0}},
+                                                                {"test_row", {UtopiaData::TEST_ROW, 0}},
+                                                                {"test_result", {UtopiaData::TEST_RESULT, 0}}};
 
   if (!data.contains(comment_text)) {
     throw std::runtime_error("Utopia cannot match requested result: " + comment_text);
@@ -62,12 +60,6 @@ std::unique_ptr<ResultBase> utopia::Connection::fetchAll(std::string_view statem
   return std::make_unique<Result>(data);
 }
 
-std::unique_ptr<ResultBase> utopia::Connection::fetchMany(std::string_view statement) {
-  const auto& [data, runtime_us] = getConfig(statement);
-  sleep_us(runtime_us);
-  return std::make_unique<Result>(data);
-}
-
 std::unique_ptr<RowBase> utopia::Connection::fetchRow(const std::string_view statement) {
   const auto& [data, runtime_us] = getConfig(statement);
   sleep_us(runtime_us);
@@ -83,6 +75,6 @@ SqlVariant utopia::Connection::fetchScalar(const std::string_view statement) {
   return SqlVariant(42);
 }
 
-void utopia::Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
+void utopia::Connection::bulkLoad(const std::string_view table, std::vector<std::filesystem::path> const source_paths) {
   bulk_loader_tables[table] = source_paths;
 }

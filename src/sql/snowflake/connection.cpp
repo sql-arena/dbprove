@@ -5,7 +5,8 @@
 namespace sql::snowflake {
 class Connection::Pimpl {
 public:
-  explicit Pimpl() {}
+  explicit Pimpl() {
+  }
 };
 
 Connection::Connection(const Credential& credential, const Engine& engine)
@@ -24,10 +25,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return std::make_unique<Result>(nullptr);
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  // TODO: Implement result set scrolling
-  return fetchAll(statement);
-}
 
 std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
   return nullptr;

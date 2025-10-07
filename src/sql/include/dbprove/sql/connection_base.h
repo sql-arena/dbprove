@@ -43,8 +43,6 @@ public:
   virtual void execute(std::string_view statement) = 0;
   /// @brief Fetches a single result from the database.
   virtual std::unique_ptr<ResultBase> fetchAll(std::string_view statement) = 0;
-  /// @brief Fetches multiple results from the data
-  virtual std::unique_ptr<ResultBase> fetchMany(std::string_view statement) = 0;
   /// @brief Fetches a single row from the data.
   /// @throw If the statement doesn't return a single row
   virtual std::unique_ptr<RowBase> fetchRow(std::string_view statement);

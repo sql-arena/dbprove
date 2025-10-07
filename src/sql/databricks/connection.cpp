@@ -92,12 +92,10 @@ public:
     std::string readBuffer;
 
     // Prepare JSON payload with the SQL query
-    json payload = {
-        {"statement", query},
-        {"warehouse_id", warehouse_id_},
-        {"wait_timeout", "30s"},
-        {"disposition", "INLINE"}
-    };
+    json payload = {{"statement", query},
+                    {"warehouse_id", warehouse_id_},
+                    {"wait_timeout", "30s"},
+                    {"disposition", "INLINE"}};
     const std::string jsonPayload = payload.dump();
 
     // Set curl options
@@ -149,10 +147,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   auto response = impl_->sendQuery(statement);
   handleDatabricksResponse(token_, response);
   return std::make_unique<Result>(response);
-}
-
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
 }
 
 std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {

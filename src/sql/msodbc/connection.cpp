@@ -161,18 +161,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return impl_->execute(mapTypes(statement));
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
-}
-
-
-struct DBDATE {
-  short year;
-  unsigned short month;
-  unsigned short day;
-};
-
-
 std::string Connection::version() {
   const auto version = fetchScalar("SELECT @@VERSION AS v");
   return version.asString();

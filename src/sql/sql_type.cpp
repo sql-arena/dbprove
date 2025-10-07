@@ -53,4 +53,42 @@ SqlTypeKind to_sql_type_kind(const std::string_view type_name) {
   }
   return m.at(t);
 }
+
+int64_t SqlVariant::asInt8() const {
+  if (is<SqlBigInt>()) {
+    const auto i8 = std::get<SqlBigInt>(data);
+    return i8.get();
+  }
+  if (is<SqlInt>()) {
+    const auto i4 = std::get<SqlInt>(data);
+    return i4.get();
+  }
+  if (is<SqlSmallInt>()) {
+    const auto i2 = std::get<SqlSmallInt>(data);
+    return i2.get();
+  }
+  throw std::runtime_error("Value is not an integer type");
+}
+
+int32_t SqlVariant::asInt32() const {
+  const auto i8 = asInt8();
+  if (i8 > std::numeric_limits<int32_t>::max()) {
+    throw std::runtime_error("Value is too large for an int32");
+  }
+  if (i8 < std::numeric_limits<int32_t>::min()) {
+    throw std::runtime_error("Value is too large for an int32");
+  }
+  return static_cast<int32_t>(i8);
+}
+
+int16_t SqlVariant::asInt16() const {
+  const auto i8 = asInt8();
+  if (i8 > std::numeric_limits<int16_t>::max()) {
+    throw std::runtime_error("Value is too large for an int16");
+  }
+  if (i8 < std::numeric_limits<int16_t>::min()) {
+    throw std::runtime_error("Value is too large for an int16");
+  }
+  return static_cast<int32_t>(i8);
+}
 }

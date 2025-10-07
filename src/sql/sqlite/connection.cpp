@@ -17,9 +17,7 @@ public:
   explicit Pimpl(std::string db_path)
     : db_path(std::move(db_path)) {
     if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-      throw ConnectionException(
-          no_creds(),
-          "Failed to open SQLite database: " + std::string(sqlite3_errmsg(db)));
+      throw ConnectionException(no_creds(), "Failed to open SQLite database: " + std::string(sqlite3_errmsg(db)));
     }
   }
 
@@ -79,9 +77,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return impl_->execute(statement);
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
-}
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);

@@ -15,4 +15,10 @@ SqlTypeKind ResultBase::columnType(const size_t index) const {
   }
   return columnTypes_[index];
 }
+
+void ResultBase::drain() {
+  for (auto& _ : rows()) {
+    // Do nothing
+  }
+}
 }

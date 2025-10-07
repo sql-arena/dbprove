@@ -18,6 +18,21 @@ public:
   RowIterable rows();
   /// @brief Get the type of a column by its index
   SqlTypeKind columnType(size_t index) const;
+  /**
+   * For engines supporting multiple results in a single roundtrip, call this
+   *
+   * @return this, if more results, nullptr if not
+   */
+  virtual ResultBase* nextResult() {
+    return nullptr;
+  }
+
+  /**
+   * Iterate through this results until the end.
+   * Needed for cases where we want to call nextResult or for the drivers where
+   * the rowCount is not available until all rows have been spooled
+   */
+  void drain();
 
 protected:
   /// @brief return the next row or nullptr if no more rows

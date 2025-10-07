@@ -15,10 +15,8 @@ inline std::string ellipsify(std::string s, const size_t max_width) {
 
 
 template <typename Collection>
-std::string join(const Collection& columns,
-                 const std::string& delimiter,
-                 size_t max_width = std::numeric_limits<size_t>::max(),
-                 const bool with_order = false) {
+std::string join(const Collection& columns, const std::string& delimiter,
+                 size_t max_width = std::numeric_limits<size_t>::max(), const bool with_order = false) {
   if (columns.empty()) {
     return "";
   }
@@ -27,7 +25,7 @@ std::string join(const Collection& columns,
   size_t i = 0;
   do {
     std::string add_column;
-    if (i > 1) {
+    if (i > 0) {
       add_column.append(delimiter);
     }
     add_column.append(columns[i].name);

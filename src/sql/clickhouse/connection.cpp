@@ -50,11 +50,8 @@ public:
   explicit Pimpl(const CredentialPassword& credential)
     : credential(credential) {
     ch::ClientOptions options;
-    options.SetHost(credential.host)
-           .SetPort(credential.port)
-           .SetUser(credential.username)
-           .SetPassword(credential.password.value_or(""))
-           .SetDefaultDatabase(credential.database);
+    options.SetHost(credential.host).SetPort(credential.port).SetUser(credential.username).
+            SetPassword(credential.password.value_or("")).SetDefaultDatabase(credential.database);
     client = std::make_unique<ch::Client>(options);
   }
 
@@ -117,9 +114,6 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return std::make_unique<Result>(std::make_unique<BlockHolder>(blocks));
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
-}
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
@@ -389,9 +383,8 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
 }
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
-  const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, indexes = 1\n"
-                                   + std::string(statement)
-                                   + "\nFORMAT TSVRaw";
+  const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, indexes = 1\n" +
+                                   std::string(statement) + "\nFORMAT TSVRaw";
   auto string_explain = fetchScalar(explain_stmt).asString();
   auto json_explain = json::parse(string_explain);
   auto plan = buildExplainPlan(json_explain);

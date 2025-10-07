@@ -277,18 +277,9 @@ public:
   }
 
 
-  [[nodiscard]] int64_t asInt8() const {
-    if (is<SqlBigInt>()) {
-      return get<SqlBigInt>().get();
-    }
-    if (is<SqlInt>()) {
-      return static_cast<int64_t>(get<SqlInt>().get());
-    }
-    if (is<SqlSmallInt>()) {
-      return static_cast<int64_t>(get<SqlSmallInt>().get());
-    }
-    throw std::runtime_error("Value is not an integer type");
-  }
+  [[nodiscard]] int64_t asInt8() const;
+  [[nodiscard]] int32_t asInt32() const;
+  [[nodiscard]] int16_t asInt16() const;
 
   /// @brief Is the value of the templated type?
   template <typename T>

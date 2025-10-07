@@ -10,7 +10,8 @@ enum class TokenType {
   LeftParen, // (
   RightParen, // )
   LiteralString,
-  Function
+  Function,
+  None
 };
 
 // A token representation
@@ -56,10 +57,14 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
 
     // 2 char operators
-    if (i + 1 < expr.size() && ((expr[i] == '<' && expr[i + 1] == '>') || (expr[i] == '!' && expr[i + 1] == '='))) {
-      tokens.push_back({TokenType::Operator, std::string(1, expr[i]) + std::string(1, expr[i + 1])});
-      i += 2; // Advance past both characters
-      continue;
+    if (i + 1 < expr.size()) {
+      std::string op{expr[i], expr[i + 1]};
+      static const std::set<std::string> two_char_ops = {"<>", "!=", ">=", "<="};
+      if (two_char_ops.contains(op)) {
+        tokens.push_back({TokenType::Operator, std::string(1, expr[i]) + std::string(1, expr[i + 1])});
+        i += 2; // Advance past both characters
+        continue;
+      }
     }
     // 1 char operators
     if (std::string("~!+-*/=<>").find(expr[i]) != std::string::npos) {
@@ -69,7 +74,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
 
     // Literals
-    static const std::set<char> valid_literal = {'.', '_', '\"'};
+    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']'};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
       throw std::runtime_error("Invalid character in expression, expected a literal: " + std::string(1, expr[i]));
     }
@@ -78,16 +83,19 @@ std::vector<Token> tokenize(const std::string& expr) {
       literal += expr[i++];
     }
 
-    const auto upper_literal = to_upper(literal);
+    auto upper_literal = to_upper(literal);
     std::regex op_regex(R"(OR|AND|NOT)");
     if (std::regex_match(upper_literal, op_regex)) {
       tokens.push_back({TokenType::Operator, upper_literal});
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT"};
-
+    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG"};
+    static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"}};
     if (funcs.contains(upper_literal)) {
+      if (translate.contains(upper_literal)) {
+        upper_literal = translate.at(upper_literal);
+      }
       tokens.push_back({TokenType::Function, upper_literal});
       continue;
     }
@@ -104,6 +112,9 @@ void removeMatching(std::vector<Token>& tokens, size_t index) {
 }
 
 std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
+  if (tokens.empty()) {
+    return tokens;
+  }
   std::stack<Token*> match;
   for (size_t i = 0; i < tokens.size(); ++i) {
     switch (tokens[i].type) {
@@ -125,6 +136,9 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
       continue;
     }
     if (tokens[i + 1].type == TokenType::Literal && tokens[i + 2].type == TokenType::RightParen) {
+      if (i > 0 && tokens[i - 1].type == TokenType::Function) {
+        continue; // Don't remove if part of a larger expression
+      }
       // Lonely literal inside parenthesis
       removeMatching(tokens, i);
     }
@@ -156,7 +170,11 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
 
 
 std::string render(const std::vector<Token>& tokens) {
+  if (tokens.empty()) {
+    return "";
+  }
   std::string result;
+  Token prev = {TokenType::None, ""};
   for (auto& token : tokens) {
     switch (token.type) {
       case TokenType::Operator:
@@ -165,10 +183,17 @@ std::string render(const std::vector<Token>& tokens) {
       case TokenType::LiteralString:
         result += "'" + token.value + "'";
         break;
+      case TokenType::Literal:
+        if (prev.type == TokenType::Literal || prev.type == TokenType::RightParen) {
+          result += " ";
+        }
+        result += token.value;
+        break;
       default:
         result += token.value;
         break;
     }
+    prev = token;
   }
   return result;
 }
@@ -191,7 +216,14 @@ std::string cleanExpression(std::string expression) {
   // XML escape back to the real values
   expression = std::regex_replace(expression, std::regex("&lt;"), "<");
   expression = std::regex_replace(expression, std::regex("&gt;"), ">");
+  // SQL Server braces
+  expression = std::regex_replace(expression, std::regex("[\\[\\]]"), "");
   // Strip schema from schema.table
+  size_t prev_size = 0;
+  do {
+    prev_size = expression.size();
+    expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
+  } while (expression.size() != prev_size);
   expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
   // Remove casts
   expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");

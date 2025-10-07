@@ -7,6 +7,8 @@
 #include <ranges>
 #include <rang.hpp>
 
+#include "sql_exceptions.h"
+
 
 constexpr auto HASH_BUILD_CHILD = "└";
 constexpr auto VERTICAL_LINE = "│";
@@ -63,6 +65,9 @@ RowCount Plan::rowsJoined() const {
   double result = 0;
   for (const auto& n : planTree().depth_first()) {
     if (n.type == NodeType::JOIN) {
+      if (n.childCount() != 2) {
+        throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
+      }
       // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
       result += std::max(n.firstChild()->rows_actual, n.rows_actual);
     }
@@ -126,15 +131,9 @@ int8_t estimateOrderOfMagnitude(double estimate, double actual) {
 std::vector<Plan::MisEstimation> Plan::misEstimations() const {
   /* Construct mis estimation map, All combination must exist for easy rendering */
   std::map<Operation, std::map<int8_t, MisEstimation>> mis_estimation;
-  for (auto& op : {Operation::Join,
-                   Operation::Aggregate,
-                   Operation::Sort,
-                   Operation::Filter,
-                   Operation::Scan}) {
+  for (auto& op : {Operation::Join, Operation::Aggregate, Operation::Sort, Operation::Filter, Operation::Scan}) {
     mis_estimation.insert({op, {}}).first;
-    for (int8_t magnitude = MisEstimation::INFINITE_UNDER;
-         magnitude <= MisEstimation::INFINITE_OVER;
-         magnitude++) {
+    for (int8_t magnitude = MisEstimation::INFINITE_UNDER; magnitude <= MisEstimation::INFINITE_OVER; magnitude++) {
       mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
     }
   }
@@ -211,12 +210,12 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
       auto& current_indent = parent_split_nodes[i].indent;
       if (ancestor->type == NodeType::JOIN && &node == ancestor->firstChild()) {
         out << "│└";
-      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE)
-                 && &node == ancestor->lastChild()) {
+      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE) && &node == ancestor->
+                 lastChild()) {
         out << "└─";
         current_indent = "  "; // Last children of UNION must just be indented
-      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE)
-                 && &node.parent() == ancestor) {
+      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE) && &node.parent() ==
+                 ancestor) {
         out << "├─";
       } else {
         out << current_indent;

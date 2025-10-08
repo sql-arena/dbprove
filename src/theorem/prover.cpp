@@ -8,8 +8,7 @@
 #include <plog/Log.h>
 
 namespace dbprove::theorem {
-void run_theorem(const Theorem& theorem,
-                 RunCtx& state) {
+void run_theorem(const Theorem& theorem, RunCtx& state) {
   state.proofs.push_back(std::make_unique<Proof>(theorem, state));
   theorem.func(*state.proofs.back());
 }
@@ -17,15 +16,15 @@ void run_theorem(const Theorem& theorem,
 void writeVersion(RunCtx& input_state) {
   PLOGI << "Reading Version...";
   const std::string version = input_state.factory.create()->version();
-  input_state.writeCsv(std::vector<std::string_view>{
-      input_state.engine.name(),
-      "0",
-      "CONFIG",
-      "CONFIG-VERSION",
-      "Version of Engine",
-      "version",
-      version,
-      "version"});
+  input_state.writeCsv(std::vector<std::string_view>{input_state.engine.name(),
+                                                     "0",
+                                                     "CONFIG",
+                                                     "CONFIG-VERSION",
+                                                     "Version of Engine",
+                                                     "version",
+                                                     version,
+                                                     "version"});
+  PLOGI << "The Version of the engine is: " << version;
 }
 
 void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {

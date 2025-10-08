@@ -63,6 +63,7 @@ public:
   [[nodiscard]] RowCount rowsAggregated() const;
   [[nodiscard]] RowCount rowsSorted() const;
   [[nodiscard]] RowCount rowsJoined() const;
+  [[nodiscard]] RowCount rowsHashBuild() const;
   [[nodiscard]] RowCount rowsProcessed() const;
   [[nodiscard]] RowCount rowsReturned() const;
   [[nodiscard]] RowCount rowsScanned() const;

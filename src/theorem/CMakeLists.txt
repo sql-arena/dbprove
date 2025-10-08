@@ -51,6 +51,8 @@ target_embed_files(${_targetName} SQL_FILES
         query/tpch/q20.sql
         query/tpch/q21.sql
         query/tpch/q22.sql
+        # Manually crafted queries with perfect plans
+        query/tpch/q05_handroll.sql
 )
 
 find_package(unofficial-vincentlaucsb-csv-parser CONFIG REQUIRED)

@@ -39,11 +39,9 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   return std::make_unique<Result>(nullptr);
 }
 
-std::unique_ptr<ResultBase> Connection::fetchMany(const std::string_view statement) {
-  return fetchAll(statement);
-}
 
 void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
+  // TODO: Implement using Bulk API (if available) of the database
 }
 }

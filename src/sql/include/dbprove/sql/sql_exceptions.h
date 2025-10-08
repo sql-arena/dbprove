@@ -87,9 +87,7 @@ static constexpr std::string render_credential(const Credential& credential) {
  */
 class ConnectionException final : public Exception {
 public:
-  explicit ConnectionException(
-      const Credential& credential,
-      const std::string& message)
+  explicit ConnectionException(const Credential& credential, const std::string& message)
     : Exception(SqlState::CONNECTION_08,
                 "When trying to access: " + render_credential(credential) + " the connector threw:\n" + message) {
   }
@@ -101,8 +99,7 @@ public:
  */
 class BulkException final : public Exception {
 public:
-  explicit BulkException(
-      const std::string& message)
+  explicit BulkException(const std::string& message)
     : Exception(SqlState::CONNECTION_08, message) {
   }
 };
@@ -113,8 +110,7 @@ public:
  */
 class ConnectionClosedException final : public Exception {
 public:
-  explicit ConnectionClosedException(
-      const Credential& credential)
+  explicit ConnectionClosedException(const Credential& credential)
     : Exception(SqlState::CONNECTION_CLOSED_08003,
                 "The connection to " + render_credential(credential) + " is closed") {
   }
@@ -144,6 +140,17 @@ public:
     : Exception(SqlState::RESOURCE_UNAVAILABLE_57, message) {
   }
 };
+
+/**
+ * @brief Thrown when attemping to use a feature that does not exist in the engine
+ */
+class NotImplementedException final : public Exception {
+public:
+  explicit NotImplementedException(std::string message = "Feature is not implemented")
+    : Exception(SqlState::NOT_IMPLEMENTED_0A, std::move(message)) {
+  }
+};
+
 
 /**
  * @brief Exception thrown when a connection times out

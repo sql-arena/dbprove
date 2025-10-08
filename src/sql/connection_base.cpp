@@ -68,6 +68,8 @@ void ConnectionBase::declareForeignKey(const std::string_view fk_table, const st
     execute(statement);
   } catch (InvalidObjectException&) {
     /* NOOP */
+  } catch (NotImplementedException&) {
+    /* NOOP */
   }
 }
 

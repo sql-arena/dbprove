@@ -74,7 +74,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
 
     // Literals
-    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']'};
+    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', ','};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
       throw std::runtime_error("Invalid character in expression, expected a literal: " + std::string(1, expr[i]));
     }
@@ -90,7 +90,7 @@ std::vector<Token> tokenize(const std::string& expr) {
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG"};
+    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM"};
     static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"}};
     if (funcs.contains(upper_literal)) {
       if (translate.contains(upper_literal)) {
@@ -222,9 +222,8 @@ std::string cleanExpression(std::string expression) {
   size_t prev_size = 0;
   do {
     prev_size = expression.size();
-    expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
+    expression = std::regex_replace(expression, std::regex(R"((?:[a-zA-Z_]\w*\.)?([a-zA-Z_]\w*))"), "$1");
   } while (expression.size() != prev_size);
-  expression = std::regex_replace(expression, std::regex(R"((?:\w+\.)?(\w+))"), "$1");
   // Remove casts
   expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");
 

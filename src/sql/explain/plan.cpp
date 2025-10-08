@@ -69,18 +69,33 @@ RowCount Plan::rowsJoined() const {
         throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
       }
       // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
+      result += std::max(n.lastChild()->rows_actual, n.rows_actual);
+    }
+  }
+  return cutoff(result);
+}
+
+RowCount Plan::rowsHashBuild() const {
+  double result = 0;
+  for (const auto& n : planTree().depth_first()) {
+    if (n.type == NodeType::JOIN) {
+      if (n.childCount() != 2) {
+        throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
+      }
+      // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
       result += std::max(n.firstChild()->rows_actual, n.rows_actual);
     }
   }
   return cutoff(result);
 }
 
+
 RowCount Plan::rowsSorted() const {
   return countRowsByNode(planTree(), NodeType::SORT);
 }
 
 RowCount Plan::rowsProcessed() const {
-  return rowsAggregated() + rowsJoined() + rowsSorted();
+  return rowsAggregated() + rowsJoined() + rowsSorted() + rowsHashBuild();
 }
 
 RowCount Plan::rowsReturned() const {

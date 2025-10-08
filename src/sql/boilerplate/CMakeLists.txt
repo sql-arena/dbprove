@@ -8,6 +8,7 @@ target_sources(${_targetName}
         result.cpp
         connection.cpp
         row.cpp
+        explain.cpp
 )
 
 target_link_libraries(${_targetName}

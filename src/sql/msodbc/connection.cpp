@@ -1,8 +1,9 @@
+#include "connection.h"
+#include "result.h"
+#include "sql_exceptions.h"
+
 #include <cassert>
 #include <filter.h>
-#include <fstream>
-#include <vector>
-
 #include <vincentlaucsb-csv-parser/internal/csv_reader.hpp>
 // The SQL odbc library needs some strange INT definitions
 #ifdef _WIN32
@@ -12,20 +13,9 @@
 #endif
 #include <sql.h>
 #include <sqlext.h>
-#include "connection.h"
-#include "result.h"
-#include "sql_exceptions.h"
-
-#include <windows.h>
-#include <sql.h>
-#include <sqlext.h>
-#include <msodbcsql.h>
 #include <mutex>
 #include <string>
-#include <vector>
 #include <stdexcept>
-#include <iostream>
-
 
 using namespace sql;
 
@@ -180,7 +170,7 @@ const char* Connection::connectionString() const {
   return impl_->connection_string.c_str();
 }
 
-void Connection::analyse(std::string_view table_name) {
+void Connection::analyse(const std::string_view table_name) {
   execute("UPDATE STATISTICS " + std::string(table_name));
 }
 }

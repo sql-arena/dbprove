@@ -2,12 +2,15 @@
 #include "explain/plan.h"
 #include <memory>
 #include <pugixml.hpp>
+#include <regex>
+#include <set>
 #include <unordered_set>
 
 #include "group_by.h"
 #include "join.h"
 #include "projection.h"
 #include "scan.h"
+#include "selection.h"
 #include "sort.h"
 #include "sql_exceptions.h"
 
@@ -64,6 +67,17 @@ static std::string qname(const xml_node& column_reference) {
   return database + "." + schema + "." + table + "." + column;
 }
 
+const std::regex bloom_regex(R"(PROBE\(\[*Opt_Bitmap[0-9]+\]*,(.*)\))");
+
+std::string cleanFilter(std::string filter) {
+  size_t old_size = 0;
+  do {
+    old_size = filter.size();
+    filter = std::regex_replace(filter, bloom_regex, "BLOOM($1)");
+  } while (old_size != filter.size());
+  return filter;
+}
+
 static std::vector<std::pair<std::string, std::string>>
 extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std::string>& outer_refs) {
   std::vector<std::pair<std::string, std::string>> pairs; // (inner_col, outer_col)
@@ -99,7 +113,7 @@ extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std:
     for (size_t i = 0; i < m; ++i) {
       std::string innerQN = qname(innerCols[i]);
       std::string outerQN = qname(outerCols[i]);
-      // Only record if the "outer" side actually matches one of NL's OuterReferences
+      // Only record if the “outer” side actually matches one of NL's OuterReferences
       if (outer_refs.contains(outerQN)) {
         pairs.emplace_back(innerQN, outerQN);
       }
@@ -109,14 +123,42 @@ extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std:
   return pairs;
 }
 
+bool isScanOp(std::string physical_op) {
+  std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Table Scan"};
+  return scan_ops.contains(physical_op);
+}
 
-std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const xml_node& node_xml) {
+std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const xml_node& node_xml,
+                                                                          std::string pushed_filter = "") {
   const auto physical_op = std::string(node_xml.attribute("PhysicalOp").as_string());
   const auto logical_op = std::string(node_xml.attribute("LogicalOp").as_string());
 
+  const std::map<std::string, Join::Type> join_map = {{"Inner Join", Join::Type::INNER},
+                                                      {"Right Semi Join", Join::Type::RIGHT_SEMI_INNER}};
+
   std::unique_ptr<Node> node;
   std::vector<xml_node> children;
-  if (logical_op == "Sort") {
+  if (logical_op == "Filter") {
+    const auto filter = node_xml.child("Filter");
+    const auto child = filter.child("RelOp");
+    const auto child_op = std::string(child.attribute("PhysicalOp").as_string());
+    const auto predicate = filter.child("Predicate");
+    std::string condition;
+    if (predicate) {
+      const auto scalar_op = predicate.child("ScalarOperator");
+      if (scalar_op) {
+        condition = scalar_op.attribute("ScalarString").as_string();
+      }
+    }
+    if (isScanOp(child_op)) {
+      // We are calculating bloom filters here. Get rid of those
+      condition = std::regex_replace(condition, bloom_regex, "");
+      return createNodeFromXML(child, condition);
+    }
+    condition = cleanFilter(condition);
+    children.push_back(filter.child("RelOp"));
+    node = std::make_unique<Selection>(condition);
+  } else if (logical_op == "Sort") {
     std::vector<Column> columns_sorted;
     auto sort = node_xml.child("Sort");
     for (auto column : sort.child("OrderBy")) {
@@ -144,7 +186,33 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     }
     node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, columns_grouped, columns_aggregated);
     children.push_back(hash_child.child("RelOp"));
-  } else if (logical_op == "Inner Join" && physical_op == "Hash Match") {
+  } else if (logical_op == "Aggregate" && physical_op == "Stream Aggregate") {
+    std::vector<Column> columns_grouped;
+    std::vector<Column> columns_aggregated;
+
+    const auto stream_aggregate_child = node_xml.child("StreamAggregate");
+    for (auto defined_value : stream_aggregate_child.child("DefinedValues")) {
+      auto name = definedValueExpression(defined_value);
+      columns_aggregated.push_back(Column(name));
+    }
+    for (auto hash_key_build : stream_aggregate_child.child("GroupBy")) {
+      auto column_ref = hash_key_build.child("ColumnReference");
+      const auto name = std::string(column_ref.attribute("Column").as_string());
+      columns_grouped.push_back(Column(name));
+    }
+    node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, columns_grouped, columns_aggregated);
+    children.push_back(stream_aggregate_child.child("RelOp"));
+  } else if (logical_op == "Inner Join" && physical_op == "Merge Join") {
+    const auto merge = node_xml.child("Merge");
+    const auto residual = merge.child("Residual");
+    const auto scalar_operator = residual.child("ScalarOperator");
+    for (auto child : merge.children("RelOp")) {
+      children.push_back(child);
+    }
+
+    std::string condition = scalar_operator.attribute("ScalarString").as_string();
+    node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::MERGE, condition);
+  } else if (physical_op == "Hash Match") {
     const auto hash = node_xml.child("Hash");
     const auto probe = hash.child("ProbeResidual");
     const auto scalar_operator = probe.child("ScalarOperator");
@@ -152,6 +220,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       children.push_back(child);
     }
     std::string condition = scalar_operator.attribute("ScalarString").as_string();
+
     node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, condition);
   } else if (logical_op == "Inner Join" && physical_op == "Nested Loops") {
     std::string condition;
@@ -171,10 +240,9 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       }
       condition += outer + " = " + inner;
     }
-
+    std::ranges::reverse(children); // Loop joins are the wrong way around in SQL Server plans
     node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::LOOP, condition);
-  } else if (logical_op == "Clustered Index Scan" || logical_op == "Clustered Index Seek" || logical_op ==
-             "Table Scan") {
+  } else if (isScanOp(physical_op)) {
     const auto output_columns = node_xml.child("OutputList");
     std::string table_name;
     for (auto column : output_columns.children()) {
@@ -192,15 +260,33 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     }
 
     if (table_name.empty()) {
+      const auto output_list = node_xml.child("OutputList");
+      for (auto column : output_list.children()) {
+        table_name = std::string(column.attribute("Table").as_string());
+        break;
+      }
+    }
+
+    if (table_name.empty()) {
       throw ExplainException("Table name not found for node: " + physical_op);
     }
 
     node = std::make_unique<Scan>(table_name);
+    std::string filter;
     if (index_scan) {
       const auto predicate = index_scan.child("Predicate");
-      const auto filter = predicate.child("ScalarOperator").attribute("ScalarString").as_string();
-      node->setFilter(filter);
+      filter = predicate.child("ScalarOperator").attribute("ScalarString").as_string();
     }
+
+    if (!pushed_filter.empty()) {
+      if (filter.empty()) {
+        filter = pushed_filter;
+      } else {
+        filter = "(" + filter + ") AND (" + pushed_filter + ")";
+      }
+    }
+    filter = cleanFilter(filter);
+    node->setFilter(filter);
   } else if (logical_op == "Compute Scalar") {
     const auto compute_scalar = node_xml.child("ComputeScalar");
     std::vector<Column> columns_computed;

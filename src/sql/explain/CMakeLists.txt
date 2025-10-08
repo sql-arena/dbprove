@@ -14,6 +14,7 @@ target_sources(${_targetName}
         sort.cpp
         union.cpp
         node.cpp
+        selection.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         group_by.h
         cutoff.h

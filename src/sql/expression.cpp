@@ -76,7 +76,8 @@ std::vector<Token> tokenize(const std::string& expr) {
     // Literals
     static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', ','};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
-      throw std::runtime_error("Invalid character in expression, expected a literal: " + std::string(1, expr[i]));
+      throw std::runtime_error(
+          "Invalid character in expression, expected a literal, found: '" + std::string(1, expr[i]) + "' in " + expr);
     }
     std::string literal;
     while (i < expr.size() && (std::isalnum(expr[i]) || valid_literal.contains(expr[i]))) {
@@ -216,6 +217,9 @@ std::string cleanExpression(std::string expression) {
   // XML escape back to the real values
   expression = std::regex_replace(expression, std::regex("&lt;"), "<");
   expression = std::regex_replace(expression, std::regex("&gt;"), ">");
+
+  // DuckDB optional expressions
+  expression = std::regex_replace(expression, std::regex("""optional:"), "");
   // SQL Server braces
   expression = std::regex_replace(expression, std::regex("[\\[\\]]"), "");
   // Strip schema from schema.table

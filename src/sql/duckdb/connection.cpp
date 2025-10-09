@@ -1,5 +1,7 @@
 #include "connection.h"
 #include "result.h"
+#include "result_holder.h"
+#include "sql_exceptions.h"
 #include <dbprove/sql/sql.h>
 #include <nlohmann/json.hpp>
 #include <duckdb.hpp>
@@ -8,15 +10,13 @@
 #include <scan_materialised.h>
 #include <stdexcept>
 
-#include "sql_exceptions.h"
-
-
 namespace sql::duckdb {
 void handleDuckError(::duckdb::QueryResult* result) {
   if (!result->HasError()) {
     return;
   }
   const auto error_type = result->GetErrorType();
+  // TODO: Need to map all these errors to the sql::Exception
   switch (error_type) {
     case ::duckdb::ExceptionType::INVALID:
       break;
@@ -184,30 +184,8 @@ void Connection::execute(const std::string_view statement) {
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
   auto result = impl_->execute(statement);
-  return std::make_unique<Result>(std::move(result));
-}
-
-std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-  auto result = new Result(impl_->execute(statement));
-  const auto row_count = result->rowCount();
-  if (row_count == 0) {
-    throw EmptyResultException(statement);
-  }
-  if (row_count > 1) {
-    throw InvalidRowsException("Expected to find a single row in the data, but found: " + std::to_string(row_count),
-                               statement);
-  }
-  auto& firstRow = result->nextRow();
-  auto row = std::make_unique<Row>(static_cast<const Row&>(firstRow), result);
-  return row;
-}
-
-SqlVariant Connection::fetchScalar(const std::string_view statement) {
-  const auto row = fetchRow(statement);
-  if (row->columnCount() != 1) {
-    throw InvalidColumnsException("Expected to find a single column in the data", statement);
-  }
-  return row->asVariant(0);
+  ResultHolder holder = ResultHolder{std::move(result)};
+  return std::make_unique<Result>(holder);
 }
 
 void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {

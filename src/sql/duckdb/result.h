@@ -2,35 +2,31 @@
 #include "row.h"
 #include <dbprove/sql/sql.h>
 #include <duckdb/main/query_result.hpp>
-#include <cstddef>
-#include <atomic>
 
 
 namespace sql::duckdb {
 class Connection;
+class ResultHolder;
 
 class Result final : public ResultBase {
-  const ColumnCount columnCount_;
-  mutable std::unique_ptr<::duckdb::QueryResult> result_;
-  std::unique_ptr<::duckdb::DataChunk> currentChunk_;
-  size_t currentChunkIndex_;
-  Row currentRow_;
-  std::atomic<int> rowNumber_;
-public:
-  explicit Result(std::unique_ptr<::duckdb::QueryResult> duckResult);;
+  class Pimpl;
+  std::unique_ptr<Pimpl> impl_;
+  friend class Row;
+  RowCount rowNumber() const;
+  SqlVariant get(size_t index) const;
 
-  ~Result() override {
-  };
+public:
+  explicit Result(ResultHolder& duck_result);
+
+  ~Result() override;;
 
   size_t rowCount() const override;;
-  size_t columnCount() const override { return columnCount_; };
+  size_t columnCount() const override;;
 
-  friend class Connection;
 protected:
   void reset() override {
   };
 
   const RowBase& nextRow() override;
 };
-
 }

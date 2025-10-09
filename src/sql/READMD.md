@@ -114,6 +114,20 @@ Lots of different headers and libraries are linked to support SQL, so we want to
 You can create drivers that can’t parse canonical explain (per the `explain(std::string_view)` interface).
 If you do a partial implementation like this, please note this in the PR so someone else can implement it later.
 
+## Driver File Structures
+
+Inside the driver directory, assuming you used the `boilerplate` directory as a template,
+you should have the following files:
+
+| File          | Purpose                                                                                                                                          |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `row.h`       | Typically, you won't need to do anything here. Just pass the `Result` reference  The purpose of the file is to be the return value of iterators. |
+| `row.cpp`     | Here, you generally forward the call of the methods into the 'Result` reference                                                                  | 
+| `result.h`    | Again, mostly just boilerplate. You generally want everything inside the `impl_`                                                                 |
+| `result.cpp`  | Handle all result scrolling and iteration here. Particularly in `nextRow()`                                                                      |
+| `parsers.h`   | An internal header. You are likely to need engine specific parsers translating to `SqlVariant`. Put them here                                    |
+| `explain.cpp` | The implementation of `Connection::Explain` lives here                                                                                           |
+
 ## Logging
 
 The `sql` library shares the same log as `dbprove` which is located in `[pwd]/logs/dbprove.log`

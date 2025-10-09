@@ -124,13 +124,17 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     const std::regex raw_projection("#[0-9]+");
     for (auto& column : extra_info["Projections"]) {
       const std::string column_name = column.get<std::string>();
+      if (std::regex_match(column_name, std::regex(".*error\\(.*"))) {
+        // DuckDb internal error handling
+        return nullptr;
+      }
       projection_columns.push_back(Column(column_name));
       bool is_internal = std::regex_match(column_name, raw_projection);
       is_internal |= std::regex_match(column_name, internal_projection);
       internal_projections += is_internal ? 1 : 0;
     }
     if (internal_projections == projection_columns.size()) {
-      // If this is just an internal projection, we dont really need it to understand the plan
+      // If this is just an internal projection, we don't need it to understand the plan.
       return nullptr;
     }
     node = std::make_unique<Projection>(projection_columns);
@@ -152,7 +156,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     ctx.delimiter_expressions[delim_index] = join_condition;
     node = std::make_unique<Join>(join_type, Join::Strategy::HASH, join_condition);
   } else if (operator_name == "TOP_N") {
-    // DuckDB uses a special sort + limit node when asking for Top N
+    // DuckDB uses a special sort + limit node when asking for Top N.
     std::unique_ptr<Sort> sortNode;
     auto sort_keys = parseOrderColumns(node_json);
     if (!sort_keys.empty()) {
@@ -162,7 +166,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     auto limit_string = extra_info["Top"].get<std::string>();
     auto limit = std::atol(limit_string.c_str());
     node = std::make_unique<Limit>(limit);
-    // For some reason, Duck does not estimate a cardinality for this type
+    // For some reason, Duck doesn't estimate a cardinality for this type.
     node->rows_estimated = limit;
     if (sortNode) {
       sortNode->rows_actual = Node::UNKNOWN;
@@ -225,7 +229,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
       ctx.propagate_estimate.pop();
     }
   } else if (node->rows_estimated == 0) {
-    // HACK: Likely a bug in DuckDB. Some nodes do not have estimates, even though they clearly care about it
+    // HACK: Likely a bug in DuckDB. Some nodes don't have estimates, even though they care about the value.
     ctx.propagate_estimate.push(node.get());
   }
 
@@ -241,7 +245,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
 
 
 std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
-  // Determine the node type from the "Node Type" field
+  // Determine the node type from the “Node Type” field
   if (!node_json.contains("operator_name")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
   }

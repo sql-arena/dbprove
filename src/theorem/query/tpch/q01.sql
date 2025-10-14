@@ -10,7 +10,7 @@ SELECT l_returnflag,
        AVG(l_discount)                                       AS avg_disc,
        COUNT(*)                                              AS count_order
 FROM tpch.lineitem
-WHERE l_shipdate <= DATE '1998-10-01'
+WHERE l_shipdate <= '1998-10-01'
 GROUP BY l_returnflag,
          l_linestatus
 ORDER BY l_returnflag,

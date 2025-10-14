@@ -446,7 +446,7 @@ void orders_lineitem_gen(GeneratorState& state) {
   IntegerRange<> lineitems_per_order(1, 7);
   IntegerRange<> l_partkey(1, TPCH_SF * part_count);
   IntegerRange<> l_suppkey_index(0, 3);
-  DoubleRange l_quantity(1, 50);
+  IntegerRange<> l_quantity(1, 50);
   DoubleRange l_discount(0.00, 0.10);
   DoubleRange l_tax(0.00, 0.08);
   DateRange o_orderdate(STARTDATE, ENDDATE);

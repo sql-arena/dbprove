@@ -20,7 +20,7 @@ class GroupBy;
 
 namespace sql::yellowbrick {
 Connection::Connection(const CredentialPassword& credential, const Engine& engine)
-  : postgres::Connection(credential, engine) {
+  : postgresql::Connection(credential, engine) {
 }
 
 std::string Connection::version() {
@@ -34,7 +34,7 @@ std::string Connection::version() {
 }
 
 std::string Connection::translateDialectDdl(const std::string_view ddl) const {
-  const std::string pg = postgres::Connection::translateDialectDdl(ddl);
+  const std::string pg = postgresql::Connection::translateDialectDdl(ddl);
   const std::regex re(";");
   auto r = std::regex_replace(pg, re, " DISTRIBUTE REPLICATE;");
   return r;

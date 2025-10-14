@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="dbprove - DuckDB" type="CMakeRunConfiguration" factoryName="Application" PROGRAM_PARAMS="-e DuckDB -T PLAN" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" WORKING_DIR="file://$PROJECT_DIR$/../../temp" PASS_PARENT_ENVS_2="true" PROJECT_NAME="dbprove" TARGET_NAME="dbprove" CONFIG_NAME="msvc_x64_vcpkg_vendor_debug - build_msvc_vendor_debug" RUN_TARGET_PROJECT_NAME="dbprove" RUN_TARGET_NAME="dbprove">
+    <method v="2">
+      <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+    </method>
+  </configuration>
+</component>

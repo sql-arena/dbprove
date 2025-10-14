@@ -73,7 +73,28 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\12.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\65.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\85.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="|" />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="\extern\vcpkg\buildtrees\duckdb\src\v1.2.2-b364b9b973.clean\extension\tpcds\dsdgen\answers\sf1\98.csv">
           <value>
             <Attribute>
               <option name="separator" value="|" />

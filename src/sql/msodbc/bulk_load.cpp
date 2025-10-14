@@ -5,6 +5,7 @@
 #include <sql.h>
 #include <sqlext.h>
 #include <msodbcsql.h>
+#include <absl/numeric/int128.h>
 
 #include "sql_exceptions.h"
 #include <plog/Log.h>
@@ -12,7 +13,7 @@
 
 /**
  * NOTE:
- * Microsoft does NOT ship the linkable library that allows us to speak BCP to the interface
+ * Microsoft doesn't ship the linkable library that allows us to speak BCP to the interface
  * They DO ship an old library that has the right signature, but that library does not correctly implement `odbcss.h`
  * So, you can end up (as I did) spending a lot of time debugging what the library wont talk to you
  *
@@ -25,6 +26,7 @@ typedef RETCODE (WINAPI*BCP_COLLEN)(HDBC, DBINT, INT);
 typedef DBINT (WINAPI*BCP_DONE)(HDBC);
 typedef DBINT (WINAPI*BCP_BATCH)(HDBC);
 
+using uint128_t = absl::uint128;
 
 struct BCPAPI {
   // Function pointers
@@ -197,13 +199,7 @@ SQL_NUMERIC_STRUCT parseDecimal(const std::string& str, DBINT* length) {
   // SQL Server stores numeric values as 128-bit integers in little-endian format
   std::memset(num.val, 0, SQL_MAX_NUMERIC_LEN);
 
-  /*
-     TODO: The below really needs to be uint128_t, BUT
-      The only vcpkg version is from `abseil` - and we are *not* pulling in that piece of bloat to get one data type.
-      What is really needed a single header, fully self contained uint128_t implemention, but stuch a thing does
-      not currently exist
-  */
-  uint64_t value = 0;
+  uint128_t value = 0;
 
   for (auto it = all_digits.rbegin(); it != all_digits.rend(); ++it) {
     if (*it < '0' || *it > '9') {
@@ -211,7 +207,7 @@ SQL_NUMERIC_STRUCT parseDecimal(const std::string& str, DBINT* length) {
     }
     value = value * 10 + (*it - '0');
   }
-
+  // TODO: This is currently broken, fix
   // Store as little-endian byte array
   for (int i = 0; i < SQL_MAX_NUMERIC_LEN; ++i) {
     num.val[i] = static_cast<uint8_t>(value & 0xFF);

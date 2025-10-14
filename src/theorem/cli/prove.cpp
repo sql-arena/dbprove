@@ -13,6 +13,6 @@ void cli_1(Proof& proof) {
 
 
 void init() {
-  addTheorem(Type::CLI, "CLI-1", "Measure roundtrip Time on NOOP", cli_1);
+  addTheorem("CLI-1", "Measure roundtrip Time on NOOP", cli_1);
 }
 }

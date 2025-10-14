@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <nlohmann/json.hpp>
 
-namespace sql::postgres {
+namespace sql::postgresql {
 using namespace sql::explain;
 using namespace nlohmann;
 

@@ -11,7 +11,7 @@
 #include <regex>
 
 
-class sql::postgres::Connection::Pimpl {
+class sql::postgresql::Connection::Pimpl {
 public:
   Connection& connection;
   const CredentialPassword credential;
@@ -106,25 +106,25 @@ public:
   }
 };
 
-sql::postgres::Connection::Connection(const CredentialPassword& credential, const Engine& engine)
+sql::postgresql::Connection::Connection(const CredentialPassword& credential, const Engine& engine)
   : ConnectionBase(credential, engine)
   , impl_(std::make_unique<Pimpl>(*this, credential)) {
 }
 
-const sql::ConnectionBase::TypeMap& sql::postgres::Connection::typeMap() const {
+const sql::ConnectionBase::TypeMap& sql::postgresql::Connection::typeMap() const {
   static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "VARCHAR"}};
   return map;
 }
 
-sql::postgres::Connection::~Connection() {
+sql::postgresql::Connection::~Connection() {
   PQfinish(impl_->conn);
 }
 
-void sql::postgres::Connection::execute(const std::string_view statement) {
+void sql::postgresql::Connection::execute(const std::string_view statement) {
   [[maybe_unused]] auto s = impl_->executeRaw(statement);
 }
 
-std::unique_ptr<sql::ResultBase> sql::postgres::Connection::fetchAll(const std::string_view statement) {
+std::unique_ptr<sql::ResultBase> sql::postgresql::Connection::fetchAll(const std::string_view statement) {
   PGresult* result = impl_->execute(statement);
   return std::make_unique<Result>(result);
 }
@@ -135,7 +135,7 @@ void check_bulk_return(const int status, const PGconn* conn) {
   }
 }
 
-void sql::postgres::Connection::bulkLoad(const std::string_view table,
+void sql::postgresql::Connection::bulkLoad(const std::string_view table,
                                          const std::vector<std::filesystem::path> source_paths) {
   /*
    * Copying data into Postgres:
@@ -191,7 +191,7 @@ void sql::postgres::Connection::bulkLoad(const std::string_view table,
 }
 
 
-std::string sql::postgres::Connection::version() {
+std::string sql::postgresql::Connection::version() {
   const auto versionString = fetchScalar("SELECT version()").get<SqlString>().get();
   const std::regex versionRegex(R"(PostgreSQL (\d+\.\d+))");
   std::smatch match;
@@ -201,6 +201,6 @@ std::string sql::postgres::Connection::version() {
   return "Unknown";
 }
 
-void sql::postgres::Connection::close() {
+void sql::postgresql::Connection::close() {
   impl_->safeClose();
 }

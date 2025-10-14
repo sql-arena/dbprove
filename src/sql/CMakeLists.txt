@@ -48,7 +48,9 @@ target_include_directories(sql_driver_headers
 target_embed_files(${_targetName} SQL_FILES information_schema/data_type.sql)
 
 # Drivers
-add_subdirectory("postgres")
+
+add_subdirectory("odbc")
+add_subdirectory("postgresql")
 add_subdirectory("utopia")
 add_subdirectory("duckdb")
 add_subdirectory("databricks")

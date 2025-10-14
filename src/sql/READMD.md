@@ -128,6 +128,18 @@ you should have the following files:
 | `parsers.h`   | An internal header. You are likely to need engine specific parsers translating to `SqlVariant`. Put them here                                    |
 | `explain.cpp` | The implementation of `Connection::Explain` lives here                                                                                           |
 
+## Expression parsing
+
+The file `sql/expression.css` does a simple tokenising of SQL expressions. All expressions passed into constructors
+of `sql::explain::Node` will be parsed this way.
+
+To keep query plans in a canonical form, you may need to handle special cases in `sql/expression.cpp`.
+Even though these cases are engine specific - they typically generalise and are used in multiple engines.
+Hence, feel free to suggest changes to the expression parser.
+
+For the rare cases where general expression parsing isn't sufficient (example: the `error()` function in DuckDB)
+you can fix the expression before constructing a `sql::explain::Node` object.`
+
 ## Logging
 
 The `sql` library shares the same log as `dbprove` which is located in `[pwd]/logs/dbprove.log`

@@ -16,9 +16,10 @@ void run_theorem(const Theorem& theorem, RunCtx& state) {
 void writeVersion(RunCtx& input_state) {
   PLOGI << "Reading Version...";
   const std::string version = input_state.factory.create()->version();
+
   input_state.writeCsv(std::vector<std::string_view>{input_state.engine.name(),
                                                      "0",
-                                                     "CONFIG",
+                                                     allCategoriesAsString(),
                                                      "CONFIG-VERSION",
                                                      "Version of Engine",
                                                      "version",
@@ -28,24 +29,19 @@ void writeVersion(RunCtx& input_state) {
 }
 
 void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
-  auto prev_type = Type::UNKNOWN;
-
   writeVersion(input_state);
 
   for (const auto& theorem : theorems) {
-    if (theorem->type != prev_type) {
-      ux::PreAmple(input_state.console, to_string(theorem->type));
-    }
     ux::PreAmpleTheorem(input_state.console, theorem->name);
     run_theorem(*theorem, input_state);
-    prev_type = theorem->type;
   }
 }
 
 std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
+  // We only want to run each theorem once. Remove duplicates first.
   std::set<const Theorem*> parsed_theorems;
   if (theorems.size() == 0) {
-    // If user did not supply theorems, default to all
+    // If the user didn't supply any theorems, default to all
     for (auto& t : std::views::values(allTheorems())) {
       parsed_theorems.insert(t.get());
     }
@@ -53,7 +49,7 @@ std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
     for (const auto& t : theorems) {
       if (allTypeNames().contains(t)) {
         /* User passed a category: pick everything.*/
-        auto all_theorems_in_type = allTheoremsInType(typeEnum(t));
+        auto all_theorems_in_type = allTheoremsInCategory(typeEnum(t));
         parsed_theorems.insert(all_theorems_in_type.begin(), all_theorems_in_type.end());
         continue;
       }
@@ -64,15 +60,9 @@ std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
       parsed_theorems.insert(allTheorems().at(t).get());
     }
   }
-  /* We want to process each category fully before moving on to the next */
+  // Run theorems in name order.
   std::vector sorted_theorems(parsed_theorems.begin(), parsed_theorems.end());
-  std::ranges::sort(sorted_theorems, [](const Theorem* a, const Theorem* b) {
-    if (a->type != b->type) {
-      return a->type < b->type;
-    }
-    return a->name < b->name;
-  });
-
+  std::ranges::sort(sorted_theorems, [](const Theorem* a, const Theorem* b) { return *a < *b; });
   return sorted_theorems;
 }
 }

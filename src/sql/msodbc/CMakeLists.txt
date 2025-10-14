@@ -8,17 +8,17 @@ find_package(azure-identity-cpp CONFIG REQUIRED)
 target_sources(${_targetName}
         PRIVATE
         connection.cpp
-        result.cpp
-        row.cpp
         explain.cpp
         bulk_load.cpp
 )
+
+find_package(absl CONFIG REQUIRED)       # provides absl::int128
 
 target_link_libraries(${_targetName}
         PRIVATE
         dbprove::sql
         dbprove::sql::driver
-        ODBC::ODBC
+        dbprove::sql::odbc
         Azure::azure-identity
         odbc32
 )

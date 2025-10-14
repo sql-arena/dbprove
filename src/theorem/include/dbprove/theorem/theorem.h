@@ -22,7 +22,7 @@ using TheoremFunction = std::function<void(Proof& state)>;
 /**
 * The type of Theorem
  */
-enum class Type {
+enum class Category {
   CLI = 1,
   WLM = 2,
   PLAN = 3,
@@ -31,14 +31,30 @@ enum class Type {
   UNKNOWN = 0
 };
 
-inline std::string_view to_string(const Type type) { return magic_enum::enum_name(type); }
+inline std::string_view to_string(const Category type) { return magic_enum::enum_name(type); }
+
+
+/**
+ * Tag riding along on the Theorem
+ */
+class Tag {
+public:
+  explicit Tag(std::string name);
+
+  bool operator==(const Tag& other) const { return name == other.name; }
+  bool operator!=(const Tag& other) const { return !(*this == other); }
+  bool operator<(const Tag& other) const { return name < other.name; }
+  std::string name;
+};
+
+inline std::string_view to_string(const Tag& tag) { return tag.name; }
 
 /**
  * Convert from a name to the enum
  * @param type_name Name to convert
  * @return Enum matching the name
  */
-Type typeEnum(const std::string& type_name);
+Category typeEnum(const std::string& type_name);
 
 /**
  * All types by name
@@ -142,19 +158,41 @@ private:
 
 
 class Theorem {
+  std::set<Tag> tags_ = {};
+  std::set<Category> categories_ = {};
+  std::string tags_string_;
+  std::string categories_string_;
+
 public:
-  Theorem(const Type type,
-          std::string theorem,
-          std::string description,
-          const TheoremFunction& func
-      )
-    : type(type)
-    , name(std::move(theorem))
+  Theorem(std::string theorem, std::string description, const TheoremFunction& func)
+    : name(std::move(theorem))
     , description(std::move(description))
     , func(func) {
   }
 
-  Type type;
+  bool operator<(const Theorem& other) const {
+    return name < other.name;
+  }
+
+  bool operator==(const Theorem& other) const {
+    return name == other.name;
+  }
+
+  bool operator!=(const Theorem& other) const {
+    return !(*this == other);
+  }
+
+  void addTag(const Tag& tag);
+  void addCategory(Category category);
+
+  std::string tags_to_string() const {
+    return tags_string_;
+  }
+
+  std::string categories_to_string() const {
+    return categories_string_;
+  }
+
   std::string name;
   std::string description;
   TheoremFunction func;
@@ -178,13 +216,8 @@ public:
   std::ostream& csv;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(const std::vector<std::string_view>& values) const;
-  RunCtx(
-      const sql::Engine& engine,
-      const sql::Credential& credentials,
-      generator::GeneratorState& generator,
-      std::ostream& console,
-      std::ostream& csv
-      );
+  RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
+         std::ostream& console, std::ostream& csv);
 
   ~RunCtx();
 };

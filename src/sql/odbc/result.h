@@ -3,18 +3,14 @@
 
 #include "result_base.h"
 
-namespace sql::msodbc {
+namespace sql::odbc {
 class Row;
 
 class Result final : public ResultBase {
+  friend class Row;
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
-  const std::vector<SqlVariant>& currentRow() const;
-  RowCount currentRowIndex_ = 0;
-  std::vector<SqlVariant> rowData_; ///< ODBC requires us to read columns in order. Materialize here.
-  char bounceBuffer_[SqlType::MAX_STRING_LENGTH]; ///< Bounce buffer during parse
-  void parseRow();
-  SqlVariant odbc2SqlVariant(size_t index);
+  SqlVariant get(size_t index) const;
 
 public:
   explicit Result(void* handle);

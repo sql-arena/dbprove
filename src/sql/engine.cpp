@@ -9,29 +9,27 @@ static const std::string kDummyValue = "dummy";
 
 
 Engine::Engine(const std::string_view name) {
-  const static std::map<std::string_view, Type> known_names = {
-      {"mariadb", Type::MariaDB},
-      {"mysql", Type::MariaDB},
-      {"postgresql", Type::Postgres},
-      {"postgres", Type::Postgres},
-      {"azurefabricwarehouse", Type::SQLServer},
-      {"pg", Type::Postgres},
-      {"sqlite", Type::SQLite},
-      {"sqlite3", Type::SQLite},
-      {"mssql", Type::SQLServer},
-      {"sqlserver", Type::SQLServer},
-      {"sql server", Type::SQLServer},
-      {"duckdb", Type::DuckDB},
-      {"duck", Type::DuckDB},
-      {"utopia", Type::Utopia},
-      {"databricks", Type::Databricks},
-      {"utopia", Type::Utopia},
-      {"yellowbrick", Type::Yellowbrick},
-      {"yb", Type::Yellowbrick},
-      {"ybd", Type::Yellowbrick},
-      {"clickhouse", Type::ClickHouse},
-      {"ch", Type::ClickHouse}
-  };
+  const static std::map<std::string_view, Type> known_names = {{"mariadb", Type::MariaDB},
+                                                               {"mysql", Type::MariaDB},
+                                                               {"postgresql", Type::Postgres},
+                                                               {"postgres", Type::Postgres},
+                                                               {"azurefabricwarehouse", Type::SQLServer},
+                                                               {"pg", Type::Postgres},
+                                                               {"sqlite", Type::SQLite},
+                                                               {"sqlite3", Type::SQLite},
+                                                               {"mssql", Type::SQLServer},
+                                                               {"sqlserver", Type::SQLServer},
+                                                               {"sql server", Type::SQLServer},
+                                                               {"duckdb", Type::DuckDB},
+                                                               {"duck", Type::DuckDB},
+                                                               {"utopia", Type::Utopia},
+                                                               {"databricks", Type::Databricks},
+                                                               {"utopia", Type::Utopia},
+                                                               {"yellowbrick", Type::Yellowbrick},
+                                                               {"yb", Type::Yellowbrick},
+                                                               {"ybd", Type::Yellowbrick},
+                                                               {"clickhouse", Type::ClickHouse},
+                                                               {"ch", Type::ClickHouse}};
 
   const std::string name_lower = to_lower(name);
   if (!known_names.contains(name_lower)) {
@@ -103,11 +101,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
     case Type::SQLServer:
       return "localhost";
     default:
-      host = getEnvVar("BASE_URL",
-                       "API_URL",
-                       "ENDPOINT",
-                       "SERVICE_URL",
-                       "API_HOST");
+      host = getEnvVar("BASE_URL", "API_URL", "ENDPOINT", "SERVICE_URL", "API_HOST");
       break;
   }
   if (host.has_value()) {
@@ -176,6 +170,7 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
       break;
     case Type::ClickHouse:
       password = getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
+      break;
     case Type::SQLServer:
       return "password";
     case Type::MariaDB:
@@ -206,13 +201,10 @@ std::string Engine::defaultToken(std::optional<std::string> token) const {
 }
 
 
-Credential Engine::parseCredentials(
-    const std::string& host,
-    const uint16_t port,
-    const std::string& database,
-    const std::optional<std::string>& username,
-    const std::optional<std::string>& password,
-    const std::optional<std::string>& token) const {
+Credential Engine::parseCredentials(const std::string& host, const uint16_t port, const std::string& database,
+                                    const std::optional<std::string>& username,
+                                    const std::optional<std::string>& password,
+                                    const std::optional<std::string>& token) const {
   const auto engine_name = name();
 
   switch (type()) {
@@ -243,17 +235,15 @@ Credential Engine::parseCredentials(
 }
 
 std::string Engine::name() const {
-  const static std::map<Type, std::string_view> canonical_names = {
-      {Type::MariaDB, "MySQL"},
-      {Type::Postgres, "PostgreSQL"},
-      {Type::ClickHouse, "ClickHouse"},
-      {Type::SQLite, "SQLite"},
-      {Type::Utopia, "Utopia"},
-      {Type::DuckDB, "DuckDB"},
-      {Type::Databricks, "Databricks"},
-      {Type::Yellowbrick, "Yellowbrick"},
-      {Type::SQLServer, "SQL Server"}
-  };
+  const static std::map<Type, std::string_view> canonical_names = {{Type::MariaDB, "MySQL"},
+                                                                   {Type::Postgres, "PostgreSQL"},
+                                                                   {Type::ClickHouse, "ClickHouse"},
+                                                                   {Type::SQLite, "SQLite"},
+                                                                   {Type::Utopia, "Utopia"},
+                                                                   {Type::DuckDB, "DuckDB"},
+                                                                   {Type::Databricks, "Databricks"},
+                                                                   {Type::Yellowbrick, "Yellowbrick"},
+                                                                   {Type::SQLServer, "SQL Server"}};
   if (!canonical_names.contains(type())) {
     throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");
   }

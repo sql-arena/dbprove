@@ -1,11 +1,8 @@
-#include "row.h"
+#pragma once
 #include <bit>
-#include <vector>
-#include <cstring>
-#include "sql_exceptions.h"
+#include <postgres_ext.h>
 
-namespace sql::postgres {
-
+namespace sql::postgresql {
 static constexpr Oid BOOLOID = 16;
 static constexpr Oid BYTEAOID = 17;
 static constexpr Oid CHAROID = 18;
@@ -24,8 +21,7 @@ static constexpr Oid TIMESTAMPOID = 1114;
 
 
 template <typename T>
-T flipByteOrder(const T v)
-{
+T flipByteOrder(const T v) {
   if (std::endian::native == std::endian::little) {
     return std::byteswap(v);
   }
@@ -127,16 +123,14 @@ SqlVariant parseDecimal(const char* binary_value, const int value_length) {
 }
 
 template <typename T>
-SqlVariant parseInt(const char* binary_value)
-{
+SqlVariant parseInt(const char* binary_value) {
   T int_value;
   std::memcpy(&int_value, binary_value, sizeof(T));
   return SqlVariant(flipByteOrder(int_value));
 }
 
 template <typename T>
-SqlVariant parseFloat(const char* binary_value)
-{
+SqlVariant parseFloat(const char* binary_value) {
   using UIntType = std::conditional_t<sizeof(T) == 4, uint32_t, uint64_t>;
   UIntType raw_value;
   std::memcpy(&raw_value, binary_value, sizeof(T));
@@ -144,39 +138,5 @@ SqlVariant parseFloat(const char* binary_value)
   T result;
   std::memcpy(&result, &raw_value, sizeof(T));
   return SqlVariant(result);
-}
-
-
-Row::~Row() {
-  if (!contained_) {
-    PQclear(result_);
-  }
-}
-
-SqlVariant Row::get(const size_t index) const {
-  const int pg_field_num = static_cast<int>(index); // To match libpq internal representation
-  const Oid pg_type = PQftype(result_, pg_field_num);
-  const char* binary_value = PQgetvalue(result_, row_number_, pg_field_num);
-  const int value_length = PQgetlength(result_, row_number_, pg_field_num);
-
-  switch (pg_type) {
-    case INT2OID:
-      return parseInt<int16_t>(binary_value);
-    case INT4OID:
-      return parseInt<int32_t>(binary_value);
-    case INT8OID:
-      return parseInt<int64_t>(binary_value);
-    case FLOAT4OID:
-      return parseFloat<float>(binary_value);
-    case FLOAT8OID:
-      return parseFloat<double>(binary_value);
-    case VARCHAROID:
-    case TEXTOID:
-    case JSONOID:
-      return SqlVariant(std::string(PQgetvalue(result_, row_number_, pg_field_num)));
-    case NUMERICOID:
-      return parseDecimal(binary_value, value_length);
-  }
-  throw InvalidTypeException("OID(" + std::to_string(pg_type) + ")");
 }
 }

@@ -22,5 +22,7 @@ public:
   [[nodiscard]] std::string translateDialectDdl(const std::string_view ddl) const override;
   void analyse(std::string_view table_name) override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  void declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns, std::string_view pk_table,
+                         std::span<std::string_view> pk_columns) override;
 };
 }

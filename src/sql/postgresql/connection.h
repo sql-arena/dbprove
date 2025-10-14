@@ -1,7 +1,7 @@
 #pragma once
 #include "connection_base.h"
 
-namespace sql::postgres {
+namespace sql::postgresql {
 class Connection : public ConnectionBase {
   /**
    * @note: Use the Pimpl Pattern here to avoid polluting the main namespace and to keep all

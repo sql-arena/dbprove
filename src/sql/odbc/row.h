@@ -1,19 +1,21 @@
 #pragma once
 #include "result.h"
-#include "row_base.h"
+#include "dbprove/sql/row_base.h"
+#include <dbprove/sql/sql_type.h>
 
 
-namespace sql::msodbc {
+namespace sql::odbc {
+class Result;
+
 class Row final : public RowBase {
+  Result& result_;
+
 protected:
   [[nodiscard]] SqlVariant get(size_t index) const override;
-  Result* result_;
-  void* handle_;
 
 public:
-  explicit Row(Result* result, void* handle)
-    : result_(result)
-    , handle_(handle) {
+  explicit Row(Result& result)
+    : result_(result) {
   }
 
   ColumnCount columnCount() const override;

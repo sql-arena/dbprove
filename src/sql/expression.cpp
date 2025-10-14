@@ -21,11 +21,21 @@ struct Token {
   int matching = 0;
 };
 
+void addToken(std::vector<Token>& tokens, const Token& token) {
+  tokens.push_back(token);
+}
+
+
 // Function to tokenize the input expression
 std::vector<Token> tokenize(const std::string& expr) {
   std::vector<Token> tokens;
+  Token prev_token = {TokenType::None, ""};
   size_t i = 0;
   while (i < expr.size()) {
+    if (!tokens.empty()) {
+      prev_token = tokens.back();
+    }
+
     // Skip whitespace
     if (std::isspace(expr[i])) {
       i++;
@@ -39,46 +49,58 @@ std::vector<Token> tokenize(const std::string& expr) {
         literal_string += expr[i];
       }
       i++;
-      tokens.push_back({TokenType::LiteralString, literal_string});
+      addToken(tokens, {TokenType::LiteralString, literal_string});
       continue;
     }
 
-    // Handle parentheses
+    // Parenthesis
     if (expr[i] == '(') {
-      tokens.push_back({TokenType::LeftParen, "("});
+      addToken(tokens, {TokenType::LeftParen, "("});
       i++;
       continue;
     }
-
     if (expr[i] == ')') {
-      tokens.push_back({TokenType::RightParen, ")"});
+      addToken(tokens, {TokenType::RightParen, ")"});
       i++;
       continue;
     }
 
-    // 2 char operators
-    if (i + 1 < expr.size()) {
-      std::string op{expr[i], expr[i + 1]};
-      static const std::set<std::string> two_char_ops = {"<>", "!=", ">=", "<="};
-      if (two_char_ops.contains(op)) {
-        tokens.push_back({TokenType::Operator, std::string(1, expr[i]) + std::string(1, expr[i + 1])});
-        i += 2; // Advance past both characters
-        continue;
-      }
-    }
-    // 1 char operators
-    if (std::string("~!+-*/=<>").find(expr[i]) != std::string::npos) {
-      tokens.push_back({TokenType::Operator, std::string(1, expr[i])});
+    // COUNT(*)
+    if (expr[i] == '*' && prev_token.type == TokenType::LeftParen) {
+      addToken(tokens, {TokenType::Literal, std::string(1, expr[i])});
       i++;
       continue;
     }
+
+    // Operators
+    std::string op = "";
+    static const std::set<char> op_chars = {'<', '>', '!', '=', '~', '/', '*', '+', '-'};
+    while (op_chars.contains(expr[i])) {
+      op += expr[i++];
+    }
+    if (op == "!~~") {
+      // !~~ is a PostgreSQL'ism for NOT LIKE
+      addToken(tokens, {TokenType::Literal, "NOT LIKE"});
+      continue;
+    }
+    if (op == "~~") {
+      // ~~ is a PostgreSQL'ism for LIKE
+      addToken(tokens, {TokenType::Literal, "LIKE"});
+      continue;
+    }
+
+    if (!op.empty()) {
+      addToken(tokens, {TokenType::Operator, op});
+      continue;
+    };
 
     // Literals
-    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', ','};
+    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', ',', '@'};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
       throw std::runtime_error(
           "Invalid character in expression, expected a literal, found: '" + std::string(1, expr[i]) + "' in " + expr);
     }
+
     std::string literal;
     while (i < expr.size() && (std::isalnum(expr[i]) || valid_literal.contains(expr[i]))) {
       literal += expr[i++];
@@ -87,21 +109,27 @@ std::vector<Token> tokenize(const std::string& expr) {
     auto upper_literal = to_upper(literal);
     std::regex op_regex(R"(OR|AND|NOT)");
     if (std::regex_match(upper_literal, op_regex)) {
-      tokens.push_back({TokenType::Operator, upper_literal});
+      addToken(tokens, {TokenType::Operator, upper_literal});
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM"};
-    static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"}};
+    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM", "ANY"};
+    static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"},
+                                                                 // F*cked up PostgreSQL'isms
+                                                                 {"\"left\"", "LEFT"},
+                                                                 {"\"right\"", "RIGHT"},
+                                                                 {"\"substring\"", "SUBSTRING"},
+                                                                 // ANY is IN to normal people
+                                                                 {"ANY", "IN"}};
+
     if (funcs.contains(upper_literal)) {
       if (translate.contains(upper_literal)) {
         upper_literal = translate.at(upper_literal);
       }
-      tokens.push_back({TokenType::Function, upper_literal});
+      addToken(tokens, {TokenType::Function, upper_literal});
       continue;
     }
-
-    tokens.push_back({TokenType::Literal, literal});
+    addToken(tokens, {TokenType::Literal, literal});
   }
 
   return tokens;
@@ -111,6 +139,7 @@ void removeMatching(std::vector<Token>& tokens, size_t index) {
   tokens[tokens[index].matching].matching = -1;
   tokens[index].matching = -1;
 }
+
 
 std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   if (tokens.empty()) {
@@ -151,41 +180,84 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
     if (tokens[right_offset - 1].type != TokenType::RightParen) {
       continue;
     }
-    // We now have (( followed by )) later. THe outermost parenthesis is redundant
+    // We now have “((“ followed by “))” later. The outermost parenthesis is redundant.
     removeMatching(tokens, i);
   }
 
   if (tokens[0].type == TokenType::LeftParen && tokens[0].matching == tokens.size() - 1) {
-    // Entire expressin in paranthesis
+    // Entire expression in parentheses
     removeMatching(tokens, 0);
   }
 
   std::vector<Token> optimizedTokens;
-  for (auto& token : tokens) {
+  for (const auto& token : tokens) {
     if (token.matching >= 0) {
-      optimizedTokens.push_back(token);
+      addToken(optimizedTokens, token);
     }
   }
   return optimizedTokens;
 }
 
+std::string stripDoubleQuotes(std::string expr) {
+  if (expr.size() >= 2 && expr.front() == '\"' && expr.back() == '\"') {
+    expr = expr.substr(1, expr.size() - 2);
+  }
+  return expr;
+}
+
+std::string transformPGShittyAny(std::string expr) {
+  if (expr.size() >= 2 && expr.front() == '{' && expr.back() == '}') {
+    expr = expr.substr(1, expr.size() - 2);
+    std::vector<std::string> parts;
+    size_t start = 0, end = 0;
+    while ((end = expr.find(',', start)) != std::string::npos) {
+      parts.push_back("'" + expr.substr(start, end - start) + "'");
+      start = end + 1;
+    }
+    parts.push_back("'" + expr.substr(start) + "'");
+    std::string result;
+    for (size_t i = 0; i < parts.size(); ++i) {
+      if (i > 0)
+        result += ",";
+
+      result += stripDoubleQuotes(parts[i]);
+    }
+    return result;
+  }
+  return expr;
+}
 
 std::string render(const std::vector<Token>& tokens) {
   if (tokens.empty()) {
     return "";
   }
+
   std::string result;
-  Token prev = {TokenType::None, ""};
-  for (auto& token : tokens) {
+  for (size_t i = 0; i < tokens.size(); ++i) {
+    Token token = tokens[i];
+    const auto prev_type = (i > 0) ? tokens[i - 1].type : TokenType::None;
+    const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : TokenType::None;
+    const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : TokenType::None;
     switch (token.type) {
       case TokenType::Operator:
+        if (next_type == TokenType::Function && tokens[i + 1].value == "IN") {
+          // See below for PG oddness
+          result += " ";
+          continue;
+        }
         result += " " + token.value + " ";
         break;
       case TokenType::LiteralString:
-        result += "'" + token.value + "'";
+
+        if (prev_type == TokenType::LeftParen && prev_prev_type == TokenType::Function) {
+          // PG shitty way of dealing with ANY / IN
+          result += transformPGShittyAny(token.value);
+        } else {
+          result += "'" + token.value + "'";
+        }
         break;
       case TokenType::Literal:
-        if (prev.type == TokenType::Literal || prev.type == TokenType::RightParen) {
+        if (prev_type == TokenType::Literal || prev_type == TokenType::RightParen) {
           result += " ";
         }
         result += token.value;
@@ -194,7 +266,6 @@ std::string render(const std::vector<Token>& tokens) {
         result += token.value;
         break;
     }
-    prev = token;
   }
   return result;
 }

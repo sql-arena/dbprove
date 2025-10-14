@@ -33,20 +33,46 @@ std::ostream& Proof::console() const {
   return state.console;
 }
 
+
 void Proof::writeCsv(const std::string& key, std::string value, const Unit unit) const {
   static std::atomic<uint64_t> counter{1};
-  state.writeCsv(std::vector<std::string_view>{
-      state.engine.name(),
-      std::to_string(++counter),
-      to_string(theorem.type),
-      theorem.name,
-      theorem.description,
-      key,
-      value,
-      to_string(unit)});
+
+  state.writeCsv(std::vector<std::string_view>{state.engine.name(),
+                                               std::to_string(++counter),
+                                               theorem.categories_to_string(),
+                                               theorem.tags_to_string(),
+                                               theorem.name,
+                                               theorem.description,
+                                               key,
+                                               value,
+                                               to_string(unit)});
 }
 
 std::ostream& Proof::csv() const {
   return state.csv;
+}
+
+template <typename Iterable>
+std::string sorted_join(const Iterable& items, const std::string& delimiter = ",") {
+  std::vector<typename Iterable::value_type> sorted_items(items.begin(), items.end());
+  std::sort(sorted_items.begin(), sorted_items.end());
+  std::ostringstream oss;
+  for (size_t i = 0; i < sorted_items.size(); ++i) {
+    oss << to_string(sorted_items[i]);
+    if (i + 1 < sorted_items.size())
+      oss << delimiter;
+  }
+  return oss.str();
+}
+
+
+void Theorem::addTag(const Tag& tag) {
+  tags_.insert(tag);
+  tags_string_ = sorted_join(tags_);
+}
+
+void Theorem::addCategory(const Category category) {
+  categories_.insert(category);
+  categories_string_ = sorted_join(categories_);
 }
 }

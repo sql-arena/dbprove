@@ -26,15 +26,15 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
   , generator(generator)
   , console(console)
   , csv(csv) {
-  writer->writer << std::vector<std::string_view>{
-      "ENGINE",
-      "ID",
-      "THEOREM_TYPE",
-      "THEOREM",
-      "THEOREM_DESCRIPTION",
-      "PROOF_NAME",
-      "PROOF_VALUE",
-      "PROOF_UNIT"};
+  writer->writer << std::vector<std::string_view>{"ENGINE",
+                                                  "ID",
+                                                  "CATEGORIES",
+                                                  "TAGS",
+                                                  "THEOREM",
+                                                  "THEOREM_DESCRIPTION",
+                                                  "PROOF_NAME",
+                                                  "PROOF_VALUE",
+                                                  "PROOF_UNIT"};
 }
 
 RunCtx::~RunCtx() = default;

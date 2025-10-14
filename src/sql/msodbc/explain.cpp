@@ -6,13 +6,10 @@
 #include <set>
 #include <unordered_set>
 
-#include "group_by.h"
-#include "join.h"
-#include "projection.h"
-#include "scan.h"
-#include "selection.h"
-#include "sort.h"
 #include "sql_exceptions.h"
+#include <explain_nodes.h>
+
+#include "mio/mmap.hpp"
 
 using namespace sql::explain;
 using namespace pugi;
@@ -138,6 +135,13 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
 
   std::unique_ptr<Node> node;
   std::vector<xml_node> children;
+  if (logical_op == "Top") {
+    const auto top = node_xml.child("Top");
+    const auto child = top.child("RelOp");
+    auto top_count = top.attribute("RowCount").as_llong();
+    node = std::make_unique<Limit>(top_count);
+    children.push_back(child);
+  }
   if (logical_op == "Filter") {
     const auto filter = node_xml.child("Filter");
     const auto child = filter.child("RelOp");
@@ -170,6 +174,21 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       children.push_back(sort.child("RelOp"));
     }
     node = std::make_unique<Sort>(columns_sorted);
+  } else if (logical_op == "Segment") {
+    std::vector<Column> columns_grouped;
+    const auto segment = node_xml.child("Segment");
+    const auto child_op = segment.child("RelOp");
+
+    const auto group_by = segment.child("GroupBy");
+
+    for (auto grouped_column : group_by.children("ColumnReference")) {
+      auto column_ref = grouped_column.child("ColumnReference");
+      const auto name = std::string(column_ref.attribute("Column").as_string());
+      columns_grouped.push_back(Column(name));
+    }
+
+    node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, columns_grouped, std::vector<Column>{});
+    children.push_back(child_op);
   } else if (logical_op == "Aggregate" && physical_op == "Hash Match") {
     std::vector<Column> columns_grouped;
     std::vector<Column> columns_aggregated;

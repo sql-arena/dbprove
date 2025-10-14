@@ -166,7 +166,9 @@ void register_tpch(unsigned query_number, const TheoremFunction& func, bool hand
   if (handroll) {
     q += "HR";
   }
-  addTheorem(Type::PLAN, "PLAN-TPCH-" + q, "TPC-H " + q + " Analysis", func);
+  auto& t = addTheorem("TPCH-" + q, "TPC-H " + q + " Analysis", func);
+  categoriseTheorem(t, Category::PLAN);
+  tagTheorem(t, Tag("TPC-H"));
 }
 
 

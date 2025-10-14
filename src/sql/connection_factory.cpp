@@ -1,6 +1,6 @@
 #include "connection_factory.h"
 #include "duckdb/connection.h"
-#include "postgres/connection.h"
+#include "postgresql/connection.h"
 #include "utopia/connection.h"
 #include "msodbc/connection.h"
 #include "databricks/connection.h"
@@ -20,7 +20,7 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       if (!std::holds_alternative<CredentialPassword>(credential_)) {
         throw std::invalid_argument("Postgres engine requires a password credential");
       }
-      return std::make_unique<postgres::Connection>(std::get<CredentialPassword>(credential_), engine_);
+      return std::make_unique<postgresql::Connection>(std::get<CredentialPassword>(credential_), engine_);
     case Engine::Type::Yellowbrick:
       // TODO: Support other forms of authentication
       if (!std::holds_alternative<CredentialPassword>(credential_)) {

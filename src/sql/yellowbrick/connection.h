@@ -1,10 +1,10 @@
 #pragma once
-#include "../postgres/connection.h"
+#include "../postgresql/connection.h"
 
 
 namespace sql::yellowbrick
 {
-    class Connection final : public postgres::Connection
+    class Connection final : public postgresql::Connection
     {
     public:
         Connection(const CredentialPassword& credential, const Engine& engine);

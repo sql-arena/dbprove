@@ -107,7 +107,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
 
     auto upper_literal = to_upper(literal);
-    std::regex op_regex(R"(OR|AND|NOT)");
+    std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE)");
     if (std::regex_match(upper_literal, op_regex)) {
       addToken(tokens, {TokenType::Operator, upper_literal});
       continue;

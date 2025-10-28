@@ -67,6 +67,11 @@ const Node& Join::buildChild() const {
 Join::Type Join::typeFromString(const std::string_view type_string) {
   const std::string type_lower = to_lower(type_string);
   static const std::map<std::string_view, Join::Type> type_map = {{"inner", Type::INNER},
+                                                                  {"inner join", Type::INNER},
+                                                                  {"right semi join", Type::RIGHT_SEMI_INNER},
+                                                                  {"left semi join", Type::RIGHT_SEMI_INNER},
+                                                                  {"left anti semi join", Type::LEFT_ANTI},
+                                                                  {"right anti semi join", Type::LEFT_ANTI},
                                                                   {"left", Type::LEFT_OUTER},
                                                                   {"left outer", Type::LEFT_OUTER},
                                                                   {"mark", Type::INNER},

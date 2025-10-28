@@ -29,15 +29,20 @@ void parseRowCount(Node* node, xml_node node_xml) {
 }
 
 /**
- * SQL Server for some reason does not add actual row counts to projections.
- * But these cannot change the actual, so we can correct by simply taking the count of the child
+ * SQL Server, for some reason, doesn't always add actual row counts to projections.
+ * But these cannot change the actual value, so we can correct this by simply taking the count of the child.
  * @param node
  */
 void fixProjection(Node* node) {
   for (auto& child : node->depth_first()) {
-    if (child.type == NodeType::PROJECTION || child.type == NodeType::SELECTION) {
-      child.rows_actual = child.firstChild()->rows_actual;
+    if (!std::isinf(child.rows_actual)) {
+      continue;
     }
+
+    if (child.type != NodeType::PROJECTION && child.type != NodeType::SELECTION) {
+      continue;
+    }
+    child.rows_actual = child.firstChild()->rows_actual;
   }
 }
 
@@ -129,11 +134,6 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
                                                                           std::string pushed_filter = "") {
   const auto physical_op = std::string(node_xml.attribute("PhysicalOp").as_string());
   const auto logical_op = std::string(node_xml.attribute("LogicalOp").as_string());
-
-  // TODO: Move these into a global lookup map so everyone can benefit
-  const std::map<std::string, Join::Type> join_map = {{"Inner Join", Join::Type::INNER},
-                                                      {"Right Semi Join", Join::Type::RIGHT_SEMI_INNER},
-                                                      {"Left Anti Semi Join", Join::Type::LEFT_ANTI}};
 
   std::unique_ptr<Node> node;
   std::vector<xml_node> children;
@@ -265,7 +265,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       }
       condition += outer + " = " + inner;
     }
-    const auto join_type = join_map.at(logical_op);
+    const auto join_type = Join::typeFromString(logical_op);
     std::ranges::reverse(children); // Loop joins are the wrong way around in SQL Server plans
     node = std::make_unique<Join>(join_type, Join::Strategy::LOOP, condition);
   } else if (isScanOp(physical_op)) {
@@ -335,6 +335,9 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
   }
 
   parseRowCount(node.get(), node_xml);
+  if (node->rows_actual == INFINITE) {
+    throw ExplainException("Row count not found for node: " + physical_op);
+  }
 
   return std::pair{std::move(node), children};
 }

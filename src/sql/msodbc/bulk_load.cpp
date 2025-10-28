@@ -91,7 +91,6 @@ private:
         "You likely need to install the Microsoft ODBC library");
   }
 
-  // Prevent external construction
   BCPAPI() = default;
 
   ~BCPAPI() {
@@ -157,24 +156,20 @@ DBDATETIME parseDateTime(const std::string& s) {
   return out;
 }
 
-
 SQL_NUMERIC_STRUCT parseDecimal(const std::string& str, DBINT* length) {
   SQL_NUMERIC_STRUCT num{};
-
-  // Parse the string
   std::string s = str;
 
   // Handle sign
-  num.sign = 1; // positive by default
-  if (s[0] == '-') {
+  num.sign = 1;
+  if (!s.empty() && s[0] == '-') {
     num.sign = 0;
     s = s.substr(1);
   }
+
   // Find decimal point
   size_t dot_pos = s.find('.');
-  std::string integer_part;
-  std::string fractional_part;
-
+  std::string integer_part, fractional_part;
   if (dot_pos != std::string::npos) {
     integer_part = s.substr(0, dot_pos);
     fractional_part = s.substr(dot_pos + 1);
@@ -184,34 +179,43 @@ SQL_NUMERIC_STRUCT parseDecimal(const std::string& str, DBINT* length) {
   }
 
   // Remove leading zeros from integer part
-  const size_t first_nonzero = integer_part.find_first_not_of('0');
+  size_t first_nonzero = integer_part.find_first_not_of('0');
   if (first_nonzero != std::string::npos) {
     integer_part = integer_part.substr(first_nonzero);
   } else {
     integer_part = "0";
   }
 
+  // Remove trailing zeros from fractional part for precision
+  size_t last_nonzero = fractional_part.find_last_not_of('0');
+  if (last_nonzero != std::string::npos) {
+    fractional_part = fractional_part.substr(0, last_nonzero + 1);
+  } else {
+    fractional_part = fractional_part.empty() ? "" : "0";
+  }
+
   num.scale = static_cast<SQLSCHAR>(fractional_part.length());
-  const std::string all_digits = integer_part + fractional_part;
+  std::string all_digits = integer_part + fractional_part;
+  // Remove any empty string case
+  if (all_digits.empty())
+    all_digits = "0";
   num.precision = static_cast<SQLCHAR>(all_digits.length());
 
-  // Convert string digits to little-endian byte array
-  // SQL Server stores numeric values as 128-bit integers in little-endian format
-  std::memset(num.val, 0, SQL_MAX_NUMERIC_LEN);
-
+  // Convert all_digits to uint128_t
   uint128_t value = 0;
-
-  for (auto it = all_digits.rbegin(); it != all_digits.rend(); ++it) {
-    if (*it < '0' || *it > '9') {
+  for (char c : all_digits) {
+    if (c < '0' || c > '9') {
       throw std::invalid_argument("Invalid decimal format: contains non-digit character");
     }
-    value = value * 10 + (*it - '0');
+    value = value * 10 + (c - '0');
   }
-  // TODO: This is currently broken, fix
+
   // Store as little-endian byte array
+  std::memset(num.val, 0, SQL_MAX_NUMERIC_LEN);
+  uint128_t tmp = value;
   for (int i = 0; i < SQL_MAX_NUMERIC_LEN; ++i) {
-    num.val[i] = static_cast<uint8_t>(value & 0xFF);
-    value >>= 8;
+    num.val[i] = static_cast<uint8_t>(tmp & 0xFF);
+    tmp >>= 8;
   }
 
   // Calculate the length (number of significant bytes)
@@ -224,6 +228,7 @@ SQL_NUMERIC_STRUCT parseDecimal(const std::string& str, DBINT* length) {
   }
   return num;
 }
+
 
 namespace sql {
 void handleBulkReturn(const int return_code, const SQLHDBC hdbc, const int expected = 0) {
@@ -343,8 +348,8 @@ void msodbc::Connection::bulkLoad(std::string_view table, const std::vector<std:
           case SqlTypeKind::DECIMAL: {
             DBINT length = 0;
             const auto v = parseDecimal(row[i].get<std::string>(), &length);
-            std::memcpy(buffer, &v, sizeof(v));
-            bcp.bcp_collen(hdbc, length, i + 1);
+            std::memcpy(buffer, &v, sizeof(SQL_NUMERIC_STRUCT));
+            bcp.bcp_collen(hdbc, sizeof(SQL_NUMERIC_STRUCT), i + 1);
             break;
           }
           case SqlTypeKind::STRING:

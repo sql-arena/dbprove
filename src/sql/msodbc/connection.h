@@ -11,5 +11,7 @@ public:
   const TypeMap& typeMap() const override;
   void analyse(std::string_view table_name) override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  void execute(std::string_view statement) override;
+  std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
 };
 }

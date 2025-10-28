@@ -33,6 +33,7 @@ public:
   const Strategy strategy;
   const Type type;
   const std::string condition;
+  const Node& buildChild() const;
 
   /**
    * Try to figure out a type from a string.

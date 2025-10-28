@@ -1,6 +1,7 @@
 #include "join.h"
 
 #include "glyphs.h"
+#include "sql_exceptions.h"
 
 namespace sql::explain {
 Join::Join(const Type type, const Strategy join_strategy, std::string condition)
@@ -54,6 +55,13 @@ std::string Join::renderMuggle(size_t max_width) const {
   max_width -= result.size();
   result += ellipsify(condition, max_width);
   return result;
+}
+
+const Node& Join::buildChild() const {
+  if (childCount() < 2) {
+    throw ExplainException("Join nodes must have 2 children. Did you call buildChild before parsing the full plan?");
+  }
+  return *firstChild();
 }
 
 Join::Type Join::typeFromString(const std::string_view type_string) {

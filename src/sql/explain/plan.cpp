@@ -7,6 +7,7 @@
 #include <ranges>
 #include <rang.hpp>
 
+#include "join.h"
 #include "sql_exceptions.h"
 
 
@@ -146,7 +147,12 @@ int8_t estimateOrderOfMagnitude(double estimate, double actual) {
 std::vector<Plan::MisEstimation> Plan::misEstimations() const {
   /* Construct mis estimation map, All combination must exist for easy rendering */
   std::map<Operation, std::map<int8_t, MisEstimation>> mis_estimation;
-  for (auto& op : {Operation::Join, Operation::Aggregate, Operation::Sort, Operation::Filter, Operation::Scan}) {
+  for (auto& op : {Operation::Join,
+                   Operation::Aggregate,
+                   Operation::Sort,
+                   Operation::Filter,
+                   Operation::Scan,
+                   Operation::Hash}) {
     mis_estimation.insert({op, {}}).first;
     for (int8_t magnitude = MisEstimation::INFINITE_UNDER; magnitude <= MisEstimation::INFINITE_OVER; magnitude++) {
       mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
@@ -156,9 +162,17 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
   for (const auto& n : planTree().depth_first()) {
     auto magnitude = estimateOrderOfMagnitude(n.rows_estimated, n.rows_actual);
     switch (n.type) {
-      case NodeType::JOIN:
+      case NodeType::JOIN: {
         mis_estimation[Operation::Join][magnitude].count++;
+        const auto join_node = reinterpret_cast<const Join*>(&n);
+        if (join_node->strategy == Join::Strategy::HASH) {
+          const Node& h = join_node->buildChild();
+          auto hash_magnitude = estimateOrderOfMagnitude(h.rows_estimated, h.rows_actual);
+          mis_estimation[Operation::Hash][hash_magnitude].count++;
+          break;
+        }
         break;
+      }
       case NodeType::SORT:
         mis_estimation[Operation::Sort][magnitude].count++;
         break;

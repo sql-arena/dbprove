@@ -9,7 +9,7 @@ namespace sql::explain {
  * Represents the high-level operations that roughly map to node types
  */
 enum class Operation {
-  Join = 0, Aggregate = 1, Sort = 2, Scan = 3, Filter = 4, UNKNOWN = 99
+  Join = 0, Aggregate = 1, Sort = 2, Scan = 3, Filter = 4, Hash = 5, Distribute = 6, UNKNOWN = 99
 };
 
 inline std::string_view to_string(const Operation op) { return magic_enum::enum_name(op); }

@@ -104,6 +104,11 @@ public:
         check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
         return SqlVariant(std::string(bounceBuffer_));
       }
+      case SqlTypeKind::DATE: {
+        check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
+        // TODO: Dates are not fully represented by the SqlVariant - fix this when they are.
+        return SqlVariant(std::string(bounceBuffer_));
+      }
       case SqlTypeKind::SQL_NULL:
         return SqlVariant();
     }
@@ -132,6 +137,7 @@ void Result::initResult(void* handle) {
                                                         {SQL_WLONGVARCHAR, SqlTypeKind::STRING},
                                                         {SQL_WVARCHAR, SqlTypeKind::STRING},
                                                         {SQL_SMALLINT, SqlTypeKind::SMALLINT},
+                                                        {SQL_NUMERIC, SqlTypeKind::DECIMAL},
                                                         {SQL_TINYINT, SqlTypeKind::SMALLINT},
                                                         {SQL_INTEGER, SqlTypeKind::INT},
                                                         {SQL_BIGINT, SqlTypeKind::BIGINT},

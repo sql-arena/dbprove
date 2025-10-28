@@ -121,7 +121,7 @@ extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std:
 }
 
 bool isScanOp(std::string physical_op) {
-  std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Table Scan"};
+  std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Table Scan", "Table Spool"};
   return scan_ops.contains(physical_op);
 }
 
@@ -130,19 +130,20 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
   const auto physical_op = std::string(node_xml.attribute("PhysicalOp").as_string());
   const auto logical_op = std::string(node_xml.attribute("LogicalOp").as_string());
 
+  // TODO: Move these into a global lookup map so everyone can benefit
   const std::map<std::string, Join::Type> join_map = {{"Inner Join", Join::Type::INNER},
-                                                      {"Right Semi Join", Join::Type::RIGHT_SEMI_INNER}};
+                                                      {"Right Semi Join", Join::Type::RIGHT_SEMI_INNER},
+                                                      {"Left Anti Semi Join", Join::Type::LEFT_ANTI}};
 
   std::unique_ptr<Node> node;
   std::vector<xml_node> children;
-  if (logical_op == "Top") {
+  if (logical_op == "Top" || physical_op == "Top") {
     const auto top = node_xml.child("Top");
     const auto child = top.child("RelOp");
     auto top_count = top.attribute("RowCount").as_llong();
     node = std::make_unique<Limit>(top_count);
     children.push_back(child);
-  }
-  if (logical_op == "Filter") {
+  } else if (logical_op == "Filter") {
     const auto filter = node_xml.child("Filter");
     const auto child = filter.child("RelOp");
     const auto child_op = std::string(child.attribute("PhysicalOp").as_string());
@@ -162,17 +163,21 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     condition = cleanFilter(condition);
     children.push_back(filter.child("RelOp"));
     node = std::make_unique<Selection>(condition);
-  } else if (logical_op == "Sort") {
+  } else if (logical_op == "Sort" || physical_op == "Sort") {
     std::vector<Column> columns_sorted;
     auto sort = node_xml.child("Sort");
+    if (!sort) {
+      // The heap sorting
+      sort = node_xml.child("TopSort");
+    }
     for (auto column : sort.child("OrderBy")) {
       const Column::Sorting sorting = column.attribute("Ascending").as_bool()
                                         ? Column::Sorting::ASC
                                         : Column::Sorting::DESC;
       const auto name = std::string(column.child("ColumnReference").attribute("Column").as_string());
       columns_sorted.push_back(Column(name, sorting));
-      children.push_back(sort.child("RelOp"));
     }
+    children.push_back(sort.child("RelOp"));
     node = std::make_unique<Sort>(columns_sorted);
   } else if (logical_op == "Segment") {
     std::vector<Column> columns_grouped;
@@ -241,7 +246,8 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     std::string condition = scalar_operator.attribute("ScalarString").as_string();
 
     node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, condition);
-  } else if (logical_op == "Inner Join" && physical_op == "Nested Loops") {
+  } else if (physical_op == "Nested Loops") {
+    /* All loop join flavours */
     std::string condition;
     const auto nested_loops = node_xml.child("NestedLoops");
     for (auto child : nested_loops.children("RelOp")) {
@@ -259,8 +265,9 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       }
       condition += outer + " = " + inner;
     }
+    const auto join_type = join_map.at(logical_op);
     std::ranges::reverse(children); // Loop joins are the wrong way around in SQL Server plans
-    node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::LOOP, condition);
+    node = std::make_unique<Join>(join_type, Join::Strategy::LOOP, condition);
   } else if (isScanOp(physical_op)) {
     const auto output_columns = node_xml.child("OutputList");
     std::string table_name;
@@ -269,9 +276,15 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       break;
     }
     const auto index_scan = node_xml.child("IndexScan");
+    const auto table_scan = node_xml.child("TableScan");
     if (table_name.empty()) {
       if (index_scan) {
         const auto object = index_scan.child("Object");
+        if (object) {
+          table_name = object.attribute("Table").as_string();
+        }
+      } else if (table_scan) {
+        const auto object = table_scan.child("Object");
         if (object) {
           table_name = object.attribute("Table").as_string();
         }

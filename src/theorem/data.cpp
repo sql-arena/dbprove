@@ -60,5 +60,6 @@ void DataQuery::render(Proof& proof) {
   auto& out = proof.console();
   ux::Header(out, "Query", 10);
   out << query.text() << std::endl;
+  proof.writeCsv("SQL", query.text(), Unit::Query);
 }
 }

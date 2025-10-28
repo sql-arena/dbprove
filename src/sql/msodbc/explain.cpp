@@ -80,13 +80,7 @@ std::string cleanFilter(std::string filter) {
   return filter;
 }
 
-static std::vector<std::pair<std::string, std::string>>
-extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std::string>& outer_refs) {
-  std::vector<std::pair<std::string, std::string>> pairs; // (inner_col, outer_col)
-
-  // Find all "IndexSeek/SeekPredicates" (or Key/Clustered) under the inner subtree.
-  // We rely on structure: Prefix/RangeColumns (inner) aligned with Prefix/RangeExpressions (outer).
-  // Depending on version and node types in the tree, we may have to look several places
+static std::string findSeekCondition(const xml_node& inner_rel_op) {
   auto seek_predicates = inner_rel_op.select_nodes(".//*[local-name()='SeekPredicates']");
 
   if (seek_predicates.empty()) {
@@ -95,38 +89,48 @@ extractLoopJoinPairs(const xml_node& inner_rel_op, const std::unordered_set<std:
   if (seek_predicates.empty()) {
     seek_predicates = inner_rel_op.select_nodes(".//*[local-name()='Predicate' ]");
   }
-
   for (auto sp : seek_predicates) {
-    xml_node spNode = sp.node();
-
-    // Collect inner columns in order
-    std::vector<xml_node> innerCols;
-    for (auto n : spNode.select_nodes(".//*[local-name()='RangeColumns']/*[local-name()='ColumnReference']"))
-      innerCols.push_back(n.node());
-
-    // Collect outer expressions (identifiers) in order
-    std::vector<xml_node> outerCols;
-    for (auto n : spNode.select_nodes(
-             ".//*[local-name()='RangeExpressions']//*[local-name()='Identifier']/*[local-name()='ColumnReference']"))
-      outerCols.push_back(n.node());
-
-    // Zip them by position; typical plans align these 1:1 for equi-join prefixes
-    size_t m = std::min(innerCols.size(), outerCols.size());
-    for (size_t i = 0; i < m; ++i) {
-      std::string innerQN = qname(innerCols[i]);
-      std::string outerQN = qname(outerCols[i]);
-      // Only record if the “outer” side actually matches one of NL's OuterReferences
-      if (outer_refs.contains(outerQN)) {
-        pairs.emplace_back(innerQN, outerQN);
-      }
+    const auto scalar_op = sp.node().child("ScalarOperator");
+    if (scalar_op) {
+      return scalar_op.attribute("ScalarString").as_string();
     }
   }
 
-  return pairs;
+  /* Failed to dind the old style predicate, the new ones are a form of AST, so go after those instead */
+  const auto seek_predicate_news = inner_rel_op.select_nodes(".//*[local-name()='SeekPredicateNew']");
+
+  std::vector<xml_node> innerCols;
+  std::vector<xml_node> outerCols;
+
+  for (auto sp : seek_predicate_news) {
+    const auto spNode = sp.node();
+    for (auto n : spNode.select_nodes(".//*[local-name()='RangeColumns']/*[local-name()='ColumnReference']")) {
+      innerCols.push_back(n.node());
+    }
+    for (auto n : spNode.select_nodes(".//*[local-name()='Identifier']/*[local-name()='ColumnReference']")) {
+      outerCols.push_back(n.node());
+    }
+  }
+
+  // Zip them by position; typical plans align these 1:1 for equi-join prefixes
+  std::string condition;
+  size_t m = std::min(innerCols.size(), outerCols.size());
+
+  for (size_t i = 0; i < m; ++i) {
+    std::string innerQN = qname(innerCols[i]);
+    std::string outerQN = qname(outerCols[i]);
+    condition += outerQN + " = " + innerQN;
+    if (i < m - 1) {
+      condition += " AND ";
+    }
+  }
+
+  return condition;
 }
 
-bool isScanOp(std::string physical_op) {
-  std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Table Scan", "Table Spool"};
+
+bool isScanOp(const std::string& physical_op) {
+  const std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Table Scan", "Table Spool"};
   return scan_ops.contains(physical_op);
 }
 
@@ -248,9 +252,21 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, condition);
   } else if (physical_op == "Nested Loops") {
     /* All loop join flavours */
-    std::string condition;
+    const auto join_type = Join::typeFromString(logical_op);
     const auto nested_loops = node_xml.child("NestedLoops");
+
     for (auto child : nested_loops.children("RelOp")) {
+      if (join_type == Join::Type::LEFT_ANTI) {
+        /* SQL Server will insert a limit node in the anti, skip past that as our definitino of ANSI already includes this notion */
+        const auto child_op_type = std::string(child.attribute("PhysicalOp").as_string());
+        if (child_op_type == "Top") {
+          const auto top = child.child("Top");
+          const auto actual_anti_child = top.child("RelOp");
+          children.push_back(actual_anti_child);
+          continue;
+        }
+      }
+
       children.push_back(child);
     }
     std::unordered_set<std::string> columns_outer;
@@ -258,14 +274,16 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       columns_outer.insert(qname(outer_ref));
     }
     auto inner_rel_op = children.back();
-    auto pairs = extractLoopJoinPairs(inner_rel_op, columns_outer);
-    for (const auto& [inner, outer] : pairs) {
-      if (!condition.empty()) {
-        condition += " AND ";
+
+    auto condition = findSeekCondition(inner_rel_op);
+    /*    auto pairs = extractLoopJoinPairs(inner_rel_op, columns_outer);
+      for (const auto& [inner, outer] : pairs) {
+        if (!condition.empty()) {
+          condition += " AND ";
+        }
+        condition += outer + " = " + inner;
       }
-      condition += outer + " = " + inner;
-    }
-    const auto join_type = Join::typeFromString(logical_op);
+      */
     std::ranges::reverse(children); // Loop joins are the wrong way around in SQL Server plans
     node = std::make_unique<Join>(join_type, Join::Strategy::LOOP, condition);
   } else if (isScanOp(physical_op)) {
@@ -277,6 +295,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     }
     const auto index_scan = node_xml.child("IndexScan");
     const auto table_scan = node_xml.child("TableScan");
+    const auto strategy = index_scan ? Scan::Strategy::SEEK : Scan::Strategy::SCAN;
     if (table_name.empty()) {
       if (index_scan) {
         const auto object = index_scan.child("Object");
@@ -303,7 +322,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
       throw ExplainException("Table name not found for node: " + physical_op);
     }
 
-    node = std::make_unique<Scan>(table_name);
+    node = std::make_unique<Scan>(table_name, strategy);
     std::string filter;
     if (index_scan) {
       const auto predicate = index_scan.child("Predicate");
@@ -336,7 +355,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
 
   parseRowCount(node.get(), node_xml);
   if (node->rows_actual == INFINITE) {
-    throw ExplainException("Row count not found for node: " + physical_op);
+    // throw ExplainException("Row count not found for node: " + physical_op);
   }
 
   return std::pair{std::move(node), children};
@@ -399,6 +418,7 @@ std::unique_ptr<explain::Plan> Connection::explain(const std::string_view statem
   std::string explain_string;
   for (auto& row : plan->rows()) {
     explain_string = row.asString(0);
+
     break;
   }
   execute("SET STATISTICS XML OFF");

@@ -114,6 +114,7 @@ public:
 enum class Unit {
   Rows,
   COUNT,
+  Query,
   Magnitude,
   Plan
 };

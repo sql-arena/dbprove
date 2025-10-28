@@ -7,5 +7,5 @@ SELECT 100.00 * SUM(CASE
 FROM tpch.lineitem
 INNER JOIN tpch.part
     ON l_partkey = p_partkey
-WHERE l_shipdate >= DATE '1996-02-01'
-  AND l_shipdate < DATE '1996-03-01'
+WHERE l_shipdate >= '1996-02-01'
+  AND l_shipdate < '1996-03-01'

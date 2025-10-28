@@ -20,6 +20,7 @@ void writeVersion(RunCtx& input_state) {
   input_state.writeCsv(std::vector<std::string_view>{input_state.engine.name(),
                                                      "0",
                                                      allCategoriesAsString(),
+                                                     "CONFIG",
                                                      "CONFIG-VERSION",
                                                      "Version of Engine",
                                                      "version",

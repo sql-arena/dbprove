@@ -14,8 +14,8 @@ INNER JOIN tpch.customer
     ON o_custkey = c_custkey
 INNER JOIN tpch.nation
     ON c_nationkey = n_nationkey
-WHERE o_orderdate >= DATE '1994-06-01'
-  AND o_orderdate < DATE '1994-09-01'
+WHERE o_orderdate >= '1994-06-01'
+  AND o_orderdate < '1994-09-01'
   AND l_returnflag = 'R'
 GROUP BY c_custkey,
          c_name,

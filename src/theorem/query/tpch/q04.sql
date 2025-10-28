@@ -2,8 +2,8 @@
 SELECT o_orderpriority,
        COUNT(*) AS order_count
 FROM tpch.orders
-WHERE o_orderdate >= DATE '1995-02-01'
-  AND o_orderdate < DATE '1995-02-01' + INTERVAL '3' MONTH
+WHERE o_orderdate >= '1995-02-01'
+  AND o_orderdate < '1995-05-01'
   AND EXISTS (SELECT *
               FROM tpch.lineitem
               WHERE l_orderkey = o_orderkey

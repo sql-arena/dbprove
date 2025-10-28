@@ -24,8 +24,8 @@ void DataExplain::render(Proof& proof) {
   const auto scanned = plan->rowsScanned();
   const auto hash_build = plan->rowsHashBuild();
   std::vector<ux::RowStats> stats;
-  stats.push_back({"Join Probe", joined});
-  stats.push_back({"Join Build", hash_build});
+  stats.push_back({"Join", joined});
+  stats.push_back({"Hash", hash_build});
   stats.push_back({"Aggregate", aggregated});
   stats.push_back({"Sort", sorted});
   stats.push_back({"Scan", scanned});
@@ -35,6 +35,7 @@ void DataExplain::render(Proof& proof) {
   proof.writeCsv("Aggregate", std::to_string(aggregated), Unit::Rows);
   proof.writeCsv("Sort", std::to_string(sorted), Unit::Rows);
   proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
+  proof.writeCsv("Hash", std::to_string(hash_build), Unit::Rows);
   auto mis_estimates = plan->misEstimations();
   ux::EstimationStatTable(out, mis_estimates);
   // For CSV dump, it looks better to collect all operations together.
@@ -52,7 +53,7 @@ void DataExplain::render(Proof& proof) {
   const std::string csv_plan;
   std::ostringstream plan_stream(csv_plan);
   plan->render(plan_stream, 500);
-  proof.writeCsv("Plan", csv_plan, Unit::Plan);
+  proof.writeCsv("Plan", plan_stream.str(), Unit::Plan);
 }
 
 void DataQuery::render(Proof& proof) {

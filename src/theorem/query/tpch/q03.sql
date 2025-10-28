@@ -9,8 +9,8 @@ INNER JOIN tpch.orders
 INNER JOIN tpch.customer
     ON o_custkey = c_custkey
 WHERE c_mktsegment = 'MACHINERY'
-  AND o_orderdate < DATE '1995-03-15'
-  AND l_shipdate > DATE '1995-03-15'
+  AND o_orderdate < '1995-03-15'
+  AND l_shipdate > '1995-03-15'
 GROUP BY l_orderkey,
          o_orderdate,
          o_shippriority

@@ -2,8 +2,8 @@
 WITH revenue AS (SELECT l_suppkey                               AS supplier_no,
                         SUM(l_extendedprice * (1 - l_discount)) AS total_revenue
                  FROM tpch.lineitem
-                 WHERE l_shipdate >= DATE '1997-09-01'
-                   AND l_shipdate < DATE '1997-12-01'
+                 WHERE l_shipdate >= '1997-09-01'
+                   AND l_shipdate < '1997-12-01'
                  GROUP BY l_suppkey)
 SELECT s_suppkey,
        s_name,

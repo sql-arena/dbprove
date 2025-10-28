@@ -24,7 +24,7 @@ FROM (SELECT EXTRACT(YEAR FROM o_orderdate)     AS o_year,
       INNER JOIN tpch.nation n2
           ON s_nationkey = n2.n_nationkey
       WHERE r_name = 'EUROPE'
-        AND o_orderdate BETWEEN DATE '1995-01-01' AND DATE '1996-12-31'
+        AND o_orderdate BETWEEN '1995-01-01' AND '1996-12-31'
         AND p_type = 'SMALL POLISHED NICKEL') AS all_nations
 GROUP BY o_year
 ORDER BY o_year

@@ -45,14 +45,6 @@ void tpch_q05(Proof& proof) {
   runner.serialExplain(Query(resource::q05_sql), proof);
 }
 
-void tpch_q05_handroll(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders").ensure("tpch.nation").ensure("tpch.region").
-        ensure("tpch.customer").ensure("tpch.supplier");
-  const Runner runner(proof.factory());
-  runner.serialExplain(Query(resource::q05_handroll_sql), proof);
-}
-
-
 void tpch_q06(Proof& proof) {
   proof.ensureSchema("tpch").ensure("tpch.lineitem");
 
@@ -183,7 +175,6 @@ void init() {
   register_tpch(3, tpch_q03);
   register_tpch(4, tpch_q04);
   register_tpch(5, tpch_q05);
-  register_tpch(5, tpch_q05_handroll, true);
   register_tpch(6, tpch_q06);
   register_tpch(7, tpch_q07);
   register_tpch(8, tpch_q08);

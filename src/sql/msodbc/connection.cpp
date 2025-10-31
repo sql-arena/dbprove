@@ -89,6 +89,6 @@ const ConnectionBase::TypeMap& Connection::typeMap() const {
 }
 
 void Connection::analyse(const std::string_view table_name) {
-  execute("UPDATE STATISTICS " + std::string(table_name));
+  execute("UPDATE STATISTICS " + std::string(table_name) + " WITH FULLSCAN");
 }
 }

@@ -10,12 +10,19 @@ using namespace sql::explain;
 using namespace nlohmann;
 
 
-std::string sanitiseColumn(const std::string& nonsense) {
+std::string cleanFilter(std::string filter) {
+  filter = std::regex_replace(filter, std::regex(R"(and\()"), "funcAnd(");
+  filter = std::regex_replace(filter, std::regex(R"(or\()"), "funcOr(");
+  filter = std::regex_replace(filter, std::regex(R"(like\()"), "funcLike(");
+  // Odd _TYPE "casts"
+  filter = std::regex_replace(filter, std::regex(R"(Nullable\(([^)]*)\))"), "$1");
+  filter = std::regex_replace(filter, std::regex(R"(_(String|UInt8|Int8|Float64))"), "");
   /* Clickhouse prefixes column names with __tableX which point at… Nothing…
    * There doesn't seem to be a way to get from __tableX to the actual table name.
    * Instead, strip it off.
    */
-  return std::regex_replace(nonsense, std::regex("__table\\d+\\.*"), "");
+  filter = std::regex_replace(filter, std::regex("__table\\d+\\.*"), "");
+  return filter;
 }
 
 
@@ -29,10 +36,10 @@ void parseProjections(std::vector<Column>& columns, const json& node_json) {
       continue;
     }
     if (action_type == "COLUMN") {
-      auto column = sanitiseColumn(action["Column"].get<std::string>());
+      auto column = cleanFilter(action["Column"].get<std::string>());
       columns.emplace_back(column);
     } else if (action_type == "FUNCTION") {
-      auto function = sanitiseColumn(action["Function Name"].get<std::string>());
+      auto function = cleanFilter(action["Function Name"].get<std::string>());
       columns.emplace_back(function);
     } else {
       throw ExplainException("Unknown action type: " + action_type);
@@ -47,7 +54,7 @@ void parseSorting(std::vector<Column>& columns, const json& node_json) {
   for (auto& column : node_json["Sort Description"]) {
     const auto name = column["Column"].get<std::string>();
     const auto sorting = column["Ascending"].get<bool>() ? Column::Sorting::ASC : Column::Sorting::DESC;
-    columns.emplace_back(sanitiseColumn(name), sorting);
+    columns.emplace_back(cleanFilter(name), sorting);
   }
 }
 
@@ -61,7 +68,7 @@ void parseGroupKeys(std::vector<Column>& columns, const json& node_json) {
   }
   const auto key_count = node_json["Keys"].size();
   for (size_t i = 0; i < key_count; ++i) {
-    columns.emplace_back(sanitiseColumn(keys[i].get<std::string>()));
+    columns.emplace_back(cleanFilter(keys[i].get<std::string>()));
   }
 }
 
@@ -75,17 +82,33 @@ void parseAggregations(std::vector<Column>& columns, const json& node_json) {
   }
   const auto aggregation_count = node_json["Aggregations"].size();
   for (size_t i = 0; i < aggregation_count; ++i) {
-    columns.emplace_back(sanitiseColumn(aggregations[i]["Name"].get<std::string>()));
+    columns.emplace_back(cleanFilter(aggregations[i]["Name"].get<std::string>()));
   }
 }
 
 std::string parseClauses(const std::string& clause) {
   auto result = std::regex_replace(clause, std::regex("[\\[\\]]"), "");
   //  result = std::regex_replace(result, std::regex("\\,"), " AND");
-  result = sanitiseColumn(result);
+  result = cleanFilter(result);
   return result;
 }
 
+std::string parseScanClause(const json& node_json) {
+  if (!node_json.contains("Prewhere info")) {
+    return "";
+  }
+  const auto prewhere_info = node_json["Prewhere info"];
+  if (!prewhere_info.contains("Prewhere filter")) {
+    return "";
+  }
+  const auto prewhere_filter = prewhere_info["Prewhere filter"];
+  if (!prewhere_filter.contains("Prewhere filter column")) {
+    return "";
+  }
+  const auto filter = prewhere_filter["Prewhere filter column"].get<std::string>();
+
+  return cleanFilter(filter);
+}
 
 std::unique_ptr<Node> createNodeFromJson(const json& node_json) {
   const auto node_type = node_json["Node Type"].get<std::string>();
@@ -100,8 +123,9 @@ std::unique_ptr<Node> createNodeFromJson(const json& node_json) {
     node = std::make_unique<Projection>(columns_projected);
   } else if (node_type == "ReadFromMergeTree") {
     auto table_name = node_json["Description"].get<std::string>();
-    // TODO: Potentially add a filter node here based on what we filter from scan
+    std::string where_condition = parseScanClause(node_json);
     node = std::make_unique<Scan>(table_name);
+    node->setFilter(where_condition);
   } else if (node_type == "Sorting") {
     std::vector<Column> columns_sorted;
     parseSorting(columns_sorted, node_json);
@@ -116,7 +140,7 @@ std::unique_ptr<Node> createNodeFromJson(const json& node_json) {
     auto limit_value = node_json["Limit"].get<int64_t>();
     node = std::make_unique<Limit>(limit_value);
   } else if (node_type == "Filter") {
-    const auto filter_condition = sanitiseColumn(node_json["Filter Column"].get<std::string>());
+    const auto filter_condition = cleanFilter(node_json["Filter Column"].get<std::string>());
     node = std::make_unique<Selection>(filter_condition);
   } else if (node_type == "Join") {
     const auto join_strategy = node_json["Algorithm"].get<std::string>().contains("Hash")

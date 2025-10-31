@@ -9,8 +9,10 @@ enum class TokenType {
   Operator, // Represents +, -, *, /
   LeftParen, // (
   RightParen, // )
+  Comma, // ,
   LiteralString,
   Function,
+  OperatorFunction, // ClickHouse (and likely others) turn some operators into function calls.
   None
 };
 
@@ -23,6 +25,22 @@ struct Token {
 
 void addToken(std::vector<Token>& tokens, const Token& token) {
   tokens.push_back(token);
+}
+
+auto& operatorFuncs() {
+  static const std::map<std::string, std::string> operatorFuncs = {{"greaterOrEquals", ">="},
+                                                                   {"greater", ">"},
+                                                                   {"multiply", "*"},
+                                                                   {"minus", "-"},
+                                                                   {"less", "<"},
+                                                                   {"lessOrEquals", "<="},
+                                                                   {"equals", "="},
+                                                                   {"notEquals", "<>"},
+                                                                   {"funcAnd", "AND"},
+                                                                   {"funcOr", "OR"},
+                                                                   {"funcLike", "LIKE"},
+                                                                   {"_CAST", "::"}};
+  return operatorFuncs;
 }
 
 
@@ -65,6 +83,12 @@ std::vector<Token> tokenize(const std::string& expr) {
       continue;
     }
 
+    if (expr[i] == ',') {
+      addToken(tokens, {TokenType::Comma, ","});
+      i++;
+      continue;
+    }
+
     // COUNT(*)
     if (expr[i] == '*' && prev_token.type == TokenType::LeftParen) {
       addToken(tokens, {TokenType::Literal, std::string(1, expr[i])});
@@ -95,7 +119,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     };
 
     // Literals
-    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', ',', '@'};
+    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', '@'};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
       throw std::runtime_error(
           "Invalid character in expression, expected a literal, found: '" + std::string(1, expr[i]) + "' in " + expr);
@@ -110,6 +134,12 @@ std::vector<Token> tokenize(const std::string& expr) {
     std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE)");
     if (std::regex_match(upper_literal, op_regex)) {
       addToken(tokens, {TokenType::Operator, upper_literal});
+      continue;
+    }
+
+    /* Clickhouse (and friends) magic functions that are actually operators */
+    if (operatorFuncs().contains(literal)) {
+      addToken(tokens, {TokenType::OperatorFunction, literal});
       continue;
     }
 
@@ -129,6 +159,7 @@ std::vector<Token> tokenize(const std::string& expr) {
       addToken(tokens, {TokenType::Function, upper_literal});
       continue;
     }
+
     addToken(tokens, {TokenType::Literal, literal});
   }
 
@@ -140,8 +171,90 @@ void removeMatching(std::vector<Token>& tokens, size_t index) {
   tokens[index].matching = -1;
 }
 
+static size_t matchingParenthesis(const std::vector<Token>& tokens, size_t left_idx) {
+  int depth = 1;
+  for (size_t k = left_idx + 1; k < tokens.size(); ++k) {
+    if (tokens[k].type == TokenType::LeftParen) {
+      ++depth;
+      continue;
+    }
+    if (tokens[k].type == TokenType::RightParen) {
+      depth--;
+    }
+    if (depth == 0) {
+      return k;
+    }
+  }
+  throw std::runtime_error("Malformed expression: unmatched '(' at token index " + std::to_string(left_idx));
+}
 
-std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
+static std::vector<Token> processRange(const std::vector<Token> tokens) {
+  std::vector<Token> out;
+  for (size_t i = 0; i < tokens.size(); ++i) {
+    const Token& t = tokens[i];
+
+    if (t.type == TokenType::OperatorFunction) {
+      if (i + 1 >= tokens.size() || tokens[i + 1].type != TokenType::LeftParen) {
+        throw std::runtime_error("Malformed expression: expected '(' after operator function " + t.value);
+      }
+      // Found a valid OperatorFunction  of form F(exprA, exprB). Find exprA and exprB and
+      // transform to exprA <op> exprB
+      const auto op = operatorFuncs().at(t.value);
+
+      const size_t left_idx = i + 1;
+      const size_t right = matchingParenthesis(tokens, left_idx);
+
+      // Split arguments by top-level commas
+      std::vector<std::pair<size_t, size_t>> expr_ranges;
+      size_t arg_start = left_idx + 1;
+      int depth = 0;
+      for (size_t k = left_idx + 1; k < right; ++k) {
+        if (tokens[k].type == TokenType::LeftParen) {
+          ++depth;
+        } else if (tokens[k].type == TokenType::RightParen) {
+          --depth;
+        }
+
+        if (depth == 0 && tokens[k].type == TokenType::Comma) {
+          expr_ranges.emplace_back(arg_start, k);
+          arg_start = k + 1;
+        }
+      }
+      expr_ranges.emplace_back(arg_start, right);
+
+      // transform func(arg1, arg2) => (arg1 <op> arg2)
+      out.insert(out.end(), tokens.begin(), tokens.begin() + i); // Everything up until the func
+      out.push_back({TokenType::LeftParen, "("});
+      for (size_t i = 0; i < expr_ranges.size(); ++i) {
+        out.insert(out.end(), tokens.begin() + expr_ranges[i].first, tokens.begin() + expr_ranges[i].second);
+        if (i < expr_ranges.size() - 1) {
+          out.push_back({TokenType::Operator, op});
+        }
+      }
+      out.push_back({TokenType::RightParen, ")"});
+      if (right + 1 < tokens.size()) {
+        // remaining tokens (if any) after the closing ')'
+        out.insert(out.end(), tokens.begin() + right + 1, tokens.end());
+      }
+      return out;
+    }
+  }
+  return tokens;
+}
+
+std::vector<Token> transformOperatorFuncs(std::vector<Token> tokens) {
+  if (tokens.empty()) {
+    return tokens;
+  }
+  size_t token_size = 0;
+  do {
+    token_size = tokens.size();
+    tokens = processRange(tokens);
+  } while (token_size != tokens.size());
+  return tokens;
+}
+
+std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   if (tokens.empty()) {
     return tokens;
   }
@@ -161,8 +274,12 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
         break;
     }
   }
+  if (!match.empty()) {
+    throw std::runtime_error("Malformed expression: unmatched '('");
+  }
   for (size_t i = 0; i < tokens.size(); ++i) {
-    if (tokens[i].type != TokenType::LeftParen) {
+    const auto currentToken = tokens[i];
+    if (currentToken.type != TokenType::LeftParen) {
       continue;
     }
     if (tokens[i + 1].type == TokenType::Literal && tokens[i + 2].type == TokenType::RightParen) {
@@ -176,7 +293,7 @@ std::vector<Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
     if (tokens[i + 1].type != TokenType::LeftParen) {
       continue;
     }
-    auto right_offset = tokens[i].matching;
+    const auto right_offset = currentToken.matching;
     if (tokens[right_offset - 1].type != TokenType::RightParen) {
       continue;
     }
@@ -275,8 +392,8 @@ Table splitTable(std::string_view table_name) {
   if (delimiter == std::string::npos) {
     throw std::invalid_argument("Table name must be qualified with a schema (e.g., 'schema_name.table_name').");
   }
-  auto schema = table_name.substr(0, delimiter);
-  auto table = table_name.substr(delimiter + 1);
+  const auto schema = table_name.substr(0, delimiter);
+  const auto table = table_name.substr(delimiter + 1);
   if (schema.empty() || table.empty()) {
     throw std::invalid_argument("Schema and table names cannot be empty.");
   }
@@ -303,6 +420,7 @@ std::string cleanExpression(std::string expression) {
   expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");
 
   auto tokens = tokenize(expression);
+  tokens = transformOperatorFuncs(tokens);
   tokens = removeRedundantParenthesis(tokens);
   return render(tokens);
 }

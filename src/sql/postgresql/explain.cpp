@@ -38,13 +38,14 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       }
     }
 
+    const auto strategy = pg_node_type == "Seq Scan" ? Scan::Strategy::SCAN : Scan::Strategy::SEEK;
     if (node_json.contains("Relation Name")) {
       relation_name = node_json["Relation Name"].get<std::string>();
     }
     if (node_json.contains("Alias")) {
       relation_name = node_json["Alias"].get<std::string>();
     }
-    node = std::make_unique<Scan>(relation_name);
+    node = std::make_unique<Scan>(relation_name, strategy);
   } else if (pg_node_type == "Bitmap Heap Scan" || pg_node_type == "Bitmap Index Scan") {
     /* PG does a bitmap intersection of indexes using e special operators.
      * They can be chained together and be arbitrarily nested
@@ -61,7 +62,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       // One of the lower bitmap operations, we already rendered the scan.
       return nullptr;
     }
-    node = std::make_unique<Scan>(relation_name);
+    node = std::make_unique<Scan>(relation_name, Scan::Strategy::SEEK);
   } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
     std::string join_condition;
 

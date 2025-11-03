@@ -23,5 +23,14 @@ Table splitTable(std::string_view table_name);
  * @return A better formatted expression
  */
 std::string cleanExpression(std::string expression);
+
+/**
+ * Remove a specific function from an expression
+ * @param expression Expression to clean
+ * @param function_name The function  to remove
+ * @return A better formatted expression
+ */
+
+std::string removeExpressionFunction(const std::string& expression, std::string_view function_name);
 }
 

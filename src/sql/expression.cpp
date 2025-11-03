@@ -13,7 +13,8 @@ enum class TokenType {
   LiteralString,
   Function,
   OperatorFunction, // ClickHouse (and likely others) turn some operators into function calls.
-  None
+  None,
+  Ignore
 };
 
 // A token representation
@@ -98,18 +99,23 @@ std::vector<Token> tokenize(const std::string& expr) {
 
     // Operators
     std::string op = "";
-    static const std::set<char> op_chars = {'<', '>', '!', '=', '~', '/', '*', '+', '-'};
+    static const std::set<char> op_chars = {'<', '>', '!', '=', '~', '/', '*', '+', '-', ':'};
     while (op_chars.contains(expr[i])) {
       op += expr[i++];
     }
     if (op == "!~~") {
       // !~~ is a PostgreSQL'ism for NOT LIKE
-      addToken(tokens, {TokenType::Literal, "NOT LIKE"});
+      addToken(tokens, {TokenType::Operator, "NOT LIKE"});
       continue;
     }
     if (op == "~~") {
       // ~~ is a PostgreSQL'ism for LIKE
-      addToken(tokens, {TokenType::Literal, "LIKE"});
+      addToken(tokens, {TokenType::Operator, "LIKE"});
+      continue;
+    }
+    if (op == "::") {
+      // Cast
+      addToken(tokens, {TokenType::Operator, "::"});
       continue;
     }
 
@@ -143,7 +149,7 @@ std::vector<Token> tokenize(const std::string& expr) {
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM", "ANY"};
+    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM", "ANY", "EXISTS"};
     static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"},
                                                                  // F*cked up PostgreSQL'isms
                                                                  {"\"left\"", "LEFT"},
@@ -356,14 +362,17 @@ std::string render(const std::vector<Token>& tokens) {
     const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : TokenType::None;
     const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : TokenType::None;
     switch (token.type) {
-      case TokenType::Operator:
+      case TokenType::Operator: {
+        const bool is_cast = token.value == "::";
+        result += is_cast ? "" : " ";
         if (next_type == TokenType::Function && tokens[i + 1].value == "IN") {
           // See below for PG oddness
-          result += " ";
           continue;
         }
-        result += " " + token.value + " ";
+        result += token.value;
+        result += is_cast ? "" : " ";
         break;
+      }
       case TokenType::LiteralString:
 
         if (prev_type == TokenType::LeftParen && prev_prev_type == TokenType::Function) {
@@ -378,6 +387,8 @@ std::string render(const std::vector<Token>& tokens) {
           result += " ";
         }
         result += token.value;
+        break;
+      case TokenType::Ignore:
         break;
       default:
         result += token.value;
@@ -422,6 +433,54 @@ std::string cleanExpression(std::string expression) {
   auto tokens = tokenize(expression);
   tokens = transformOperatorFuncs(tokens);
   tokens = removeRedundantParenthesis(tokens);
+  return render(tokens);
+}
+
+using ssize_t = std::make_signed_t<size_t>;
+
+Token safeToken(const std::vector<Token>& tokens, const ssize_t index) {
+  if (index >= tokens.size() || index < 0) {
+    return Token{TokenType::None, ""};
+  }
+  return tokens[index];
+}
+
+std::string removeExpressionFunction(const std::string& expression, const std::string_view function_name) {
+  std::string function_name_upper = to_upper(function_name);
+  auto tokens = tokenize(expression);
+  for (ssize_t i = 0; i < tokens.size(); ++i) {
+    if (tokens[i].type != TokenType::Function) {
+      continue;
+    }
+    const std::string_view token_func = tokens[i].value;
+    if (token_func == function_name_upper) {
+      // func()
+      tokens[i].type = TokenType::Ignore;
+      tokens[i + 1].type = TokenType::Ignore;
+      tokens[i + 2].type = TokenType::Ignore;
+
+      // Parenthesis  of form (func()))
+      const auto parenthesis_before = safeToken(tokens, i - 1);
+      const auto parenthesis_after = safeToken(tokens, i + 3);
+
+      ssize_t func_pos = i - 1;
+      if (parenthesis_before.type == TokenType::LeftParen && parenthesis_after.type == TokenType::RightParen) {
+        tokens[i - 1].type = TokenType::Ignore;
+        tokens[i + 3].type = TokenType::Ignore;
+        --func_pos;
+      }
+
+      // Operators before the func() (NOT, AND, etc)
+      while (true) {
+        const auto potential_op = safeToken(tokens, func_pos);
+        if (potential_op.type != TokenType::Operator) {
+          break;
+        }
+        tokens[func_pos].type = TokenType::Ignore;
+        --func_pos;
+      }
+    }
+  }
   return render(tokens);
 }
 }

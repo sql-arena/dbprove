@@ -16,17 +16,15 @@ public:
     std::string result;
     result += symbol_;
     result += "{";
-    result += filter_expression;
+    result += filterCondition();
     result += "}";
     return result;
   }
 
   std::string renderMuggle(size_t max_width) const override {
     std::string result = "FILTER ";
-    result += filter_expression;
+    result += filterCondition();
     return result;
   }
-
-  const std::string filter_expression;
 };
 }

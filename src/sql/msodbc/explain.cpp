@@ -39,7 +39,7 @@ void fixProjection(Node* node) {
       continue;
     }
 
-    if (child.type != NodeType::PROJECTION && child.type != NodeType::SELECTION) {
+    if (child.type != NodeType::PROJECTION && child.type != NodeType::FILTER) {
       continue;
     }
     child.rows_actual = child.firstChild()->rows_actual;

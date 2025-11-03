@@ -181,7 +181,7 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
       case NodeType::SCAN:
         mis_estimation[Operation::Scan][magnitude].count++;
         break;
-      case NodeType::SELECTION:
+      case NodeType::FILTER:
         mis_estimation[Operation::Filter][magnitude].count++;
         break;
       default:

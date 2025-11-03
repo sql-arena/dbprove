@@ -4,6 +4,7 @@
 #include <regex>
 
 #include "explain/plan.h"
+#include <plog/Log.h>
 
 namespace sql::clickhouse {
 using namespace sql::explain;
@@ -160,14 +161,6 @@ std::unique_ptr<Node> createNodeFromJson(const json& node_json) {
     throw ExplainException("Could not parse ClickHouse node of type: " + node_type);
   }
 
-  if (node_json.contains("Indexes")) {
-    auto index_json = node_json["Indexes"];
-    if (index_json.is_array() && index_json.size() > 0 && index_json[0].contains("Selected Granules")) {
-      constexpr RowCount granule_size = 8192;
-      node->rows_actual = index_json[0]["Selected Granules"].get<int>() * granule_size;
-    }
-  }
-
   return node;
 }
 
@@ -219,10 +212,76 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
   auto plan = std::make_unique<Plan>(std::move(root_node));
   plan->planning_time = 0;
   plan->execution_time = 0;
-
   return plan;
 }
 
+std::string findSemiJoinCondition(Node& n) {
+  const auto treeToSearch = n.firstChild();
+  for (auto& c : treeToSearch->breadth_first()) {
+    if (c.type == NodeType::FILTER) {
+      /* The SEMI was using a filter, remove that filter and move it to the join node */
+      const auto filter = dynamic_cast<const Selection*>(&c);
+      std::string condition = filter->filterCondition();
+      c.remove();
+      return condition;
+    }
+    if (c.type == NodeType::SCAN) {
+      const auto scan = dynamic_cast<const Scan*>(&c);
+      return scan->filterCondition();
+    }
+  }
+  return "";
+}
+
+void cleanupExists(Node& root) {
+  for (auto& n : root.depth_first()) {
+    if (n.type == NodeType::FILTER || n.type == NodeType::JOIN) {
+      std::string cleaned = removeExpressionFunction(n.filterCondition(), "exists");
+      n.setFilter(cleaned);
+    }
+  }
+}
+
+/**
+ * ClickHouse does semi join with a LEFT JOIN followed by a strange exixts() filter.
+ * If we observe this structure, we can collapse it into a proper LEFT SEMI JOIN.
+ *
+ * The structure we are looking for is:
+ *
+ * LEFT JOIN (... exists() )
+ * FILTER (... actual join condition ...)
+ *
+ * And we want to convert it to:
+ *
+ * LEFT SEMI JOIN (.. filter...)
+ * @param root
+ */
+void fixSemiJoin(Node& root) {
+  std::vector<Join*> to_fix;
+
+  for (Node& n : root.depth_first()) {
+    if (n.type != NodeType::JOIN) {
+      continue;
+    }
+    auto join = dynamic_cast<Join*>(&n);
+    if (join->type != Join::Type::LEFT_OUTER) {
+      continue;
+    }
+    if (!join->condition.contains("EXISTS()")) {
+      continue;
+    }
+    to_fix.push_back(join);
+  }
+  /* We now have a list of joins that are actually semi joins, turn them into that... */
+  for (const auto n : to_fix) {
+    auto condition = findSemiJoinCondition(*n);
+    auto parent_expression = n->parent().filterCondition();
+    auto join_type = parent_expression.contains("NOT (exist") ? Join::Type::LEFT_ANTI : Join::Type::LEFT_SEMI_INNER;
+    auto semi = std::make_unique<Join>(join_type, Join::Strategy::HASH, condition);
+    n->replaceWith(std::move(semi));
+  }
+  cleanupExists(root);
+}
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, indexes = 1\n" +
@@ -232,6 +291,8 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   auto plan = buildExplainPlan(json_explain);
 
   plan->flipJoins();
+
+  fixSemiJoin(plan->planTree());
   return plan;
 }
 }

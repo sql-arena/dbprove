@@ -124,6 +124,32 @@ public:
     , id_(currentId_++) {
   }
 
+  void remove() {
+    if (isRoot()) {
+      throw std::runtime_error("Cannot remove a root node");
+    }
+    parent().removeChild(static_cast<T*>(this));
+  }
+
+  void replaceWith(std::unique_ptr<T> new_node) {
+    assert(new_node && !isRoot());
+    T* p = parent_;
+    new_node->parent_ = p;
+
+    // Transfer children from this node to the new node, preserving existing children of new_node
+    for (auto& c : children_) {
+      c.get()->parent_ = new_node.get();
+      new_node->children_.push_back(std::move(c));
+    }
+    children_.clear();
+    for (auto& c : parent().children_) {
+      if (c.get() == this) {
+        c.swap(new_node);
+        return;
+      }
+    }
+  }
+
   void addChild(std::unique_ptr<T> child) {
     child->parent_ = static_cast<T*>(this);
     children_.push_back(std::move(child));
@@ -132,7 +158,19 @@ public:
   bool removeChild(T* node) {
     for (auto it = children_.begin(); it != children_.end(); ++it) {
       if (it->get() == node) {
-        children_.erase(it);
+        size_t index = static_cast<size_t>(it - children_.begin());
+        // Steal grandchildren out of the child safely
+        std::vector<std::unique_ptr<T>> grandchildren = std::move(it->get()->children_);
+        for (auto& g : grandchildren) {
+          g->parent_ = static_cast<T*>(this);
+        }
+        // Erase the child (now with empty children_)
+        children_.erase(children_.begin() + index);
+        // Insert grandchildren at the position of the erased child, preserving order
+        for (auto& g : grandchildren) {
+          children_.insert(children_.begin() + index, std::move(g));
+          ++index;
+        }
         return true;
       }
     }
@@ -142,7 +180,7 @@ public:
   /// @brief Iterate depth first over the tree
   TreeDepthIterable<T> depth_first() { return TreeDepthIterable{static_cast<T&>(*this)}; }
   /// @brief Iterate breath first over the tree
-  TreeBreathIterable<T> breadth_first() { return TreeBreathIterable{{static_cast<T&>(*this)}}; }
+  TreeBreathIterable<T> breadth_first() { return TreeBreathIterable{static_cast<T&>(*this)}; }
 
   /// @brief Is this the root node?
   bool isRoot() const { return parent_ == this; }

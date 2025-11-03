@@ -35,6 +35,7 @@ public:
   RowCount rowsEstimated() const;;
   RowCount rowsActual() const;
   void setFilter(const std::string& filter);
+  auto filterCondition() const { return filter_condition; }
 
   /// @brief Return the compact, symbolic representation of the node
   virtual std::string compactSymbolic() const = 0;

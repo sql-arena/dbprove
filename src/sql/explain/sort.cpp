@@ -32,4 +32,15 @@ std::string Sort::renderMuggle(size_t max_width) const {
   result += join(columns_sorted, ", ", max_width);
   return result;
 }
+
+std::string Sort::treeSQLImpl(size_t indent) const {
+  std::string result = "(SELECT * ";
+  result += newline(indent);
+  result += "FROM " + firstChild()->treeSQL(indent + 1);
+  result += newline(indent);
+  result += "ORDER BY " + join(columns_sorted, ", ");
+  result += newline(indent);
+  result += ") AS sort_" + nodeName();
+  return result;
+}
 }

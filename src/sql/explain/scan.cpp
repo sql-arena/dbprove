@@ -12,7 +12,8 @@ std::string to_string(Scan::Strategy strategy) {
 Scan::Scan(const std::string& table_name, Strategy strategy)
   : Node(NodeType::SCAN)
   , strategy(strategy)
-  , table_name(cleanExpression(table_name)) {
+  , table_name(cleanExpression(table_name))
+  , schema_name(splitTable(table_name).schema_name) {
 }
 
 std::string Scan::compactSymbolic() const {
@@ -26,6 +27,15 @@ std::string Scan::renderMuggle(size_t max_width) const {
     max_width -= result.size();
     result += ellipsify(filter_condition, max_width);
   }
+  return result;
+}
+
+std::string Scan::treeSQLImpl(size_t indent) const {
+  std::string result = "(SELECT * FROM " + schema_name + "." + table_name + " ";
+  if (!filterCondition().empty()) {
+    result += "WHERE " + filterCondition();
+  }
+  result += ") AS scan_" + nodeName();
   return result;
 }
 }

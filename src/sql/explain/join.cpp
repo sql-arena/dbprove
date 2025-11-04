@@ -4,7 +4,7 @@
 #include "sql_exceptions.h"
 
 namespace sql::explain {
-Join::Join(const Type type, const Strategy join_strategy, std::string condition)
+Join::Join(const Type type, const Strategy join_strategy, const std::string& condition)
   : Node(NodeType::JOIN)
   , strategy(join_strategy)
   , type(type)
@@ -95,5 +95,37 @@ Join::Type Join::typeFromString(const std::string_view type_string) {
     throw std::runtime_error("Join type '" + std::string(type_lower) + "' could not be mapped");
   }
   return type_map.at(type_lower);
+}
+
+
+std::string type_to_sql(Join::Type type) {
+  switch (type) {
+    case Join::Type::INNER:
+      return "JOIN";
+    case Join::Type::LEFT_OUTER:
+    case Join::Type::RIGHT_OUTER:
+      /* LEFT and RIGHT as algorithmic, the query is still left */
+      return "LEFT JOIN";
+    case Join::Type::FULL:
+      return "FULL JOIN";
+    case Join::Type::CROSS:
+      return "CROSS JOIN";
+    default:
+      throw std::runtime_error("Cannot translate join type to SQL");
+  }
+}
+
+std::string Join::treeSQLImpl(const size_t indent) const {
+  std::string result = newline(indent);
+  result += "(SELECT * ";
+  result += newline(indent);
+  result += "FROM " + lastChild()->treeSQL(indent + 1);
+  result += newline(indent);
+  result += type_to_sql(type) + " " + firstChild()->treeSQL(indent + 1);
+  result += newline(indent);
+  result += "  ON " + condition;
+  result += newline(indent);
+  result += ") AS join_" + nodeName();
+  return result;
 }
 }

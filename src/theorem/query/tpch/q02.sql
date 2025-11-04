@@ -19,7 +19,7 @@ INNER JOIN tpch.region
 WHERE p_size = 25
   AND p_type LIKE '%BRASS'
   AND r_name = 'EUROPE'
-  AND ps_supplycost = (SELECT MIN(ps_supplycost)
+  AND ps_supplycost = (SELECT MIN(ps_supplycost) AS min_cost
                        FROM tpch.partsupp AS ps_min
                        INNER JOIN tpch.supplier AS s_min
                            ON ps_suppkey = s_suppkey

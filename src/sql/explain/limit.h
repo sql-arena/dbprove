@@ -25,6 +25,10 @@ public:
     return result;
   }
 
+protected:
+  std::string treeSQLImpl(size_t indent) const override;
+
+public:
   const RowCount limit_count;
 };
 }

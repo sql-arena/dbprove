@@ -24,7 +24,7 @@ public:
     CROSS
   };
 
-  explicit Join(const Type type, const Strategy join_strategy, std::string condition);
+  explicit Join(const Type type, const Strategy join_strategy, const std::string& condition);
 
   [[nodiscard]] std::string compactSymbolic() const override;
 
@@ -42,5 +42,8 @@ public:
    * @return Guessed join type
    */
   static Type typeFromString(std::string_view type_string);
+
+protected:
+  std::string treeSQLImpl(size_t indent) const override;
 };
 } // namespace sql::explain

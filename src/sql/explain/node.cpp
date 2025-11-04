@@ -14,6 +14,8 @@ std::string Node::typeName() const {
     case NodeType::SELECT:
       return "SELECT";
     case NodeType::SCAN:
+    case NodeType::SCAN_EMPTY:
+    case NodeType::SCAN_MATERIALISED:
       return "SCAN";
     case NodeType::PROJECTION:
       return "PROJECTION";
@@ -21,6 +23,12 @@ std::string Node::typeName() const {
       return "DISTRIBUTE";
     case NodeType::LIMIT:
       return "LIMIT";
+    case NodeType::UNION:
+      return "UNION";
+    case NodeType::FILTER:
+      return "FILTER";
+    case NodeType::SEQUENCE:
+      return "SEQUENCE";
     default:
       return "UNKNOWN";
   }
@@ -28,6 +36,40 @@ std::string Node::typeName() const {
 
 void Node::debugPrint() const {
   std::cout << "type: " << typeName() << " depth: " << std::to_string(depth()) << std::endl;
+}
+
+void Node::debugPrintTree() {
+  for (const auto& n : depth_first()) {
+    for (size_t i = 0; i < n.depth(); ++i) {
+      std::cout << "  ";
+    }
+    n.debugPrint();
+  }
+}
+
+std::string Node::treeSQLImpl(const size_t indent) const {
+  return firstChild()->treeSQL(indent);
+}
+
+std::string Node::newline(const size_t indent) {
+  std::string result = "\n";
+  for (size_t i = 0; i < indent; ++i) {
+    result += "  ";
+  }
+  return result;
+}
+
+bool Node::isLeftDeep() const {
+  auto n = this;
+  size_t rightParents = 0;
+  while (!n->isRoot()) {
+    const auto parent = &n->parent();
+    if (parent->firstChild() == n && parent->childCount() > 1) {
+      rightParents++;
+    }
+    n = parent;
+  }
+  return rightParents <= 1;
 }
 
 RowCount Node::rowsEstimated() const {
@@ -40,5 +82,16 @@ RowCount Node::rowsActual() const {
 
 void Node::setFilter(const std::string& filter) {
   filter_condition = cleanExpression(filter);
+}
+
+std::string Node::treeSQL(const size_t indent) {
+  if (cacheTreeSQL_.empty()) {
+    cacheTreeSQL_ = treeSQLImpl(indent);
+  }
+  return cacheTreeSQL_;
+}
+
+std::string Node::nodeName() const {
+  return "n" + std::to_string(id());
 }
 }

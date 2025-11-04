@@ -23,6 +23,10 @@ protected:
     , cost(0) {
   }
 
+  std::string cacheTreeSQL_;
+  virtual std::string treeSQLImpl(size_t indent) const;
+  static std::string newline(size_t indent);
+
 public:
   static constexpr double UNKNOWN = -INFINITY;
   const NodeType type;
@@ -32,15 +36,30 @@ public:
   std::vector<std::string> columns_input;
   std::vector<std::string> columns_output;
 
+  /**
+   * Is there a path to the root of the tree that is purely left deep or must we go via a bushy tree to reach
+   * the root of the tree.
+   * @return true if the node is left deep.
+   */
+  bool isLeftDeep() const;
   RowCount rowsEstimated() const;;
   RowCount rowsActual() const;
   void setFilter(const std::string& filter);
   auto filterCondition() const { return filter_condition; }
+
+  /**
+   * Generate the SQL needed top query data up until this point in the tree.
+   * @return
+   */
+  std::string treeSQL(size_t indent);
+
+  std::string nodeName() const;
 
   /// @brief Return the compact, symbolic representation of the node
   virtual std::string compactSymbolic() const = 0;
   virtual std::string renderMuggle(size_t max_width = 0) const = 0;
   std::string typeName() const;
   void debugPrint() const;
+  void debugPrintTree();
 };
 } // namespace sql::explain

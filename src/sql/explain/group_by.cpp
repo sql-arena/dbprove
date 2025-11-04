@@ -46,4 +46,23 @@ std::string GroupBy::renderMuggle(size_t max_width) const {
   result += join(aggregates, ", ", max_width - 1);
   return result;
 }
+
+std::string GroupBy::treeSQLImpl(const size_t indent) const {
+  std::string result = newline(indent);
+  result += "(SELECT ";
+  result += join(group_keys, ", ");
+  if (!aggregates.empty()) {
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+      result += ", ";
+      result += aggregates[i].name + " AS agg_" + std::to_string(i);
+    }
+  }
+  result += newline(indent);
+  result += "FROM " + firstChild()->treeSQL(indent + 1);
+  result += newline(indent);
+  result += "GROUP BY " + join(group_keys, ", ");
+  result += newline(indent);
+  result += ") AS group_by_" + nodeName();
+  return result;
+}
 }

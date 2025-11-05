@@ -1,9 +1,20 @@
+#include <iostream>
+
 #include "sql.h"
 #include <regex>
 #include <set>
 #include <stack>
 
 namespace sql {
+using ssize_t = std::make_signed_t<size_t>;
+
+std::string stripDoubleQuotes(std::string expr) {
+  if (expr.size() >= 2 && expr.front() == '\"' && expr.back() == '\"') {
+    expr = expr.substr(1, expr.size() - 2);
+  }
+  return expr;
+}
+
 enum class TokenType {
   Literal, // Represents variables or numbers
   Operator, // Represents +, -, *, /
@@ -24,15 +35,24 @@ struct Token {
   int matching = 0;
 };
 
+Token safeToken(const std::vector<Token>& tokens, const ssize_t index) {
+  if (index >= tokens.size() || index < 0) {
+    return Token{TokenType::None, ""};
+  }
+  return tokens[index];
+}
+
 void addToken(std::vector<Token>& tokens, const Token& token) {
   tokens.push_back(token);
 }
+
 
 auto& operatorFuncs() {
   static const std::map<std::string, std::string> operatorFuncs = {{"greaterOrEquals", ">="},
                                                                    {"greater", ">"},
                                                                    {"multiply", "*"},
                                                                    {"minus", "-"},
+                                                                   {"plus", "+"},
                                                                    {"less", "<"},
                                                                    {"lessOrEquals", "<="},
                                                                    {"equals", "="},
@@ -44,6 +64,76 @@ auto& operatorFuncs() {
   return operatorFuncs;
 }
 
+std::string transformPGShittyAny(std::string expr) {
+  if (expr.size() >= 2 && expr.front() == '{' && expr.back() == '}') {
+    expr = expr.substr(1, expr.size() - 2);
+    std::vector<std::string> parts;
+    size_t start = 0, end = 0;
+    while ((end = expr.find(',', start)) != std::string::npos) {
+      parts.push_back("'" + expr.substr(start, end - start) + "'");
+      start = end + 1;
+    }
+    parts.push_back("'" + expr.substr(start) + "'");
+    std::string result;
+    for (size_t i = 0; i < parts.size(); ++i) {
+      if (i > 0)
+        result += ",";
+
+      result += stripDoubleQuotes(parts[i]);
+    }
+    return result;
+  }
+  return expr;
+}
+
+
+std::string render(const std::vector<Token>& tokens) {
+  if (tokens.empty()) {
+    return "";
+  }
+
+  std::string result;
+  for (size_t i = 0; i < tokens.size(); ++i) {
+    Token token = tokens[i];
+    const auto prev_type = (i > 0) ? tokens[i - 1].type : TokenType::None;
+    const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : TokenType::None;
+    const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : TokenType::None;
+    switch (token.type) {
+      case TokenType::Operator: {
+        const bool is_cast = token.value == "::";
+        result += is_cast ? "" : " ";
+        if (next_type == TokenType::Function && tokens[i + 1].value == "IN") {
+          // See below for PG oddness
+          continue;
+        }
+        result += token.value;
+        result += is_cast ? "" : " ";
+        break;
+      }
+      case TokenType::LiteralString:
+
+        if (prev_type == TokenType::LeftParen && prev_prev_type == TokenType::Function) {
+          // PG shitty way of dealing with ANY / IN
+          result += transformPGShittyAny(token.value);
+        } else {
+          result += "'" + token.value + "'";
+        }
+        break;
+      case TokenType::Literal:
+        if (prev_type == TokenType::Literal || prev_type == TokenType::RightParen) {
+          result += " ";
+        }
+        result += token.value;
+        break;
+      case TokenType::Ignore:
+        break;
+      default:
+        result += token.value;
+        break;
+    }
+  }
+  return result;
+}
 
 // Function to tokenize the input expression
 std::vector<Token> tokenize(const std::string& expr) {
@@ -149,7 +239,15 @@ std::vector<Token> tokenize(const std::string& expr) {
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM", "MAX", "MIN", "COUNT", "COUNT_BIG", "BLOOM", "ANY", "EXISTS"};
+    static const std::set<std::string> funcs = {"SUM",
+                                                "MAX",
+                                                "MIN",
+                                                "AVG",
+                                                "COUNT",
+                                                "COUNT_BIG",
+                                                "BLOOM",
+                                                "ANY",
+                                                "EXISTS"};
     static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"},
                                                                  // F*cked up PostgreSQL'isms
                                                                  {"\"left\"", "LEFT"},
@@ -194,7 +292,7 @@ static size_t matchingParenthesis(const std::vector<Token>& tokens, size_t left_
   throw std::runtime_error("Malformed expression: unmatched '(' at token index " + std::to_string(left_idx));
 }
 
-static std::vector<Token> processRange(const std::vector<Token> tokens) {
+static std::vector<Token> processOperatorFunction(const std::vector<Token> tokens) {
   std::vector<Token> out;
   for (size_t i = 0; i < tokens.size(); ++i) {
     const Token& t = tokens[i];
@@ -255,7 +353,7 @@ std::vector<Token> transformOperatorFuncs(std::vector<Token> tokens) {
   size_t token_size = 0;
   do {
     token_size = tokens.size();
-    tokens = processRange(tokens);
+    tokens = processOperatorFunction(tokens);
   } while (token_size != tokens.size());
   return tokens;
 }
@@ -300,10 +398,10 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
       continue;
     }
     const auto right_offset = currentToken.matching;
-    if (tokens[right_offset - 1].type != TokenType::RightParen) {
+    if (safeToken(tokens, right_offset + 1).type != TokenType::RightParen) {
       continue;
     }
-    // We now have “((“ followed by “))” later. The outermost parenthesis is redundant.
+    // We now have “((“ followed by matching “))” later. The innermost parenthesis is redundant.
     removeMatching(tokens, i);
   }
 
@@ -321,82 +419,6 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   return optimizedTokens;
 }
 
-std::string stripDoubleQuotes(std::string expr) {
-  if (expr.size() >= 2 && expr.front() == '\"' && expr.back() == '\"') {
-    expr = expr.substr(1, expr.size() - 2);
-  }
-  return expr;
-}
-
-std::string transformPGShittyAny(std::string expr) {
-  if (expr.size() >= 2 && expr.front() == '{' && expr.back() == '}') {
-    expr = expr.substr(1, expr.size() - 2);
-    std::vector<std::string> parts;
-    size_t start = 0, end = 0;
-    while ((end = expr.find(',', start)) != std::string::npos) {
-      parts.push_back("'" + expr.substr(start, end - start) + "'");
-      start = end + 1;
-    }
-    parts.push_back("'" + expr.substr(start) + "'");
-    std::string result;
-    for (size_t i = 0; i < parts.size(); ++i) {
-      if (i > 0)
-        result += ",";
-
-      result += stripDoubleQuotes(parts[i]);
-    }
-    return result;
-  }
-  return expr;
-}
-
-std::string render(const std::vector<Token>& tokens) {
-  if (tokens.empty()) {
-    return "";
-  }
-
-  std::string result;
-  for (size_t i = 0; i < tokens.size(); ++i) {
-    Token token = tokens[i];
-    const auto prev_type = (i > 0) ? tokens[i - 1].type : TokenType::None;
-    const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : TokenType::None;
-    const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : TokenType::None;
-    switch (token.type) {
-      case TokenType::Operator: {
-        const bool is_cast = token.value == "::";
-        result += is_cast ? "" : " ";
-        if (next_type == TokenType::Function && tokens[i + 1].value == "IN") {
-          // See below for PG oddness
-          continue;
-        }
-        result += token.value;
-        result += is_cast ? "" : " ";
-        break;
-      }
-      case TokenType::LiteralString:
-
-        if (prev_type == TokenType::LeftParen && prev_prev_type == TokenType::Function) {
-          // PG shitty way of dealing with ANY / IN
-          result += transformPGShittyAny(token.value);
-        } else {
-          result += "'" + token.value + "'";
-        }
-        break;
-      case TokenType::Literal:
-        if (prev_type == TokenType::Literal || prev_type == TokenType::RightParen) {
-          result += " ";
-        }
-        result += token.value;
-        break;
-      case TokenType::Ignore:
-        break;
-      default:
-        result += token.value;
-        break;
-    }
-  }
-  return result;
-}
 
 Table splitTable(std::string_view table_name) {
   const size_t delimiter = table_name.find('.');
@@ -436,14 +458,6 @@ std::string cleanExpression(std::string expression) {
   return render(tokens);
 }
 
-using ssize_t = std::make_signed_t<size_t>;
-
-Token safeToken(const std::vector<Token>& tokens, const ssize_t index) {
-  if (index >= tokens.size() || index < 0) {
-    return Token{TokenType::None, ""};
-  }
-  return tokens[index];
-}
 
 std::string removeExpressionFunction(const std::string& expression, const std::string_view function_name) {
   std::string function_name_upper = to_upper(function_name);

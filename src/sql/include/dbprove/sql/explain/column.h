@@ -15,7 +15,8 @@ public:
 
   explicit Column(std::string name);
 
-  explicit Column(const std::string& name, const Sorting sorting);
+  explicit Column(const std::string& name, Sorting sorting);
+  explicit Column(const std::string& name, const std::string& alias);
 
   ~Column() = default;
   Column(const Column&) = default;
@@ -24,7 +25,17 @@ public:
     return name == other.name;
   }
 
+  bool operator!=(const Column& other) const {
+    return !(*this == other);
+  }
+
+  bool operator<(const Column& other) const {
+    return name < other.name;
+  }
+
+  bool hasAlias() const { return !alias.empty(); }
   const std::string name;
+  const std::string alias;
   const Sorting sorting = Sorting::RANDOM;
   const Distribution distribution = Distribution::RANDOM;
 };

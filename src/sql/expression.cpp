@@ -23,6 +23,7 @@ enum class TokenType {
   Comma, // ,
   LiteralString,
   Function,
+  ExtractFunction,
   OperatorFunction, // ClickHouse (and likely others) turn some operators into function calls.
   None,
   Ignore
@@ -46,11 +47,19 @@ void addToken(std::vector<Token>& tokens, const Token& token) {
   tokens.push_back(token);
 }
 
+auto& extractFuncs() {
+  static const std::map<std::string, std::string> extractFuncs = {{"TOYEAR", "YEAR"},
+                                                                  {"YEAR", "YEAR"},
+                                                                  {"TOMONTH", "MONTH"},
+                                                                  {"MONTH", "MONTH"}};
+  return extractFuncs;
+}
 
 auto& operatorFuncs() {
   static const std::map<std::string, std::string> operatorFuncs = {{"greaterOrEquals", ">="},
                                                                    {"greater", ">"},
                                                                    {"multiply", "*"},
+                                                                   {"divide", "/"},
                                                                    {"minus", "-"},
                                                                    {"plus", "+"},
                                                                    {"less", "<"},
@@ -91,7 +100,8 @@ std::string render(const std::vector<Token>& tokens) {
   if (tokens.empty()) {
     return "";
   }
-
+  size_t depth = 0;
+  size_t closeAtDepth = -1;
   std::string result;
   for (size_t i = 0; i < tokens.size(); ++i) {
     Token token = tokens[i];
@@ -126,6 +136,18 @@ std::string render(const std::vector<Token>& tokens) {
         result += token.value;
         break;
       case TokenType::Ignore:
+        break;
+      case TokenType::ExtractFunction:
+        result = +"EXTRACT(" + token.value + " FROM ";
+        i++; // Skip past the function call parenthesis. The function will close it later.
+        break;
+      case TokenType::LeftParen:
+        depth++;
+        result += "(";
+        break;
+      case TokenType::RightParen:
+        depth--;
+        result += ")";
         break;
       default:
         result += token.value;
@@ -238,6 +260,11 @@ std::vector<Token> tokenize(const std::string& expr) {
       addToken(tokens, {TokenType::OperatorFunction, literal});
       continue;
     }
+    // EXTRACT function like YEAR and friends
+    if (extractFuncs().contains(upper_literal)) {
+      addToken(tokens, {TokenType::ExtractFunction, extractFuncs().at(upper_literal)});
+      continue;
+    }
 
     static const std::set<std::string> funcs = {"SUM",
                                                 "MAX",
@@ -253,13 +280,14 @@ std::vector<Token> tokenize(const std::string& expr) {
                                                                  {"\"left\"", "LEFT"},
                                                                  {"\"right\"", "RIGHT"},
                                                                  {"\"substring\"", "SUBSTRING"},
+                                                                 {"TOYEAR", "YEAR"},
                                                                  // ANY is IN to normal people
                                                                  {"ANY", "IN"}};
-
     if (funcs.contains(upper_literal)) {
       if (translate.contains(upper_literal)) {
         upper_literal = translate.at(upper_literal);
       }
+
       addToken(tokens, {TokenType::Function, upper_literal});
       continue;
     }
@@ -386,17 +414,21 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
     if (currentToken.type != TokenType::LeftParen) {
       continue;
     }
-    if (tokens[i + 1].type == TokenType::Literal && tokens[i + 2].type == TokenType::RightParen) {
-      if (i > 0 && tokens[i - 1].type == TokenType::Function) {
+    const auto prev = safeToken(tokens, i - 1);
+    const auto next = safeToken(tokens, i + 1);
+    const auto next_next = safeToken(tokens, i + 2);
+    if (next.type == TokenType::Literal && next_next.type == TokenType::RightParen) {
+      if (prev.type == TokenType::Function || prev.type == TokenType::ExtractFunction) {
         continue; // Don't remove if part of a larger expression
       }
       // Lonely literal inside parenthesis
       removeMatching(tokens, i);
     }
 
-    if (tokens[i + 1].type != TokenType::LeftParen) {
+    if (next.type != TokenType::LeftParen) {
       continue;
     }
+    // We have two "((" in a row
     const auto right_offset = currentToken.matching;
     if (safeToken(tokens, right_offset + 1).type != TokenType::RightParen) {
       continue;

@@ -14,6 +14,7 @@ using namespace nlohmann;
 
 struct ExplainCtx {
   std::map<std::string, std::set<Node*>> nodeBroadCast;
+  std::map<Node*, std::string> existFilters;
   std::string schema_name;
 
   void addNode(const std::string& node_name, Node* node) {
@@ -50,7 +51,9 @@ void parseProjections(std::vector<Column>& columns, const json& node_json) {
   }
   const auto actions = expression["Actions"];
   const auto inputs = expression["Inputs"];
+  std::vector<basic_json<>> prev_action;
   for (auto& action : actions) {
+    prev_action.push_back(action);
     const auto action_type = action["Node Type"].get<std::string>();
     const auto result_name = action["Result Name"].get<std::string>();
     if (action_type == "INPUT") {
@@ -61,14 +64,26 @@ void parseProjections(std::vector<Column>& columns, const json& node_json) {
     }
     if (action_type == "FUNCTION") {
       auto function = cleanFilter(result_name);
-      if (!function.empty()) {
+      if (!function.empty() && !function.starts_with("materialize")) {
         columns.emplace_back(function);
       }
       continue;
     }
     if (action_type == "ALIAS") {
+      /* The Arguments in an alias refers to a previous values in the Action list that has a "Result" with the same index
+       * Assumption here is that the dependency graph is topologically sorted.
+       *
+       * Yes, this is O(n**2/2) - we can do better with a set - optimisation for later
+       */
       const auto input_offset = action["Arguments"][0].get<int64_t>();
-      const auto input_ch_clean = cleanFilter(inputs[input_offset]["Name"].get<std::string>());
+      std::string input_ch_clean;
+      for (size_t i = prev_action.size(); i > 0; --i) {
+        const auto& ref_action = prev_action[i - 1];
+        if (ref_action["Result"].get<int64_t>() == input_offset) {
+          input_ch_clean = cleanFilter(ref_action["Result Name"].get<std::string>());
+          break;
+        }
+      }
       const auto input_name = cleanExpression(input_ch_clean);
       const auto alias = cleanExpression(result_name);
       if (input_name != alias) {
@@ -126,21 +141,47 @@ std::string parseClauses(const std::string& clause) {
   return result;
 }
 
-std::string parseScanClause(const json& node_json) {
+void parseScanClause(Node* n, const json& node_json, ExplainCtx& ctx) {
   if (!node_json.contains("Prewhere info")) {
-    return "";
+    return;
   }
   const auto prewhere_info = node_json["Prewhere info"];
   if (!prewhere_info.contains("Prewhere filter")) {
-    return "";
+    return;
   }
   const auto prewhere_filter = prewhere_info["Prewhere filter"];
   if (!prewhere_filter.contains("Prewhere filter column")) {
-    return "";
+    return;
   }
   const auto filter = prewhere_filter["Prewhere filter column"].get<std::string>();
+  n->setFilter(cleanFilter(filter));
 
-  return cleanFilter(filter);
+  // Filters are a topographically sorted set of nodes. Some of these expressions are "bogus"
+  // and represents ClickHouse sick way of doing Semi-join. We can recognize these by them being equal
+  // functions where both sides point at the SAME argument (yeah...)
+  const auto filter_expression = prewhere_filter["Prewhere filter expression"];
+  const auto actions = filter_expression["Actions"];
+
+  for (auto& action : actions) {
+    const auto node_type = action["Node Type"].get<std::string>();
+    if (node_type != "FUNCTION") {
+      continue;
+    }
+    const auto function = action["Function"];
+    if (function != "equals") {
+      continue;
+    }
+    const auto arguments = action["Arguments"];
+    if (arguments.size() != 2) {
+      continue;
+    }
+    const auto argument_1 = arguments[0].get<int64_t>();
+    const auto argument_2 = arguments[1].get<int64_t>();
+    if (argument_1 == argument_2) {
+      const auto exist_filter = cleanFilter(action["Result Name"].get<std::string>());
+      ctx.existFilters[n] = cleanExpression(exist_filter);
+    }
+  }
 }
 
 std::unique_ptr<Node> createNodeFromJson(const json& node_json, ExplainCtx& ctx) {
@@ -157,9 +198,8 @@ std::unique_ptr<Node> createNodeFromJson(const json& node_json, ExplainCtx& ctx)
     node = std::make_unique<Projection>(columns_projected);
   } else if (node_type == "ReadFromMergeTree") {
     auto table_name = node_json["Description"].get<std::string>();
-    std::string where_condition = parseScanClause(node_json);
     node = std::make_unique<Scan>(table_name);
-    node->setFilter(where_condition);
+    parseScanClause(node.get(), node_json, ctx);
   } else if (node_type == "Sorting") {
     std::vector<Column> columns_sorted;
     parseSorting(columns_sorted, node_json);
@@ -249,19 +289,30 @@ std::unique_ptr<Plan> buildExplainPlan(json& json, ExplainCtx& ctx) {
   return plan;
 }
 
-std::string findSemiJoinCondition(Node& n) {
+std::string findSemiJoinCondition(Node& n, ExplainCtx& ctx) {
   const auto treeToSearch = n.firstChild();
-  for (auto& c : treeToSearch->breadth_first()) {
+  for (auto& c : treeToSearch->depth_first()) {
+    if (ctx.existFilters.contains(&c)) {
+      auto filter_condition = c.filterCondition();
+      const auto exist_filter = ctx.existFilters[&c];
+      size_t pos = filter_condition.find(exist_filter);
+      if (pos != std::string::npos) {
+        filter_condition.replace(pos, exist_filter.length(), "1=1");
+        c.setFilter(filter_condition);
+      }
+      return ctx.existFilters[&c];
+    }
+
     if (c.type == NodeType::FILTER) {
       /* The SEMI was using a filter, remove that filter and move it to the join node */
       const auto filter = dynamic_cast<const Selection*>(&c);
       std::string condition = filter->filterCondition();
-      c.remove();
+      // c.remove();
       return condition;
     }
     if (c.type == NodeType::SCAN) {
-      const auto scan = dynamic_cast<const Scan*>(&c);
-      return scan->filterCondition();
+      const auto scan = dynamic_cast<Scan*>(&c);
+      auto filter = scan->filterCondition();
     }
   }
   return "";
@@ -272,6 +323,18 @@ void cleanupExists(Node& root) {
     if (n.type == NodeType::FILTER || n.type == NodeType::JOIN) {
       std::string cleaned = removeExpressionFunction(n.filterCondition(), "exists");
       n.setFilter(cleaned);
+      continue;
+    }
+    if (n.type == NodeType::PROJECTION) {
+      const auto projection = dynamic_cast<Projection*>(&n);
+      std::vector<Column> clean_projection;
+      for (auto& column : projection->columns_projected) {
+        if (column.alias.contains("EXISTS(")) {
+          continue;
+        }
+        clean_projection.push_back(column);
+      }
+      projection->columns_projected = std::move(clean_projection);
     }
   }
 }
@@ -290,7 +353,7 @@ void cleanupExists(Node& root) {
  * LEFT SEMI JOIN (.. filter...)
  * @param root
  */
-void fixSemiJoin(Node& root) {
+void fixSemiJoin(Node& root, ExplainCtx& ctx) {
   std::vector<Join*> to_fix;
 
   for (Node& n : root.depth_first()) {
@@ -308,7 +371,7 @@ void fixSemiJoin(Node& root) {
   }
   /* We now have a list of joins that are actually semi joins, turn them into that... */
   for (const auto n : to_fix) {
-    auto condition = findSemiJoinCondition(*n);
+    auto condition = findSemiJoinCondition(*n, ctx);
     auto parent_expression = n->parent().filterCondition();
     auto join_type = parent_expression.contains("NOT (exist") ? Join::Type::LEFT_ANTI : Join::Type::LEFT_SEMI_INNER;
     auto semi = std::make_unique<Join>(join_type, Join::Strategy::HASH, condition);
@@ -390,7 +453,7 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
 
   pruneBroadCast(plan->planTree(), ctx);
 
-  fixSemiJoin(plan->planTree());
+  fixSemiJoin(plan->planTree(), ctx);
 
   fixActuals(plan->planTree(), this, ctx);
 

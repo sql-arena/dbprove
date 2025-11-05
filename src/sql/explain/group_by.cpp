@@ -62,15 +62,19 @@ std::string GroupBy::treeSQLImpl(const size_t indent) const {
   std::string result = newline(indent);
   result += "(SELECT ";
   result += join(group_keys, ", ");
+
+  auto col_count = group_keys.size();
   // Aggregates must have a name so parent projection nodes can refer to them
   for (auto [c, a] : aggregateAliases) {
-    result += ", ";
+    result += col_count++ > 0 ? ", " : "";
     result += c.name + " AS " + a;
   }
   result += newline(indent);
   result += "FROM " + firstChild()->treeSQL(indent + 1);
   result += newline(indent);
-  result += "GROUP BY " + join(group_keys, ", ");
+  if (!group_keys.empty()) {
+    result += "GROUP BY " + join(group_keys, ", ");
+  }
   result += newline(indent);
   result += ") AS " + subquerySQLAlias();
   return result;

@@ -34,18 +34,40 @@ GroupBy* findDescendantAgg(const Node* n) {
   }
 }
 
+std::string replace(const std::string& input, const std::string& search, const std::string& replacement) {
+  std::string result = input;
+  size_t pos = 0;
+  while ((pos = result.find(search, pos)) != std::string::npos) {
+    result.replace(pos, search.length(), replacement);
+    pos += replacement.length();
+  }
+  return result;
+}
+
+
 std::string Projection::treeSQLImpl(size_t indent) const {
   std::string result = newline(indent);
   result += "(SELECT * ";
   for (const auto c : columns_projected) {
     result += ", ";
-
     const auto descendant_agg = findDescendantAgg(this);
-    if (descendant_agg && descendant_agg->aggregateAliases.contains(c)) {
-      // We are pointing at an anonymous aggregate value that has been named
-      result += descendant_agg->aggregateAliases[c] + " AS " + c.alias;
-      continue;
+    if (descendant_agg) {
+      std::string resolved = c.name;
+      for (const auto& [a, v] : descendant_agg->aggregateAliases) {
+        if (resolved.contains(a.name)) {
+          resolved = replace(resolved, a.name, v);
+        }
+      }
+      if (resolved != c.name) {
+        if (c.hasAlias()) {
+          result += resolved + " AS " + c.alias;
+        } else {
+          result += resolved;
+        }
+        continue;
+      }
     }
+
     if (!c.hasAlias()) {
       result += c.name;
       continue;

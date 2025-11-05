@@ -158,16 +158,46 @@ std::string fixCondition(const std::string& condition, const std::string& leftAl
   return result;
 }
 
+
 std::string Join::treeSQLImpl(const size_t indent) const {
   std::string result = newline(indent);
   result += "(SELECT * ";
   result += newline(indent);
   result += "FROM " + lastChild()->treeSQL(indent + 1);
-  result += newline(indent);
-  result += type_to_sql(type) + " " + firstChild()->treeSQL(indent + 1);
-  result += newline(indent);
-  result += "  ON " + fixCondition(condition, firstChild()->subquerySQLAlias(), lastChild()->subquerySQLAlias());
-  result += newline(indent);
+
+  auto fixed_condition = fixCondition(condition, firstChild()->subquerySQLAlias(), lastChild()->subquerySQLAlias());
+  switch (type) {
+    case Type::LEFT_SEMI_INNER:
+    case Type::LEFT_SEMI_OUTER:
+    case Type::RIGHT_SEMI_INNER:
+    case Type::RIGHT_SEMI_OUTER: {
+      result += newline(indent);
+      result += "WHERE EXISTS (SELECT * FROM";
+      result += firstChild()->treeSQL(indent + 1);
+      result += newline(indent);
+      result += "WHERE " + fixed_condition;
+      result += ")";
+      break;
+    }
+    case Type::LEFT_ANTI:
+    case Type::RIGHT_ANTI: {
+      result += newline(indent);
+      result += "WHERE NOT EXISTS (SELECT * FROM";
+      result += firstChild()->treeSQL(indent + 1);
+      result += newline(indent);
+      result += "WHERE " + fixed_condition;
+      result += ")";
+      break;
+    }
+    default: {
+      result += newline(indent);
+      result += type_to_sql(type) + " " + firstChild()->treeSQL(indent + 1);
+      result += newline(indent);
+      result += "  ON " + fixed_condition;
+      result += newline(indent);
+      break;
+    }
+  }
   result += ") AS " + subquerySQLAlias();
   return result;
 }

@@ -10,7 +10,7 @@ std::string ScanMaterialised::renderMuggle(size_t max_width) const {
 }
 
 std::string ScanMaterialised::treeSQLImpl(size_t indent) const {
-  return "(SELECT 1 ) AS " + nodeName();
+  return "(SELECT 1 ) AS " + subquerySQLAlias();
 }
 }
 

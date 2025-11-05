@@ -53,6 +53,11 @@ public:
     : plan_tree(std::move(root_node)) {
   }
 
+  /**
+   * Was it possible to compute estimates for this plan?
+   * @return true if we could
+   */
+  bool canEstimate() const;
   double planning_time = 0.0;
   double execution_time = 0.0;
 

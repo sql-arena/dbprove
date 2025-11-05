@@ -28,10 +28,9 @@ protected:
   static std::string newline(size_t indent);
 
 public:
-  static constexpr double UNKNOWN = -INFINITY;
   const NodeType type;
-  double rows_estimated = 0.0;
-  double rows_actual = UNKNOWN;
+  double rows_estimated = NAN;
+  double rows_actual = NAN;
   double cost;
   std::vector<std::string> columns_input;
   std::vector<std::string> columns_output;
@@ -53,7 +52,10 @@ public:
    */
   std::string treeSQL(size_t indent);
 
-  std::string nodeName() const;
+  /**
+   * Name of the SubQuery when we generate SQL
+   */
+  std::string subquerySQLAlias() const;
 
   /// @brief Return the compact, symbolic representation of the node
   virtual std::string compactSymbolic() const = 0;
@@ -62,4 +64,6 @@ public:
   void debugPrint() const;
   void debugPrintTree();
 };
+
+std::string_view to_string(const NodeType type);
 } // namespace sql::explain

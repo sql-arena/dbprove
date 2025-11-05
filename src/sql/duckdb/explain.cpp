@@ -169,7 +169,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     // For some reason, Duck doesn't estimate a cardinality for this type.
     node->rows_estimated = limit;
     if (sortNode) {
-      sortNode->rows_actual = Node::UNKNOWN;
+      sortNode->rows_actual = NAN;
       sortNode->rows_estimated = limit;
       ctx.propagate_actual.push(sortNode.get());
       node->addChild(std::move(sortNode));
@@ -221,7 +221,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     auto cardinality_string = extra_info["Estimated Cardinality"].get<std::string>();
     double estimate = std::atof(cardinality_string.c_str());
     node->rows_estimated = estimate;
-    if (node->rows_actual == Node::UNKNOWN) {
+    if (std::isnan(node->rows_actual)) {
       node->rows_actual = actual_rows;
     }
     while (!ctx.propagate_estimate.empty()) {
@@ -233,7 +233,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     ctx.propagate_estimate.push(node.get());
   }
 
-  if (node->rows_actual != Node::UNKNOWN) {
+  if (std::isnan(node->rows_actual)) {
     while (!ctx.propagate_actual.empty()) {
       ctx.propagate_actual.top()->rows_actual = actual_rows;
       ctx.propagate_actual.pop();

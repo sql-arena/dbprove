@@ -68,10 +68,11 @@ void parseProjections(std::vector<Column>& columns, const json& node_json) {
     }
     if (action_type == "ALIAS") {
       const auto input_offset = action["Arguments"][0].get<int64_t>();
-      const auto input_name = cleanExpression(inputs[input_offset]["Name"].get<std::string>());
+      const auto input_ch_clean = cleanFilter(inputs[input_offset]["Name"].get<std::string>());
+      const auto input_name = cleanExpression(input_ch_clean);
       const auto alias = cleanExpression(result_name);
       if (input_name != alias) {
-        columns.emplace_back(input_name + " AS " + alias);
+        columns.emplace_back(Column(input_name, alias));
       }
       continue;
     }

@@ -33,7 +33,7 @@ std::string Union::treeSQLImpl(size_t indent) const {
       result += to_string(type);
     }
   }
-  result += ") AS " + nodeName();
+  result += ") AS " + subquerySQLAlias();
   return result;
 }
 

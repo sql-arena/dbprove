@@ -8,6 +8,9 @@ namespace sql::explain {
  * @return Safe RowCount
  */
 inline RowCount cutoff(const double plan_rows) {
+  if (std::isnan(plan_rows)) {
+    return -1;
+  }
   if (plan_rows > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
     return std::numeric_limits<uint64_t>::max();
   }

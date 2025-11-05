@@ -35,7 +35,7 @@ std::string Scan::treeSQLImpl(size_t indent) const {
   if (!filterCondition().empty()) {
     result += "WHERE " + filterCondition();
   }
-  result += ") AS scan_" + nodeName();
+  result += ") AS " + subquerySQLAlias();
   return result;
 }
 }

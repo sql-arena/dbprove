@@ -15,12 +15,7 @@ public:
   };
 
   explicit GroupBy(const Strategy strategy, const std::vector<Column>& group_keys,
-                   const std::vector<Column>& aggregates)
-    : Node(NodeType::GROUP_BY)
-    , strategy(strategy)
-    , group_keys(group_keys)
-    , aggregates(aggregates) {
-  }
+                   const std::vector<Column>& aggregates);
 
   std::string strategyName() const;
 
@@ -35,5 +30,6 @@ public:
   const Strategy strategy;
   const std::vector<Column> group_keys;
   const std::vector<Column> aggregates;
+  std::map<Column, std::string> aggregateAliases;
 };
 }

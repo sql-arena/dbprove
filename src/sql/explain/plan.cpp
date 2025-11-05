@@ -49,6 +49,15 @@ std::string Magnitude::to_string() const {
   return magnitude;
 }
 
+bool Plan::canEstimate() const {
+  for (const auto& n : planTree().depth_first()) {
+    if (std::isnan(n.rows_estimated)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 RowCount Plan::rowsAggregated() const {
   double result = 0;
   for (const auto& n : planTree().depth_first()) {
@@ -134,6 +143,9 @@ void Plan::flipJoins() const {
 }
 
 int8_t estimateOrderOfMagnitude(double estimate, double actual) {
+  if (std::isnan(estimate) || std::isnan(actual)) {
+    return Plan::MisEstimation::INFINITE_UNDER;
+  }
   actual = std::max(actual, 1.0);
   estimate = std::max(estimate, 1.0);
   const auto error = (estimate > actual) ? estimate / actual : actual / estimate;
@@ -202,6 +214,7 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
 
 void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
   std::string indent;
+  using namespace dbprove::common;
   const std::string divider = "  ";
   struct Frame {
     Node* node;
@@ -212,13 +225,13 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
   out << "  Actual" << divider;
   out << "Operator";
   out << rang::style::reset << std::endl;
-
   std::vector<Frame> parent_split_nodes;
   for (auto& node : plan_tree->depth_first()) {
     const auto used_before = out.tellp();
     /* Estimates/actuals */
-    out << dbprove::common::PrettyHumanCount(node.rowsEstimated()) << divider;
-    out << dbprove::common::PrettyHumanCount(node.rowsActual()) << divider;
+    std::string estimate = std::isnan(node.rows_estimated) ? PrettyUnknown() : PrettyHumanCount(node.rowsEstimated());
+    out << estimate << divider;
+    out << PrettyHumanCount(node.rowsActual()) << divider;
 
     /* Coming back up the tree. If I am the last descendant of a union, I need to have my indentation removed.*/
     if (!parent_split_nodes.empty() && node.depth() < parent_split_nodes.back().node->depth()) {

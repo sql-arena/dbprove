@@ -1,5 +1,7 @@
 #include "join.h"
 
+#include <regex>
+
 #include "glyphs.h"
 #include "sql_exceptions.h"
 
@@ -115,6 +117,47 @@ std::string type_to_sql(Join::Type type) {
   }
 }
 
+/**
+ * In ClickHouse, it is possible to have a join condition that looks like this:
+ *
+ * foo = foo
+ *
+ * This occurs if foo is in both left and right side of the join. This is not the trivially true equality
+ * it is ClickHouse explain that is really, really odd.
+ *
+ * A proper EXPLAIN would keep track of aliases.
+ * No such luck with ClickHouse
+ *
+ * HACK (filthy): Look for things of the form
+ *
+ *    <col> <op> <col>
+ *
+ * Replace wih aliases we assigned to make:
+ *
+ *    L.<col> <op> R.<col>
+ *
+ */
+std::string fixCondition(const std::string& condition, const std::string& leftAlias, const std::string& rightAlias) {
+  static const std::regex pattern(R"((\b\w+\b)\s*(=|<>)\s*(\b\w+\b))");
+  std::string result;
+  std::sregex_iterator begin(condition.begin(), condition.end(), pattern);
+  std::sregex_iterator end;
+
+  size_t last_pos = 0;
+  for (auto it = begin; it != end; ++it) {
+    const std::smatch& match = *it;
+    result += condition.substr(last_pos, match.position() - last_pos);
+    if (match[1] == match[3]) {
+      result += leftAlias + "." + match[1].str() + " " + match[2].str() + " " + rightAlias + "." + match[3].str();
+    } else {
+      result += match.str();
+    }
+    last_pos = match.position() + match.length();
+  }
+  result += condition.substr(last_pos);
+  return result;
+}
+
 std::string Join::treeSQLImpl(const size_t indent) const {
   std::string result = newline(indent);
   result += "(SELECT * ";
@@ -123,9 +166,9 @@ std::string Join::treeSQLImpl(const size_t indent) const {
   result += newline(indent);
   result += type_to_sql(type) + " " + firstChild()->treeSQL(indent + 1);
   result += newline(indent);
-  result += "  ON " + condition;
+  result += "  ON " + fixCondition(condition, firstChild()->subquerySQLAlias(), lastChild()->subquerySQLAlias());
   result += newline(indent);
-  result += ") AS join_" + nodeName();
+  result += ") AS " + subquerySQLAlias();
   return result;
 }
 }

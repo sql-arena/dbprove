@@ -2,7 +2,12 @@
 #include <iostream>
 #include "cutoff.h"
 
+
 namespace sql::explain {
+std::string_view to_string(const NodeType type) {
+  return magic_enum::enum_name(type);
+}
+
 std::string Node::typeName() const {
   switch (type) {
     case NodeType::JOIN:
@@ -46,6 +51,7 @@ void Node::debugPrintTree() {
     n.debugPrint();
   }
 }
+
 
 std::string Node::treeSQLImpl(const size_t indent) const {
   return firstChild()->treeSQL(indent);
@@ -91,7 +97,7 @@ std::string Node::treeSQL(const size_t indent) {
   return cacheTreeSQL_;
 }
 
-std::string Node::nodeName() const {
-  return "n" + std::to_string(id());
+std::string Node::subquerySQLAlias() const {
+  return std::string(to_string(type)) + "_" + std::to_string(id());
 }
 }

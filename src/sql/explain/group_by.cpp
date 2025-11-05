@@ -3,6 +3,17 @@
 static constexpr const char* symbol_ = "γ";
 
 namespace sql::explain {
+GroupBy::GroupBy(const Strategy strategy, const std::vector<Column>& group_keys, const std::vector<Column>& aggregates)
+  : Node(NodeType::GROUP_BY)
+  , strategy(strategy)
+  , group_keys(group_keys)
+  , aggregates(aggregates) {
+  for (size_t i = 0; i < aggregates.size(); ++i) {
+    const auto& agg = aggregates[i];
+    aggregateAliases[agg] = "agg_" + std::to_string(i);
+  }
+}
+
 std::string GroupBy::strategyName() const {
   switch (strategy) {
     case Strategy::HASH:
@@ -51,18 +62,17 @@ std::string GroupBy::treeSQLImpl(const size_t indent) const {
   std::string result = newline(indent);
   result += "(SELECT ";
   result += join(group_keys, ", ");
-  if (!aggregates.empty()) {
-    for (size_t i = 0; i < aggregates.size(); ++i) {
-      result += ", ";
-      result += aggregates[i].name + " AS agg_" + std::to_string(i);
-    }
+  // Aggregates must have a name so parent projection nodes can refer to them
+  for (auto [c, a] : aggregateAliases) {
+    result += ", ";
+    result += c.name + " AS " + a;
   }
   result += newline(indent);
   result += "FROM " + firstChild()->treeSQL(indent + 1);
   result += newline(indent);
   result += "GROUP BY " + join(group_keys, ", ");
   result += newline(indent);
-  result += ") AS group_by_" + nodeName();
+  result += ") AS " + subquerySQLAlias();
   return result;
 }
 }

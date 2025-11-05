@@ -16,10 +16,6 @@ public:
 
   std::string renderMuggle(size_t max_width) const override;
 
-protected:
-  std::string treeSQLImpl(size_t indent) const override;
-
-public:
   std::vector<Column> columns_sorted;
 };
 }

@@ -42,6 +42,9 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     if (node_json.contains("Relation Name")) {
       relation_name = node_json["Relation Name"].get<std::string>();
     }
+    if (node_json.contains("Schema")) {
+      relation_name = node_json["Schema"].get<std::string>() + "." + relation_name;
+    }
     if (node_json.contains("Alias")) {
       relation_name = node_json["Alias"].get<std::string>();
     }
@@ -102,8 +105,12 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       join_condition = cleanExpression(join_condition);
     }
     if (join_condition.empty()) {
-      // PG does not use the notion of cross-join, it simply has loop join without conditions.
+      // PG doesn't use the notion of cross-join, it simply has loop join without conditions conditions.
       join_type = Join::Type::CROSS;
+    }
+    if (node_json.contains("Join Filter")) {
+      /* Join filters are additional conditions evaluated in the join that are not usable for seeks/lookups */
+      join_condition += " AND " + node_json["Join Filter"].get<std::string>();
     }
 
     node = std::make_unique<Join>(join_type, join_strategy, join_condition);

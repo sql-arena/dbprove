@@ -6,7 +6,29 @@
 #include <stack>
 
 namespace sql {
-using ssize_t = std::make_signed_t<size_t>;
+struct AnsiDialect final : EngineDialect {
+  const std::map<std::string_view, std::string_view>& engineFunctions() const override {
+    static const std::map<std::string_view, std::string_view> n = {};
+    return n;
+  }
+};
+
+auto ansiDialect = AnsiDialect();
+
+thread_local EngineDialect* current_dialect = &ansiDialect;
+
+const std::map<std::string_view, std::string_view>& EngineDialect::engineFunctions() const {
+  static const std::map<std::string_view, std::string_view> n = {};
+  return n;
+}
+
+DialectContext::DialectContext(EngineDialect& dialect) {
+  current_dialect = &dialect;
+}
+
+DialectContext::~DialectContext() {
+  current_dialect = &ansiDialect;
+}
 
 std::string stripDoubleQuotes(std::string expr) {
   if (expr.size() >= 2 && expr.front() == '\"' && expr.back() == '\"') {
@@ -15,30 +37,10 @@ std::string stripDoubleQuotes(std::string expr) {
   return expr;
 }
 
-enum class TokenType {
-  Literal, // Represents variables or numbers
-  Operator, // Represents +, -, *, /
-  LeftParen, // (
-  RightParen, // )
-  Comma, // ,
-  LiteralString,
-  Function,
-  ExtractFunction,
-  OperatorFunction, // ClickHouse (and likely others) turn some operators into function calls.
-  None,
-  Ignore
-};
-
-// A token representation
-struct Token {
-  TokenType type;
-  std::string value;
-  int matching = 0;
-};
 
 Token safeToken(const std::vector<Token>& tokens, const ssize_t index) {
   if (index >= tokens.size() || index < 0) {
-    return Token{TokenType::None, ""};
+    return Token{Token::Type::None, ""};
   }
   return tokens[index];
 }
@@ -96,7 +98,8 @@ std::string transformPGShittyAny(std::string expr) {
 }
 
 
-std::string render(const std::vector<Token>& tokens) {
+std::string render(std::vector<Token>& tokens) {
+  current_dialect->preRender(tokens);
   if (tokens.empty()) {
     return "";
   }
@@ -105,14 +108,14 @@ std::string render(const std::vector<Token>& tokens) {
   std::string result;
   for (size_t i = 0; i < tokens.size(); ++i) {
     Token token = tokens[i];
-    const auto prev_type = (i > 0) ? tokens[i - 1].type : TokenType::None;
-    const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : TokenType::None;
-    const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : TokenType::None;
+    const auto prev_type = (i > 0) ? tokens[i - 1].type : Token::Type::None;
+    const auto prev_prev_type = (i > 1) ? tokens[i - 2].type : Token::Type::None;
+    const auto next_type = (i < tokens.size() - 1) ? tokens[i + 1].type : Token::Type::None;
     switch (token.type) {
-      case TokenType::Operator: {
+      case Token::Type::Operator: {
         const bool is_cast = token.value == "::";
         result += is_cast ? "" : " ";
-        if (next_type == TokenType::Function && tokens[i + 1].value == "IN") {
+        if (next_type == Token::Type::Function && tokens[i + 1].value == "IN") {
           // See below for PG oddness
           continue;
         }
@@ -120,32 +123,36 @@ std::string render(const std::vector<Token>& tokens) {
         result += is_cast ? "" : " ";
         break;
       }
-      case TokenType::LiteralString:
+      case Token::Type::LiteralString:
 
-        if (prev_type == TokenType::LeftParen && prev_prev_type == TokenType::Function) {
+        if (prev_type == Token::Type::LeftParen && prev_prev_type == Token::Type::Function) {
           // PG shitty way of dealing with ANY / IN
           result += transformPGShittyAny(token.value);
         } else {
           result += "'" + token.value + "'";
         }
         break;
-      case TokenType::Literal:
-        if (prev_type == TokenType::Literal || prev_type == TokenType::RightParen) {
+      case Token::Type::Literal:
+        if (prev_type == Token::Type::Literal || prev_type == Token::Type::RightParen) {
           result += " ";
         }
         result += token.value;
         break;
-      case TokenType::Ignore:
+      case Token::Type::Ignore:
         break;
-      case TokenType::ExtractFunction:
-        result = +"EXTRACT(" + token.value + " FROM ";
+      case Token::Type::ExtractFunction:
+        result += "EXTRACT(" + token.value + " FROM ";
         i++; // Skip past the function call parenthesis. The function will close it later.
         break;
-      case TokenType::LeftParen:
+      case Token::Type::CountDistinctFunction:
+        result += "COUNT(DISTINCT ";
+        i++; // Skip past the function call parenthesis as we already rendered it.
+        break;
+      case Token::Type::LeftParen:
         depth++;
         result += "(";
         break;
-      case TokenType::RightParen:
+      case Token::Type::RightParen:
         depth--;
         result += ")";
         break;
@@ -154,13 +161,37 @@ std::string render(const std::vector<Token>& tokens) {
         break;
     }
   }
-  return result;
+  return current_dialect->postRender(result);
+}
+
+const std::map<std::string_view, std::string_view>& EngineDialect::ansiFunctions() {
+  const static std::map<std::string_view, std::string_view> m = {{"SUM", ""},
+                                                                 {"MAX", ""},
+                                                                 {"MIN", ""},
+                                                                 {"AVG", ""},
+                                                                 {"COUNT", ""},
+                                                                 {"COUNT_BIG", ""},
+                                                                 {"BLOOM", ""},
+                                                                 {"ANY", ""},
+                                                                 {"EXISTS", ""}};
+  return m;
+}
+
+std::string translate(const std::string& functionName, const std::map<std::string_view, std::string_view>& translator) {
+  if (translator.contains(functionName)) {
+    const auto& translated = translator.at(functionName);
+    if (!translated.empty()) {
+      return std::string(translated);
+    }
+  }
+  return functionName;
 }
 
 // Function to tokenize the input expression
 std::vector<Token> tokenize(const std::string& expr) {
   std::vector<Token> tokens;
-  Token prev_token = {TokenType::None, ""};
+  Token prev_token = {Token::Type::None, ""};
+  auto dialect = current_dialect;
   size_t i = 0;
   while (i < expr.size()) {
     if (!tokens.empty()) {
@@ -180,31 +211,31 @@ std::vector<Token> tokenize(const std::string& expr) {
         literal_string += expr[i];
       }
       i++;
-      addToken(tokens, {TokenType::LiteralString, literal_string});
+      addToken(tokens, {Token::Type::LiteralString, literal_string});
       continue;
     }
 
     // Parenthesis
     if (expr[i] == '(') {
-      addToken(tokens, {TokenType::LeftParen, "("});
+      addToken(tokens, {Token::Type::LeftParen, "("});
       i++;
       continue;
     }
     if (expr[i] == ')') {
-      addToken(tokens, {TokenType::RightParen, ")"});
+      addToken(tokens, {Token::Type::RightParen, ")"});
       i++;
       continue;
     }
 
     if (expr[i] == ',') {
-      addToken(tokens, {TokenType::Comma, ","});
+      addToken(tokens, {Token::Type::Comma, ","});
       i++;
       continue;
     }
 
     // COUNT(*)
-    if (expr[i] == '*' && prev_token.type == TokenType::LeftParen) {
-      addToken(tokens, {TokenType::Literal, std::string(1, expr[i])});
+    if (expr[i] == '*' && prev_token.type == Token::Type::LeftParen) {
+      addToken(tokens, {Token::Type::Literal, std::string(1, expr[i])});
       i++;
       continue;
     }
@@ -217,22 +248,22 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
     if (op == "!~~") {
       // !~~ is a PostgreSQL'ism for NOT LIKE
-      addToken(tokens, {TokenType::Operator, "NOT LIKE"});
+      addToken(tokens, {Token::Type::Operator, "NOT LIKE"});
       continue;
     }
     if (op == "~~") {
       // ~~ is a PostgreSQL'ism for LIKE
-      addToken(tokens, {TokenType::Operator, "LIKE"});
+      addToken(tokens, {Token::Type::Operator, "LIKE"});
       continue;
     }
     if (op == "::") {
       // Cast
-      addToken(tokens, {TokenType::Operator, "::"});
+      addToken(tokens, {Token::Type::Operator, "::"});
       continue;
     }
 
     if (!op.empty()) {
-      addToken(tokens, {TokenType::Operator, op});
+      addToken(tokens, {Token::Type::Operator, op});
       continue;
     };
 
@@ -251,48 +282,41 @@ std::vector<Token> tokenize(const std::string& expr) {
     auto upper_literal = to_upper(literal);
     std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE)");
     if (std::regex_match(upper_literal, op_regex)) {
-      addToken(tokens, {TokenType::Operator, upper_literal});
+      addToken(tokens, {Token::Type::Operator, upper_literal});
       continue;
     }
 
     /* Clickhouse (and friends) magic functions that are actually operators */
     if (operatorFuncs().contains(literal)) {
-      addToken(tokens, {TokenType::OperatorFunction, literal});
+      addToken(tokens, {Token::Type::OperatorFunction, literal});
       continue;
     }
     // EXTRACT function like YEAR and friends
     if (extractFuncs().contains(upper_literal)) {
-      addToken(tokens, {TokenType::ExtractFunction, extractFuncs().at(upper_literal)});
+      addToken(tokens, {Token::Type::ExtractFunction, extractFuncs().at(upper_literal)});
       continue;
     }
 
-    static const std::set<std::string> funcs = {"SUM",
-                                                "MAX",
-                                                "MIN",
-                                                "AVG",
-                                                "COUNT",
-                                                "COUNT_BIG",
-                                                "BLOOM",
-                                                "ANY",
-                                                "EXISTS"};
-    static const std::map<std::string, std::string> translate = {{"COUNT_BIG", "COUNT"},
-                                                                 // F*cked up PostgreSQL'isms
-                                                                 {"\"left\"", "LEFT"},
-                                                                 {"\"right\"", "RIGHT"},
-                                                                 {"\"substring\"", "SUBSTRING"},
-                                                                 {"TOYEAR", "YEAR"},
-                                                                 // ANY is IN to normal people
-                                                                 {"ANY", "IN"}};
-    if (funcs.contains(upper_literal)) {
-      if (translate.contains(upper_literal)) {
-        upper_literal = translate.at(upper_literal);
-      }
-
-      addToken(tokens, {TokenType::Function, upper_literal});
+    // TODO: This map can be moved into dialects
+    static const std::map<std::string_view, std::string_view> t = {{"COUNT_BIG", "COUNT"},
+                                                                   // F*cked up PostgreSQL'isms
+                                                                   {"\"left\"", "LEFT"},
+                                                                   {"\"right\"", "RIGHT"},
+                                                                   {"\"substring\"", "SUBSTRING"},
+                                                                   {"TOYEAR", "YEAR"},
+                                                                   // ANY is IN to normal people
+                                                                   {"ANY", "IN"}};
+    if (dialect->functions().contains(upper_literal)) {
+      upper_literal = translate(upper_literal, t);
+      upper_literal = translate(upper_literal, dialect->functions());
+      auto functionVariant = (upper_literal == "COUNT DISTINCT")
+                               ? Token::Type::CountDistinctFunction
+                               : Token::Type::Function;
+      addToken(tokens, {functionVariant, upper_literal});
       continue;
     }
 
-    addToken(tokens, {TokenType::Literal, literal});
+    addToken(tokens, {Token::Type::Literal, literal});
   }
 
   return tokens;
@@ -306,11 +330,11 @@ void removeMatching(std::vector<Token>& tokens, size_t index) {
 static size_t matchingParenthesis(const std::vector<Token>& tokens, size_t left_idx) {
   int depth = 1;
   for (size_t k = left_idx + 1; k < tokens.size(); ++k) {
-    if (tokens[k].type == TokenType::LeftParen) {
+    if (tokens[k].type == Token::Type::LeftParen) {
       ++depth;
       continue;
     }
-    if (tokens[k].type == TokenType::RightParen) {
+    if (tokens[k].type == Token::Type::RightParen) {
       depth--;
     }
     if (depth == 0) {
@@ -325,8 +349,8 @@ static std::vector<Token> processOperatorFunction(const std::vector<Token> token
   for (size_t i = 0; i < tokens.size(); ++i) {
     const Token& t = tokens[i];
 
-    if (t.type == TokenType::OperatorFunction) {
-      if (i + 1 >= tokens.size() || tokens[i + 1].type != TokenType::LeftParen) {
+    if (t.type == Token::Type::OperatorFunction) {
+      if (i + 1 >= tokens.size() || tokens[i + 1].type != Token::Type::LeftParen) {
         throw std::runtime_error("Malformed expression: expected '(' after operator function " + t.value);
       }
       // Found a valid OperatorFunction  of form F(exprA, exprB). Find exprA and exprB and
@@ -341,13 +365,13 @@ static std::vector<Token> processOperatorFunction(const std::vector<Token> token
       size_t arg_start = left_idx + 1;
       int depth = 0;
       for (size_t k = left_idx + 1; k < right; ++k) {
-        if (tokens[k].type == TokenType::LeftParen) {
+        if (tokens[k].type == Token::Type::LeftParen) {
           ++depth;
-        } else if (tokens[k].type == TokenType::RightParen) {
+        } else if (tokens[k].type == Token::Type::RightParen) {
           --depth;
         }
 
-        if (depth == 0 && tokens[k].type == TokenType::Comma) {
+        if (depth == 0 && tokens[k].type == Token::Type::Comma) {
           expr_ranges.emplace_back(arg_start, k);
           arg_start = k + 1;
         }
@@ -356,14 +380,14 @@ static std::vector<Token> processOperatorFunction(const std::vector<Token> token
 
       // transform func(arg1, arg2) => (arg1 <op> arg2)
       out.insert(out.end(), tokens.begin(), tokens.begin() + i); // Everything up until the func
-      out.push_back({TokenType::LeftParen, "("});
+      out.push_back({Token::Type::LeftParen, "("});
       for (size_t i = 0; i < expr_ranges.size(); ++i) {
         out.insert(out.end(), tokens.begin() + expr_ranges[i].first, tokens.begin() + expr_ranges[i].second);
         if (i < expr_ranges.size() - 1) {
-          out.push_back({TokenType::Operator, op});
+          out.push_back({Token::Type::Operator, op});
         }
       }
-      out.push_back({TokenType::RightParen, ")"});
+      out.push_back({Token::Type::RightParen, ")"});
       if (right + 1 < tokens.size()) {
         // remaining tokens (if any) after the closing ')'
         out.insert(out.end(), tokens.begin() + right + 1, tokens.end());
@@ -390,13 +414,14 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   if (tokens.empty()) {
     return tokens;
   }
+  // Match up all parenthesis
   std::stack<Token*> match;
   for (size_t i = 0; i < tokens.size(); ++i) {
     switch (tokens[i].type) {
-      case TokenType::LeftParen:
+      case Token::Type::LeftParen:
         match.push(&tokens[i]);
         break;
-      case TokenType::RightParen: {
+      case Token::Type::RightParen: {
         const auto other = match.top();
         match.pop();
         other->matching = i;
@@ -411,33 +436,36 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   }
   for (size_t i = 0; i < tokens.size(); ++i) {
     const auto currentToken = tokens[i];
-    if (currentToken.type != TokenType::LeftParen) {
+    if (currentToken.type != Token::Type::LeftParen) {
       continue;
     }
     const auto prev = safeToken(tokens, i - 1);
     const auto next = safeToken(tokens, i + 1);
     const auto next_next = safeToken(tokens, i + 2);
-    if (next.type == TokenType::Literal && next_next.type == TokenType::RightParen) {
-      if (prev.type == TokenType::Function || prev.type == TokenType::ExtractFunction) {
+    if (next.type == Token::Type::Literal && next_next.type == Token::Type::RightParen) {
+      if (prev.isFunction()) {
         continue; // Don't remove if part of a larger expression
       }
       // Lonely literal inside parenthesis
       removeMatching(tokens, i);
     }
 
-    if (next.type != TokenType::LeftParen) {
+    if (next.type != Token::Type::LeftParen) {
       continue;
     }
-    // We have two "((" in a row
+    // We have two "((" in a row.. Is there a matching "))" ?
     const auto right_offset = currentToken.matching;
-    if (safeToken(tokens, right_offset + 1).type != TokenType::RightParen) {
+    if (safeToken(tokens, right_offset - 1).type != Token::Type::RightParen) {
       continue;
     }
-    // We now have “((“ followed by matching “))” later. The innermost parenthesis is redundant.
+    if (next.matching != right_offset - 1) {
+      continue;
+    }
+    // We now have “((“ followed by matching “))” later. The outermost parenthesis is redundant.
     removeMatching(tokens, i);
   }
 
-  if (tokens[0].type == TokenType::LeftParen && tokens[0].matching == tokens.size() - 1) {
+  if (tokens[0].type == Token::Type::LeftParen && tokens[0].matching == tokens.size() - 1) {
     // Entire expression in parentheses
     removeMatching(tokens, 0);
   }
@@ -455,7 +483,7 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
 Table splitTable(std::string_view table_name) {
   const size_t delimiter = table_name.find('.');
   if (delimiter == std::string::npos) {
-    throw std::invalid_argument("Table name must be qualified with a schema (e.g., 'schema_name.table_name').");
+    return Table{std::string(), std::string(table_name)};
   }
   const auto schema = table_name.substr(0, delimiter);
   const auto table = table_name.substr(delimiter + 1);
@@ -470,6 +498,7 @@ std::string cleanExpression(std::string expression) {
   // XML escape back to the real values
   expression = std::regex_replace(expression, std::regex("&lt;"), "<");
   expression = std::regex_replace(expression, std::regex("&gt;"), ">");
+  expression = std::regex_replace(expression, std::regex("\\s+"), " ");
 
   // DuckDB optional expressions
   expression = std::regex_replace(expression, std::regex("""optional:"), "");
@@ -487,46 +516,6 @@ std::string cleanExpression(std::string expression) {
   auto tokens = tokenize(expression);
   tokens = transformOperatorFuncs(tokens);
   tokens = removeRedundantParenthesis(tokens);
-  return render(tokens);
-}
-
-
-std::string removeExpressionFunction(const std::string& expression, const std::string_view function_name) {
-  std::string function_name_upper = to_upper(function_name);
-  auto tokens = tokenize(expression);
-  for (ssize_t i = 0; i < tokens.size(); ++i) {
-    if (tokens[i].type != TokenType::Function) {
-      continue;
-    }
-    const std::string_view token_func = tokens[i].value;
-    if (token_func == function_name_upper) {
-      // func()
-      tokens[i].type = TokenType::Ignore;
-      tokens[i + 1].type = TokenType::Ignore;
-      tokens[i + 2].type = TokenType::Ignore;
-
-      // Parenthesis  of form (func()))
-      const auto parenthesis_before = safeToken(tokens, i - 1);
-      const auto parenthesis_after = safeToken(tokens, i + 3);
-
-      ssize_t func_pos = i - 1;
-      if (parenthesis_before.type == TokenType::LeftParen && parenthesis_after.type == TokenType::RightParen) {
-        tokens[i - 1].type = TokenType::Ignore;
-        tokens[i + 3].type = TokenType::Ignore;
-        --func_pos;
-      }
-
-      // Operators before the func() (NOT, AND, etc)
-      while (true) {
-        const auto potential_op = safeToken(tokens, func_pos);
-        if (potential_op.type != TokenType::Operator) {
-          break;
-        }
-        tokens[func_pos].type = TokenType::Ignore;
-        --func_pos;
-      }
-    }
-  }
   return render(tokens);
 }
 }

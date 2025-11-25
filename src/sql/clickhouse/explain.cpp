@@ -11,11 +11,11 @@ namespace sql::clickhouse {
 using namespace sql::explain;
 using namespace nlohmann;
 
-
 struct ExplainCtx {
   std::map<std::string, std::set<Node*>> nodeBroadCast;
   std::map<Node*, std::string> existFilters;
   std::string schema_name;
+  std::map<std::string, std::string> filterSets;
 
   void addNode(const std::string& node_name, Node* node) {
     if (!nodeBroadCast.contains(node_name)) {
@@ -23,15 +23,138 @@ struct ExplainCtx {
     }
     nodeBroadCast[node_name].insert(node);
   }
+
+  std::string replaceSets(std::string string_explain) const {
+    const std::regex in_regex(R"((notIn|in)\(([\w\._\`"]+),__set_[\w_\d]+\))", std::regex::icase);
+    std::string result;
+    std::sregex_iterator it(string_explain.begin(), string_explain.end(), in_regex);
+    std::sregex_iterator end;
+    size_t lastPos = 0;
+    for (; it != end; ++it) {
+      const auto& m = *it;
+      result.append(string_explain, lastPos, m.position() - lastPos);
+      const std::string col = m[2].str();
+      const auto key = cleanExpression(col);
+      if (filterSets.contains(key)) {
+        result += col + " IN " + filterSets.at(key);
+      } else {
+        result += m.str();
+      }
+      lastPos = m.position() + m.length();
+    }
+    result.append(string_explain, lastPos, string_explain.size() - lastPos);
+    return result;
+  };
 };
 
-std::string cleanFilter(std::string filter) {
+
+struct ClickHouseDialect final : EngineDialect {
+  ExplainCtx& ctx_;
+
+  explicit ClickHouseDialect(ExplainCtx& ctx)
+    : ctx_(ctx) {
+  }
+
+  void preRender(std::vector<Token>& tokens) override {
+    for (auto& token : tokens) {
+      if (token.type != Token::Type::Function) {
+        continue;
+      }
+      // In another extraordinary display of madness, ClickHouse requires the sumIf function to be case-sensitive
+      if (token.value == "SUMIF") {
+        token.value = "sumIf";
+      }
+    }
+  }
+
+  std::string postRender(std::string toRender) override {
+    return ctx_.replaceSets(toRender);
+  }
+
+  const std::map<std::string_view, std::string_view>& engineFunctions() const override {
+    static const std::map<std::string_view, std::string_view> m = {{"UNIQEXACT", "COUNT DISTINCT"}, {"SUMIF", ""}};
+    return m;
+  }
+};
+
+
+std::string removeExpressionFunction(const std::string& expression, const std::string_view function_name) {
+  const std::string function_name_upper = to_upper(function_name);
+  auto tokens = tokenize(expression);
+  for (ssize_t i = 0; i < tokens.size(); ++i) {
+    if (tokens[i].type != Token::Type::Function) {
+      continue;
+    }
+    const std::string_view token_func = tokens[i].value;
+    if (token_func == function_name_upper) {
+      // func()
+      tokens[i].type = Token::Type::Ignore;
+      tokens[i + 1].type = Token::Type::Ignore;
+      tokens[i + 2].type = Token::Type::Ignore;
+
+      // Parenthesis  of form (func()))
+      const auto parenthesis_before = safeToken(tokens, i - 1);
+      const auto parenthesis_after = safeToken(tokens, i + 3);
+
+      ssize_t func_pos = i - 1;
+      if (parenthesis_before.type == Token::Type::LeftParen && parenthesis_after.type == Token::Type::RightParen) {
+        tokens[i - 1].type = Token::Type::Ignore;
+        tokens[i + 3].type = Token::Type::Ignore;
+        --func_pos;
+      }
+
+      // Operators before the func() (NOT, AND, etc)
+      while (true) {
+        const auto potential_op = safeToken(tokens, func_pos);
+        if (potential_op.type != Token::Type::Operator) {
+          break;
+        }
+        tokens[func_pos].type = Token::Type::Ignore;
+        --func_pos;
+      }
+    }
+  }
+  return render(tokens);
+}
+
+/**
+ * Sometimes, ClickHouse will addd a __TableX.foo = __TableY.foo to a Scan clause which probably represents
+ * some kind of bloom filter. But we don't want to render this when generating SQL
+ */
+std::string cleanOddEquality(std::string filter) {
+  const std::regex eq_regex(R"(equals\(__table(\d+)\.[^\s,()]+, __table(\d+)\.[^\s,()]+\))", std::regex::icase);
+  std::string result;
+  std::sregex_iterator it(filter.begin(), filter.end(), eq_regex);
+  std::sregex_iterator end;
+  size_t lastPos = 0;
+  for (; it != end; ++it) {
+    const auto& m = *it;
+    result.append(filter, lastPos, m.position() - lastPos);
+    const std::string left_idx = m[1].str();
+    const std::string right_idx = m[2].str();
+    if (left_idx != right_idx) {
+      result += "TRUE";
+    } else {
+      result += m.str();
+    }
+    lastPos = m.position() + m.length();
+  }
+  result.append(filter, lastPos, filter.size() - lastPos);
+  return result;
+}
+
+std::string cleanFilter(std::string filter, const bool handle_odd_equality = false) {
   filter = std::regex_replace(filter, std::regex(R"(and\()"), "funcAnd(");
   filter = std::regex_replace(filter, std::regex(R"(or\()"), "funcOr(");
   filter = std::regex_replace(filter, std::regex(R"(like\()"), "funcLike(");
   // Odd _TYPE "casts"
   filter = std::regex_replace(filter, std::regex(R"(Nullable\(([^)]*)\))"), "$1");
   filter = std::regex_replace(filter, std::regex(R"(_(String|UInt8|Int8|Float64))"), "");
+
+  if (handle_odd_equality) {
+    filter = cleanOddEquality(filter);
+  }
+
   /* Clickhouse prefixes column names with __tableX which point at… Nothing…
    * There doesn't seem to be a way to get from __tableX to the actual table name.
    * Instead, strip it off.
@@ -154,7 +277,7 @@ void parseScanClause(Node* n, const json& node_json, ExplainCtx& ctx) {
     return;
   }
   const auto filter = prewhere_filter["Prewhere filter column"].get<std::string>();
-  n->setFilter(cleanFilter(filter));
+  n->setFilter(cleanFilter(filter, true));
 
   // Filters are a topographically sorted set of nodes. Some of these expressions are "bogus"
   // and represents ClickHouse sick way of doing Semi-join. We can recognize these by them being equal
@@ -178,7 +301,7 @@ void parseScanClause(Node* n, const json& node_json, ExplainCtx& ctx) {
     const auto argument_1 = arguments[0].get<int64_t>();
     const auto argument_2 = arguments[1].get<int64_t>();
     if (argument_1 == argument_2) {
-      const auto exist_filter = cleanFilter(action["Result Name"].get<std::string>());
+      const auto exist_filter = cleanFilter(action["Result Name"].get<std::string>(), true);
       ctx.existFilters[n] = cleanExpression(exist_filter);
     }
   }
@@ -440,21 +563,49 @@ void pruneBroadCast(Node& root, ExplainCtx& ctx) {
   }
 }
 
+/**
+ * Sets are odd constructs in ClikcHouse. They appear in the query plan as __set__<long auto generated string>
+ *
+ * The plan appears to have no way to tell what is in a set. So we have to guess it by looking for IN-lists in the
+ * query itself.
+ */
+void guessSets(const std::string_view statement, ExplainCtx& ctx) {
+  const std::string s(statement);
+  // NOTE: We look for multiple closing paranthesis (in case sets are nested inside each other
+
+  // TODO: Must actually look for opening/closing paranthesis here properly
+
+  const std::regex in_regex(R"(([\w\.\`"]+)\s+(NOT\s+)?IN\s*(\(+[^\)]+[\)\s]+))", std::regex::icase);
+  auto begin = std::sregex_iterator(s.begin(), s.end(), in_regex);
+  auto end = std::sregex_iterator();
+
+  for (auto it = begin; it != end; ++it) {
+    const auto& m = *it;
+    const std::string col = m[1].str();
+    const std::string in_list = std::regex_replace(m[3].str(), std::regex("\\s+"), " ");
+
+    const auto key = cleanExpression(col);
+    ctx.filterSets[key] = in_list;
+  }
+};
+
+
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, description = 1, projections = 1\n"
                                    + std::string(statement) + "\nFORMAT TSVRaw";
+  ExplainCtx ctx;
+  ClickHouseDialect dialect(ctx);
+  DialectContext d{dialect};
   auto string_explain = fetchScalar(explain_stmt).asString();
+  guessSets(statement, ctx);
+
   auto json_explain = json::parse(string_explain);
 
-  ExplainCtx ctx;
   auto plan = buildExplainPlan(json_explain, ctx);
 
   plan->flipJoins();
-
   pruneBroadCast(plan->planTree(), ctx);
-
   fixSemiJoin(plan->planTree(), ctx);
-
   fixActuals(plan->planTree(), this, ctx);
 
   return plan;

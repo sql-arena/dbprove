@@ -1,6 +1,7 @@
 #pragma once
 #include "connection_base.h"
 #include "explain/column.h"
+#include "expression.h"
 
 namespace sql {
 struct ForeignKey {
@@ -15,22 +16,7 @@ struct Table {
   std::string table_name;
 };
 
+
 Table splitTable(std::string_view table_name);
-
-/**
- * Cleans up an expression by removing unnecessary whitespace, newlines, tabs etc.
- * @param expression Expression to clean
- * @return A better formatted expression
- */
-std::string cleanExpression(std::string expression);
-
-/**
- * Remove a specific function from an expression
- * @param expression Expression to clean
- * @param function_name The function  to remove
- * @return A better formatted expression
- */
-
-std::string removeExpressionFunction(const std::string& expression, std::string_view function_name);
 }
 

@@ -3,6 +3,11 @@
 #include "group_by.h"
 
 namespace sql::explain {
+Projection::Projection(const std::vector<Column>& columns_projected)
+  : Node(NodeType::PROJECTION)
+  , columns_projected(columns_projected) {
+}
+
 std::string Projection::compactSymbolic() const {
   std::string result;
   result += symbol_;

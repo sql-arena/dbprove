@@ -9,10 +9,7 @@ class Projection : public Node {
   static const constexpr char* symbol_ = "π";
 
 public:
-  Projection(const std::vector<Column>& columns_projected)
-    : Node(NodeType::PROJECTION)
-    , columns_projected(columns_projected) {
-  }
+  Projection(const std::vector<Column>& columns_projected);
 
   std::string compactSymbolic() const override;
 

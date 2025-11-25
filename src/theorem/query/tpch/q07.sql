@@ -18,9 +18,9 @@ FROM (SELECT n1.n_name                          AS supp_nation,
           ON s_nationkey = n1.n_nationkey
       INNER JOIN tpch.nation n2
           ON c_nationkey = n2.n_nationkey
-      WHERE (n1.n_name = 'GERMANY' AND n2.n_name = 'FRANCE')
-         OR (n1.n_name = 'FRANCE' AND n2.n_name = 'GERMANY')
-          AND l_shipdate BETWEEN '1995-01-01' AND '1996-12-31') AS shipping
+      WHERE ((n1.n_name = 'GERMANY' AND n2.n_name = 'FRANCE')
+          OR (n1.n_name = 'FRANCE' AND n2.n_name = 'GERMANY'))
+        AND l_shipdate BETWEEN '1995-01-01' AND '1996-12-31') AS shipping
 GROUP BY supp_nation,
          cust_nation,
          l_year

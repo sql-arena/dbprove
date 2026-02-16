@@ -127,13 +127,13 @@ Result::Result(ResultHolder& duck_result)
 Result::~Result() {
 }
 
-size_t Result::rowCount() const {
+RowCount Result::rowCount() const {
   assert(impl_->duck_result_->type != ::duckdb::QueryResultType::STREAM_RESULT);
   const auto materialized = static_cast<::duckdb::MaterializedQueryResult*>(impl_->duck_result_.get());
   return materialized->RowCount();
 }
 
-size_t Result::columnCount() const { return impl_->columnCount_; }
+ColumnCount Result::columnCount() const { return impl_->columnCount_; }
 
 const RowBase& Result::nextRow() {
   return impl_->nextRow();

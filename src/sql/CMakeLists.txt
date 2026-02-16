@@ -48,13 +48,14 @@ target_include_directories(sql_driver_headers
 target_embed_files(${_targetName} SQL_FILES information_schema/data_type.sql)
 
 # Drivers
-
-add_subdirectory("odbc")
+if(NOT APPLE)
+    add_subdirectory("msodbc")
+    add_subdirectory("odbc")
+endif()
 add_subdirectory("postgresql")
 add_subdirectory("utopia")
 add_subdirectory("duckdb")
 add_subdirectory("databricks")
-add_subdirectory("msodbc")
 add_subdirectory("yellowbrick")
 add_subdirectory("clickhouse")
 add_subdirectory("snowflake")
@@ -73,7 +74,6 @@ target_link_libraries(${_targetName}
         dbprove::sql::utopia
         dbprove::sql::duckdb
         dbprove::sql::databricks
-        dbprove::sql::msodbc
         dbprove::sql::yellowbrick
         dbprove::sql::clickhouse
         dbprove::sql::sqlite
@@ -81,6 +81,12 @@ target_link_libraries(${_targetName}
         dbprove::sql::mariadb
 )
 
+if(NOT APPLE)
+    target_link_libraries(${_targetName}
+            PRIVATE
+            dbprove::sql::msodbc
+    )
+endif()
 
 # Test it all, linking all drivers and running tests across them
 if (DBPROVE_ENABLE_TESTING)

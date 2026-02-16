@@ -69,6 +69,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
     case Type::ClickHouse:
       return "default";
     }
+    default:
+      return "";
   }
   throw std::invalid_argument("No default database found");
 }

@@ -11,6 +11,7 @@ namespace sql::snowflake {
     RowCount currentRowIndex_ = 0;
   public:
     explicit Result(void* handle);
+    ~Result();
     RowCount rowCount() const override;
     ColumnCount columnCount() const override;
 

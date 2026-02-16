@@ -23,8 +23,8 @@ public:
   ~Result() override {
   };
 
-  size_t rowCount() const override;
-  size_t columnCount() const override;
+  RowCount rowCount() const override;
+  ColumnCount columnCount() const override;
 
 protected:
   void reset() override {

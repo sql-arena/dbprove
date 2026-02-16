@@ -13,6 +13,10 @@ namespace sql::snowflake {
     : impl_(std::make_unique<Pimpl>(handle)) {
   }
 
+  Result::~Result()
+  {
+  }
+
   RowCount Result::rowCount() const {
     // TODO: Implement
     return 0;

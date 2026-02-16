@@ -8,8 +8,27 @@
     {
       "name": "vendor-vcpkg",
       "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/extern/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}",
+        "VCPKG_MANIFEST_MODE": "ON",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed"
+      },
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
+      }
+    },
+    {
+      "name": "osx-arm-base",
+      "inherits": [
+        "vendor-vcpkg"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-osx"
       }
     },
     {
@@ -115,6 +134,11 @@
       "name": "build_msvc_vendor_debug",
       "displayName": "Default",
       "configurePreset": "msvc_x64_vcpkg_vendor_debug"
+    },
+    {
+      "name": "build_osx_arm_debug",
+      "displayName": "Default",
+      "configurePreset": "osx-arm-base"
     },
     {
       "name": "build_msvc_vendor_release",

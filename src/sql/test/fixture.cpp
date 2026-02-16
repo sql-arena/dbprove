@@ -18,7 +18,7 @@ std::vector<sql::ConnectionFactory> factories(const bool local_only, const std::
   static sql::ConnectionFactory databricks_factory(
       sql::Engine("Databricks"),
       sql::CredentialAccessToken(sql::Engine("Databricks")));
-
+#ifndef __APPLE__
   static sql::ConnectionFactory mssql_factory(
       sql::Engine("SQL Server"),
       sql::CredentialPassword("localhost",
@@ -26,7 +26,7 @@ std::vector<sql::ConnectionFactory> factories(const bool local_only, const std::
                               1433,
                               "sa",
                               "password"));
-
+#endif
   static sql::ConnectionFactory mariadb_factory(
       sql::Engine("MariaDb"),
       sql::CredentialPassword("localhost",
@@ -42,7 +42,9 @@ std::vector<sql::ConnectionFactory> factories(const bool local_only, const std::
   static std::vector local_factories = {
       postgres_factory,
       duckdb_factory,
+#ifndef __APPLE__
       mssql_factory,
+#endif
       mariadb_factory,
       sqlite_factory
   };

@@ -30,7 +30,8 @@ enum class SqlTypeKind {
   DATE,
   TIME,
   DATETIME,
-  SQL_NULL
+  SQL_NULL,
+  UNKNOWN
 };
 
 /**
@@ -303,6 +304,7 @@ public:
     if (std::holds_alternative<SqlInt>(data)) {
       return SqlTypeKind::INT;
     }
+    return SqlTypeKind::UNKNOWN;
   }
 };
 }

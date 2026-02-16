@@ -4,7 +4,7 @@
 
 
 namespace sql::utopia {
-size_t Result::rowCount() const {
+RowCount Result::rowCount() const {
   switch (data) {
     case UtopiaData::EMPTY:
       return 0;
@@ -12,11 +12,12 @@ size_t Result::rowCount() const {
       return 10;
     case UtopiaData::TEST_RESULT:
       return 3;
+  default:
   }
   return 0;
 }
 
-size_t Result::columnCount() const {
+ColumnCount Result::columnCount() const {
   switch (data) {
     case UtopiaData::EMPTY:
       return 1;
@@ -24,15 +25,18 @@ size_t Result::columnCount() const {
       return 11;
     case UtopiaData::TEST_RESULT:
       return 2;
+    default:
+      return 0;
   }
   return 0;
 }
 
 const RowBase& utopia::Result::nextRow() {
   switch (data) {
-    case UtopiaData::EMPTY:
+    case UtopiaData::EMPTY: {
       return SentinelRow::instance();
-    case UtopiaData::N10:
+    }
+    case UtopiaData::N10: {
       if (rowNumber > rowCount()) {
         return SentinelRow::instance();
       }
@@ -41,6 +45,8 @@ const RowBase& utopia::Result::nextRow() {
       ++rowNumber;
       currentRow_ = Row(std::vector({v}));
       return currentRow_;
+    }
+    default: ;
   }
   return SentinelRow::instance();
 }

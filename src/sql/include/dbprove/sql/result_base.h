@@ -54,11 +54,11 @@ protected:
     return SentinelRow::instance();
   }
 
-  size_t rowCount() const override {
+  RowCount rowCount() const override {
     return 0;
   }
 
-  size_t columnCount() const override {
+  ColumnCount columnCount() const override {
     return 0;
   }
 };

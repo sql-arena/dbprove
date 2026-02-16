@@ -3,6 +3,8 @@
 #include <vector>
 #include <dbprove/sql/sql.h>
 
+#include "dbprove/sql/connection_factory.h"
+
 /**
  * For testing actual connectivity, we rely on there being standard configuration, currently assumed to be on
  * localhost  Since we don't care about security for this use case

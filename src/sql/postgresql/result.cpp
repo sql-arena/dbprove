@@ -67,9 +67,9 @@ Result::Result(void* data)
 Result::~Result() {
 }
 
-size_t Result::rowCount() const { return impl_->rowCount_; }
+RowCount Result::rowCount() const { return impl_->rowCount_; }
 
-size_t Result::columnCount() const { return impl_->columnCount_; }
+ColumnCount Result::columnCount() const { return impl_->columnCount_; }
 
 const RowBase& Result::nextRow() {
   return impl_->nextRow();

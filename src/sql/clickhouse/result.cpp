@@ -117,7 +117,7 @@ SqlVariant Result::getRowValue(size_t index) const {
       return SqlVariant(column.As<::clickhouse::ColumnInt64>()->At(offset));
     case ::clickhouse::Type::UInt64:
       // Clickhouse returns COUNT(*) as this type
-      return SqlVariant(column.As<::clickhouse::ColumnUInt64>()->At(offset));
+      return SqlVariant(static_cast<int64_t>(column.As<::clickhouse::ColumnUInt64>()->At(offset)));
     case ::clickhouse::Type::Float32:
       return SqlVariant(column.As<ch::ColumnFloat32>()->At(offset));
     case ::clickhouse::Type::Float64:

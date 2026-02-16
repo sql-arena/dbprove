@@ -28,6 +28,8 @@ public:
         values.push_back(SqlVariant("abc"));
         values.push_back(SqlVariant(0.42));
         break;
+      default:
+      break;
     }
   }
 

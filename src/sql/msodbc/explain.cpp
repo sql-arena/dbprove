@@ -35,7 +35,7 @@ void parseRowCount(Node* node, xml_node node_xml) {
  */
 void fixProjection(Node* node) {
   for (auto& child : node->depth_first()) {
-    if (!std::isinf(child.rows_actual)) {
+    if (!std::isinf(child.rows_actual) && !std::isnan(child.rows_actual)) {
       continue;
     }
 
@@ -326,6 +326,10 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     std::string filter;
     if (index_scan) {
       const auto predicate = index_scan.child("Predicate");
+      filter = predicate.child("ScalarOperator").attribute("ScalarString").as_string();
+    }
+    if (table_scan) {
+      const auto predicate = table_scan.child("Predicate");
       filter = predicate.child("ScalarOperator").attribute("ScalarString").as_string();
     }
 

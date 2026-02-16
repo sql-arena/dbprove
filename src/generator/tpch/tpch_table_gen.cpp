@@ -322,7 +322,7 @@ void part_gen(GeneratorState& state) {
 
 
 void partsupp_gen(GeneratorState& state) {
-  const size_t partsupp_count = state.table("tpch.partsupp").row_count;
+  const size_t part_count = state.table("tpch.part").row_count;
   const auto file_name = state.csvPath("tpch.partsupp");
   std::ofstream partsupp(file_name);
   c(partsupp, "PS_PARTKEY");
@@ -337,7 +337,7 @@ void partsupp_gen(GeneratorState& state) {
   DoubleRange ps_supplycost(1, 1000.0);
   TpchText ps_comment(49, 198);
 
-  for (size_t row = 0; row < partsupp_count / 4; ++row) {
+  for (size_t row = 0; row < part_count; ++row) {
     const auto ps_part_key = p_partkey.next();
 
     for (size_t i = 0; i < 4; ++i) {

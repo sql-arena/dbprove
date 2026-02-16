@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace dbprove::theorem {
-void do_threads(size_t threadCount, std::function<void()> thread_work) {
+void do_threads(const size_t threadCount, std::function<void()> thread_work) {
   std::vector<std::thread> threads;
   for (size_t i = 0; i < threadCount; ++i) {
     threads.emplace_back(thread_work);
@@ -18,7 +18,7 @@ void do_threads(size_t threadCount, std::function<void()> thread_work) {
   }
 }
 
-void Runner::serial(const std::span<Query>& queries, size_t iterations) const {
+void Runner::serial(const std::span<Query>& queries, const size_t iterations) const {
   const auto connection = factory_.create();
   for (size_t i = 0; i < iterations; ++i) {
     for (auto& query : queries) {

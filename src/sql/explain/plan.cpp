@@ -144,7 +144,7 @@ void Plan::flipJoins() const {
 
 int8_t estimateOrderOfMagnitude(double estimate, double actual) {
   if (std::isnan(estimate) || std::isnan(actual)) {
-    return Plan::MisEstimation::INFINITE_UNDER;
+    return Plan::MisEstimation::UNKNOWN;
   }
   actual = std::max(actual, 1.0);
   estimate = std::max(estimate, 1.0);
@@ -173,6 +173,10 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
 
   for (const auto& n : planTree().depth_first()) {
     auto magnitude = estimateOrderOfMagnitude(n.rows_estimated, n.rows_actual);
+    if (magnitude == Plan::MisEstimation::UNKNOWN) {
+      // This engine doesn't support estimation, or we couldn't calculate it.
+      continue;
+    }
     switch (n.type) {
       case NodeType::JOIN: {
         mis_estimation[Operation::Join][magnitude].count++;

@@ -17,6 +17,11 @@ auto ansiDialect = AnsiDialect();
 
 thread_local EngineDialect* current_dialect = &ansiDialect;
 
+const std::set<std::string_view>& EngineDialect::castFunctions() const {
+  const static std::set<std::string_view> s = {};
+  return s;
+}
+
 const std::map<std::string_view, std::string_view>& EngineDialect::engineFunctions() const {
   static const std::map<std::string_view, std::string_view> n = {};
   return n;
@@ -45,6 +50,15 @@ Token safeToken(const std::vector<Token>& tokens, const ssize_t index) {
   return tokens[index];
 }
 
+std::string removeQuotes(const std::string_view str) {
+  if (str.size() >= 2) {
+    if ((str.front() == '"' && str.back() == '"') || (str.front() == '\'' && str.back() == '\'')) {
+      return std::string(str.substr(1, str.size() - 2));
+    }
+  }
+  return std::string(str);
+}
+
 void addToken(std::vector<Token>& tokens, const Token& token) {
   tokens.push_back(token);
 }
@@ -71,7 +85,7 @@ auto& operatorFuncs() {
                                                                    {"funcAnd", "AND"},
                                                                    {"funcOr", "OR"},
                                                                    {"funcLike", "LIKE"},
-                                                                   {"_CAST", "::"}};
+                                                                   {"funcCast", "::"}};
   return operatorFuncs;
 }
 
@@ -104,7 +118,6 @@ std::string render(std::vector<Token>& tokens) {
     return "";
   }
   size_t depth = 0;
-  size_t closeAtDepth = -1;
   std::string result;
   for (size_t i = 0; i < tokens.size(); ++i) {
     Token token = tokens[i];
@@ -137,6 +150,9 @@ std::string render(std::vector<Token>& tokens) {
           result += " ";
         }
         result += token.value;
+        break;
+      case Token::Type::Cast:
+        result += "::";
         break;
       case Token::Type::Ignore:
         break;
@@ -258,7 +274,7 @@ std::vector<Token> tokenize(const std::string& expr) {
     }
     if (op == "::") {
       // Cast
-      addToken(tokens, {Token::Type::Operator, "::"});
+      addToken(tokens, {Token::Type::Cast, "::"});
       continue;
     }
 
@@ -283,6 +299,11 @@ std::vector<Token> tokenize(const std::string& expr) {
     std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE)");
     if (std::regex_match(upper_literal, op_regex)) {
       addToken(tokens, {Token::Type::Operator, upper_literal});
+      continue;
+    }
+
+    if (dialect->castFunctions().contains(literal)) {
+      addToken(tokens, {Token::Type::OperatorFunction, "funcCast"});
       continue;
     }
 
@@ -384,7 +405,8 @@ static std::vector<Token> processOperatorFunction(const std::vector<Token> token
       for (size_t i = 0; i < expr_ranges.size(); ++i) {
         out.insert(out.end(), tokens.begin() + expr_ranges[i].first, tokens.begin() + expr_ranges[i].second);
         if (i < expr_ranges.size() - 1) {
-          out.push_back({Token::Type::Operator, op});
+          const auto type = t.value == "funcCast" ? Token::Type::Cast : Token::Type::Operator;
+          out.push_back({type, op});
         }
       }
       out.push_back({Token::Type::RightParen, ")"});

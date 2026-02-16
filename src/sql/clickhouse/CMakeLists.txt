@@ -10,6 +10,7 @@ target_sources(${_targetName}
         connection.cpp
         row.cpp
         explain.cpp
+        dialect.cpp
 )
 
 find_library(CLICKHOUSECPP_LIB

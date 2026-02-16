@@ -4,6 +4,7 @@
 #include <regex>
 #include <set>
 
+#include "dialect.h"
 #include "explain/plan.h"
 #include <plog/Log.h>
 
@@ -25,7 +26,7 @@ struct ExplainCtx {
   }
 
   std::string replaceSets(std::string string_explain) const {
-    const std::regex in_regex(R"((notIn|in)\(([\w\._\`"]+),__set_[\w_\d]+\))", std::regex::icase);
+    const std::regex in_regex(R"((notIn|in)\(([\w\.,_\(\)\`"]+),__set_[\w_\d]+\))", std::regex::icase);
     std::string result;
     std::sregex_iterator it(string_explain.begin(), string_explain.end(), in_regex);
     std::sregex_iterator end;
@@ -34,11 +35,12 @@ struct ExplainCtx {
       const auto& m = *it;
       result.append(string_explain, lastPos, m.position() - lastPos);
       const std::string col = m[2].str();
-      const auto key = cleanExpression(col);
+      const auto key = to_upper(cleanExpression(col));
       if (filterSets.contains(key)) {
         result += col + " IN " + filterSets.at(key);
       } else {
-        result += m.str();
+        /* Don't know this set. likely some kindof inferred pushdown (example in Q18) */
+        result += "TRUE";
       }
       lastPos = m.position() + m.length();
     }
@@ -48,34 +50,9 @@ struct ExplainCtx {
 };
 
 
-struct ClickHouseDialect final : EngineDialect {
-  ExplainCtx& ctx_;
-
-  explicit ClickHouseDialect(ExplainCtx& ctx)
-    : ctx_(ctx) {
-  }
-
-  void preRender(std::vector<Token>& tokens) override {
-    for (auto& token : tokens) {
-      if (token.type != Token::Type::Function) {
-        continue;
-      }
-      // In another extraordinary display of madness, ClickHouse requires the sumIf function to be case-sensitive
-      if (token.value == "SUMIF") {
-        token.value = "sumIf";
-      }
-    }
-  }
-
-  std::string postRender(std::string toRender) override {
-    return ctx_.replaceSets(toRender);
-  }
-
-  const std::map<std::string_view, std::string_view>& engineFunctions() const override {
-    static const std::map<std::string_view, std::string_view> m = {{"UNIQEXACT", "COUNT DISTINCT"}, {"SUMIF", ""}};
-    return m;
-  }
-};
+std::string ClickHouseDialect::postRender(std::string toRender) {
+  return ctx_.replaceSets(toRender);
+}
 
 
 std::string removeExpressionFunction(const std::string& expression, const std::string_view function_name) {
@@ -564,31 +541,63 @@ void pruneBroadCast(Node& root, ExplainCtx& ctx) {
 }
 
 /**
- * Sets are odd constructs in ClikcHouse. They appear in the query plan as __set__<long auto generated string>
+ * Sets are odd constructs in ClickHouse. They appear in the query plan as __set__<long auto generated string>
  *
  * The plan appears to have no way to tell what is in a set. So we have to guess it by looking for IN-lists in the
  * query itself.
  */
 void guessSets(const std::string_view statement, ExplainCtx& ctx) {
   const std::string s(statement);
-  // NOTE: We look for multiple closing paranthesis (in case sets are nested inside each other
+  // NOTE: We look for "col IN (" and then scan until the matching closing parenthesis,
+  // handling nested parentheses correctly.
 
-  // TODO: Must actually look for opening/closing paranthesis here properly
+  const std::regex in_start(R"((\s+[\w\d,\(\)\.\`"]+)\s+(NOT\s+)?IN\s*\()", std::regex::icase);
+  auto searchStart = s.cbegin();
+  std::smatch m;
 
-  const std::regex in_regex(R"(([\w\.\`"]+)\s+(NOT\s+)?IN\s*(\(+[^\)]+[\)\s]+))", std::regex::icase);
-  auto begin = std::sregex_iterator(s.begin(), s.end(), in_regex);
-  auto end = std::sregex_iterator();
-
-  for (auto it = begin; it != end; ++it) {
-    const auto& m = *it;
+  while (std::regex_search(searchStart, s.cend(), m, in_start)) {
     const std::string col = m[1].str();
-    const std::string in_list = std::regex_replace(m[3].str(), std::regex("\\s+"), " ");
 
-    const auto key = cleanExpression(col);
-    ctx.filterSets[key] = in_list;
+    // Compute absolute position of the opening parenthesis in the original string
+    const size_t prefix_offset = static_cast<size_t>(searchStart - s.cbegin());
+    const size_t match_pos = prefix_offset + static_cast<size_t>(m.position(0));
+    const size_t open_paren_pos = match_pos + static_cast<size_t>(m.length(0)) - 1; // index of '('
+
+    // Scan forward to find the matching closing parenthesis, accounting for nesting.
+    int depth = 0;
+    size_t end_paren_pos = 0;
+    for (size_t i = open_paren_pos; i < s.size(); ++i) {
+      const char c = s[i];
+      if (c == '(') {
+        ++depth;
+        continue;
+      }
+      if (c == ')') {
+        --depth;
+      }
+      if (depth == 0) {
+        end_paren_pos = i;
+        break;
+      }
+    }
+
+    std::string in_list;
+    in_list = s.substr(open_paren_pos, end_paren_pos - open_paren_pos + 1);
+
+    // Normalize whitespace inside the captured list
+    const std::string normalized = std::regex_replace(in_list, std::regex("\\s+"), " ");
+
+    const auto key = to_upper(cleanExpression(col));
+    ctx.filterSets[key] = normalized;
+
+    // Advance searchStart past the captured list to avoid re-matching the same IN
+    const size_t advance_pos = end_paren_pos + 1;
+    if (advance_pos >= s.size()) {
+      break;
+    }
+    searchStart = s.cbegin() + static_cast<std::ptrdiff_t>(advance_pos);
   }
-};
-
+}
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
   const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, description = 1, projections = 1\n"

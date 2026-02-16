@@ -1,4 +1,5 @@
 #pragma once
+#include <set>
 
 namespace sql {
 using ssize_t = std::make_signed_t<size_t>;
@@ -18,6 +19,7 @@ struct Token {
     ExtractFunction,
     CountDistinctFunction,
     OperatorFunction, // ClickHouse (and likely others) turn some operators into function calls.
+    Cast,
     None,
     Ignore
   };
@@ -54,6 +56,11 @@ struct EngineDialect {
     return std::move(toRender);
   }
 
+  /**
+   * If the engine uses any special functions to handle casts, return them here
+   */
+  virtual const std::set<std::string_view>& castFunctions() const;
+
   std::map<std::string_view, std::string_view> functions() const {
     auto map = engineFunctions();
     const auto& ansi = ansiFunctions();
@@ -84,4 +91,7 @@ struct DialectContext {
  * @return A better formatted expression
  */
 std::string cleanExpression(std::string expression);
+
+
+std::string removeQuotes(std::string_view str);
 }

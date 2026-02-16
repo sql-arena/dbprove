@@ -4,6 +4,7 @@
 #include <dbprove/generator/tpch.h>
 #include "init.h"
 #include "../query.h"
+#include <plog/Log.h>
 
 using namespace dbprove::theorem;
 
@@ -116,8 +117,27 @@ void tpch_q16(Proof& proof) {
 void tpch_q17(Proof& proof) {
   proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.part");
   const Runner runner(proof.factory());
+
+  const bool is_postgres_bad = proof.factory().engine().type() == sql::Engine::Type::Postgres;
+
+  if (is_postgres_bad) {
+    /* Performance for Q17 is so horrible for Postgres that we have to create an assistaing index */
+    try {
+      proof.factory().create()->execute("CREATE INDEX ix_q17 ON tpch.lineitem(l_partkey)");
+    } catch (const std::exception& e) {
+      PLOGW << "Could not create assisting index for TPC-H Q17: " << e.what();
+    }
+  }
   runner.serialExplain(Query(resource::q17_sql), proof);
+  if (is_postgres_bad) {
+    try {
+      proof.factory().create()->execute("DROP INDEX ix_q17");
+    } catch (const std::exception& e) {
+      // NOOP
+    }
+  }
 }
+
 
 void tpch_q18(Proof& proof) {
   proof.ensureSchema("tpch").ensure("tpch.orders").ensure("tpch.lineitem").ensure("tpch.customer");;

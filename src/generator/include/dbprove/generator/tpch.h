@@ -7,7 +7,7 @@ constexpr size_t TPCH_SF = 1;
 
 REGISTER_GENERATOR("tpch.supplier", resource::supplier_sql, supplier_gen, TPCH_SF * 10000);
 REGISTER_GENERATOR("tpch.part", resource::part_sql, part_gen, TPCH_SF * 200000);
-REGISTER_GENERATOR("tpch.partsupp", resource::partsupp_sql, partsupp_gen, TPCH_SF * 150000 * 4);
+REGISTER_GENERATOR("tpch.partsupp", resource::partsupp_sql, partsupp_gen, TPCH_SF * 200000 * 4);
 REGISTER_GENERATOR("tpch.customer", resource::customer_sql, customer_gen, TPCH_SF * 150000);
 REGISTER_GENERATOR("tpch.orders", resource::orders_sql, orders_lineitem_gen, TPCH_SF * 150000 * 10);
 REGISTER_GENERATOR("tpch.lineitem", resource::lineitem_sql, orders_lineitem_gen, TPCH_SF * 150000 * 10 * 4);

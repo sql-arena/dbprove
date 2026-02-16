@@ -32,6 +32,7 @@ public:
   struct MisEstimation {
     static constexpr int8_t INFINITE_OVER = 4;
     static constexpr int8_t INFINITE_UNDER = -4;
+    static constexpr int8_t UNKNOWN = -128;
     Operation operation;
     Magnitude magnitude;
     size_t count;

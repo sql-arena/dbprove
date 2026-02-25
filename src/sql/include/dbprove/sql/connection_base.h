@@ -71,9 +71,7 @@ public:
     bulkLoad(table, std::vector({source_path}));
   }
 
-  void executeDdl(const std::string_view ddl) {
-    execute(translateDialectDdl(ddl));
-  }
+  void executeDdl(const std::string_view ddl);
 
   virtual void createSchema(std::string_view schema_name);
 

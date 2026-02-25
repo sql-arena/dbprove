@@ -5,6 +5,7 @@
 #include "sql_exceptions.h"
 #include "explain/plan.h"
 #include "embedded_sql.h"
+#include "plog/Log.h"
 
 namespace sql {
 const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
@@ -37,6 +38,13 @@ SqlVariant ConnectionBase::fetchScalar(const std::string_view statement) {
 
 std::unique_ptr<explain::Plan> ConnectionBase::explain(std::string_view statement) {
   return nullptr;
+}
+
+void ConnectionBase::executeDdl(const std::string_view ddl)
+{
+  const auto translatedDdl = translateDialectDdl(ddl);
+  PLOGI << translatedDdl;
+  execute(translatedDdl);
 }
 
 void ConnectionBase::createSchema(std::string_view schema_name) {

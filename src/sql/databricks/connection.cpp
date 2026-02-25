@@ -176,21 +176,26 @@ SqlVariant Connection::fetchScalar(const std::string_view statement) {
 }
 
 void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
-  // Databricks COPY INTO command
-  // COPY INTO <table_name>
-  // FROM 's3://sql-arena-data/tpch-h/sf1'
-  // FILEFORMAT = PARQUET
-  // PATTERN = '<table_name>.parquet'
-  //
-  // Note: We ignore source_paths as the requirement is to load from S3 for now.
+  // TODO: should have a general way to map table to its location
+
+  const auto [schema_name, table_name] = splitTable(table);
 
   const std::string statement =
       "COPY INTO " + std::string(table) + " " +
-      "FROM 's3://sql-arena-data/tpch-h/sf1' " +
+      "FROM 's3://sql-arena-data/tpc-h/sf1' " +
       "FILEFORMAT = PARQUET " +
-      "FILES = ('" + std::string(table) + ".parquet')";
+      "FILES = ('" + table_name + ".parquet')";
 
   auto response = impl_->sendQuery(statement);
   handleDatabricksResponse(token_, response);
+}
+
+const ConnectionBase::TypeMap& Connection::typeMap() const {
+  static const TypeMap map = {{"INT", "BIGINT"}};
+  return map;
+}
+
+void Connection::analyse(const std::string_view table_name) {
+  execute("ANALYZE TABLE " + std::string(table_name) + " COMPUTE STATISTICS");
 }
 }

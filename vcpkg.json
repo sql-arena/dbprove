@@ -6,6 +6,14 @@
   "dependencies": [
     "libmariadb",
     {
+      "name": "google-cloud-cpp",
+      "default-features": false,
+      "features": [
+        "storage"
+      ]
+    },
+    "libzip",
+    {
       "name": "libpq",
       "default-features": false,
       "features": [

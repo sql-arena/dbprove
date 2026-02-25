@@ -1,4 +1,5 @@
-# Prerequisites
+# User configuration files
+env.sh
 *.d
 
 # Compiled Object files
@@ -45,3 +46,4 @@ cmake-build-debug/
 vcpkg_installed/
 .vs/
 out/
+run/

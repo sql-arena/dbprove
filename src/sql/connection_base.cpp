@@ -54,6 +54,8 @@ std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view tab
     return v.get<SqlBigInt>();
   } catch (InvalidObjectException&) {
     return std::nullopt;
+  } catch (const std::exception&) {
+    return std::nullopt;
   }
 }
 
@@ -85,19 +87,25 @@ std::vector<SqlTypeMeta> ConnectionBase::describeColumnTypes(std::string_view ta
   sql = std::regex_replace(sql, std::regex("\\{schema_name\\}"), schema_name);
 
   std::vector<SqlTypeMeta> result;
-  for (auto& row : fetchAll(sql)->rows()) {
-    auto engine_type = to_upper(row[0].asString());
-    const auto sql_type = to_sql_type_kind(engine_type);
-    switch (sql_type) {
-      case SqlTypeKind::STRING: {
-        const auto length = row[1].asInt8();
-        result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier(length)});
-        break;
+  try {
+    auto all = fetchAll(sql);
+    for (auto& row : all->rows()) {
+      auto engine_type = to_upper(row[0].asString());
+      const auto sql_type = to_sql_type_kind(engine_type);
+      switch (sql_type) {
+        case SqlTypeKind::STRING: {
+          const auto length = row[1].asInt8();
+          result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier(length)});
+          break;
+        }
+        default:
+          result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier()});
+          break;
       }
-      default:
-        result.push_back(SqlTypeMeta{sql_type, SqlTypeModifier()});
-        break;
     }
+  } catch (const std::exception&) {
+    // If the engine does not support information schema introspection, skip type metadata.
+    result.clear();
   }
   return result;
 }

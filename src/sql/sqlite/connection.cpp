@@ -78,7 +78,7 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 }
 
 
-void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
+void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
 }
 

@@ -46,12 +46,7 @@ public:
    */
   void serialExplain(std::span<Query>& queries, Proof& proof) const ;
 
-  void serialExplain(Query&& query, Proof& state)  const {
-    std::vector<Query> queries;
-    queries.push_back(std::move(query));
-    auto span = std::span(queries);
-    serialExplain(span, state);
-  };
+  void serialExplain(Query&& query, Proof& state)  const;;
 
 };
 }

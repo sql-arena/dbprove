@@ -5,7 +5,7 @@ namespace sql::postgresql {
 class Connection : public ConnectionBase {
   /**
    * @note: Use the Pimpl Pattern here to avoid polluting the main namespace and to keep all
-   * engine specific noise in the implementation files
+   * engine-specific noise in the implementation files
    */
   class Pimpl;
   std::unique_ptr<Pimpl> impl_;
@@ -18,7 +18,7 @@ public:
 
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
-  void bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) override;
+  void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
   std::string version() override;
   void close() override;

@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "connection.h"
 
 #include "group_by.h"
@@ -12,10 +14,16 @@
 #include <unordered_set>
 #include <nlohmann/json.hpp>
 
+#include "sequence.h"
+#include "duckdb/common/helper.hpp"
+
 namespace sql::postgresql {
 using namespace sql::explain;
 using namespace nlohmann;
 
+struct ExplainCtx {
+  std::vector<std::unique_ptr<Node>> initPlans_;
+};
 
 /**
  * Create the appropriate node type based on PostgreSQL node type
@@ -72,6 +80,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     Join::Strategy join_strategy;
     if (pg_node_type == "Hash Join") {
       // We treat
+      needsLoopCorrection = false;
       join_strategy = Join::Strategy::HASH;
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
@@ -190,7 +199,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     node->cost = node_json["Total Cost"].get<double>();
   }
 
-  /* Row estimates and actuals*/
+  /* Row estimate and actual */
   if (node_json.contains("Plan Rows")) {
     node->rows_estimated = node_json["Plan Rows"].get<double>();
   }
@@ -235,7 +244,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 }
 
 
-std::unique_ptr<Node> buildExplainNode(json& node_json) {
+std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
   // Determine the node type from the “Node Type” field
   if (!node_json.contains("Node Type")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
@@ -265,7 +274,7 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
     const auto plans = node_json["Plans"];
     for (size_t i = 0; i < plans.size(); ++i) {
       auto child_json = plans[i];
-      auto child_node = buildExplainNode(child_json);
+      auto child_node = buildExplainNode(child_json, ctx);
       if (child_node == nullptr) {
         continue;
       }
@@ -275,6 +284,7 @@ std::unique_ptr<Node> buildExplainNode(json& node_json) {
          * We don't care about these init plans, skip past them if we must and just take the last plan
          * under the aggregate.
          */
+        ctx.initPlans_.push_back(std::move(child_node));
         continue;
       }
       node->addChild(std::move(child_node));
@@ -309,9 +319,11 @@ std::unique_ptr<Plan> buildExplainPlan(json& explain_json) {
     throw std::runtime_error("Invalid EXPLAIN JSON format");
   }
 
+  ExplainCtx ctx;
   // High level stats about the query
   double planning_time = 0.0;
   double execution_time = 0.0;
+
 
   if (explain_json[0].contains("Planning Time")) {
     planning_time = explain_json[0]["Planning Time"].get<double>();
@@ -323,10 +335,25 @@ std::unique_ptr<Plan> buildExplainPlan(json& explain_json) {
   auto& plan_json = explain_json[0]["Plan"];
 
   // Construct the tree
-  auto root_node = buildExplainNode(plan_json);
+  auto top_node = buildExplainNode(plan_json, ctx);
 
-  if (!root_node) {
+  if (!top_node) {
     throw std::runtime_error("Invalid EXPLAIN plan output, could not construct a plan from ");
+  }
+
+  std::unique_ptr<Node> root_node;
+  if (ctx.initPlans_.size() > 0) {
+    /* Init plans are these strange constructs in PG that run before the main plan
+     * We treat those as sequences of queries with a special sequence node
+     */
+    root_node = std::make_unique<Sequence>();
+    for (auto& init_plan : ctx.initPlans_) {
+      root_node->addChild(std::move(init_plan));
+    }
+    root_node->addChild(std::move(top_node));
+  }
+  else {
+    root_node = std::move(top_node);
   }
 
   flipJoins(*root_node.get());

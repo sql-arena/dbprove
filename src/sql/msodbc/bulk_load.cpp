@@ -245,7 +245,7 @@ void handleBulkReturn(const int return_code, const SQLHDBC hdbc, const int expec
 }
 
 
-void msodbc::Connection::bulkLoad(std::string_view table, const std::vector<std::filesystem::path> source_paths) {
+void msodbc::Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
   const BCPAPI& bcp = BCPAPI::get();
   auto layout = fetchAll("SELECT * FROM " + std::string(table) + " WHERE 1=0");

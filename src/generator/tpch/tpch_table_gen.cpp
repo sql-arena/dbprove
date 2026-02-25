@@ -21,6 +21,8 @@
 #include <filesystem>
 #include <fstream>
 
+
+
 #include "dbprove/common/null_stream.h"
 
 
@@ -82,7 +84,7 @@ void c(std::ostream& out, T value, const bool is_last = false) {
   }
 }
 
-void nation_gen(GeneratorState& state) {
+void nation_gen(GeneratorState& state, sql::ConnectionBase*) {
   auto const nation_count = state.table("tpch.nation").row_count;
   const auto file_name = state.csvPath("tpch.nation");
   std::ofstream nation(file_name);
@@ -103,12 +105,12 @@ void nation_gen(GeneratorState& state) {
   state.registerGeneration("tpch.nation", file_name);
 }
 
-void region_gen(GeneratorState& state) {
+void region_gen(GeneratorState& state, sql::ConnectionBase*) {
   const size_t region_count = state.table("tpch.region").row_count;
   const auto file_name = state.csvPath("tpch.region");
   std::ofstream region(file_name);
-  constexpr auto col_separator = state.columnSeparator();
-  constexpr auto row_separator = state.rowSeparator();
+  constexpr auto col_separator = GeneratorState::columnSeparator();
+  constexpr auto row_separator = GeneratorState::rowSeparator();
   region << "R_REGIONKEY" << col_separator;
   region << "R_NAME" << col_separator;
   region << "R_COMMENT" << row_separator;
@@ -124,7 +126,7 @@ void region_gen(GeneratorState& state) {
 }
 
 
-void supplier_gen(GeneratorState& state) {
+void supplier_gen(GeneratorState& state, sql::ConnectionBase*) {
   const auto supplier_count = state.table("tpch.supplier").row_count;
   const auto file_name = state.csvPath("tpch.supplier");
   std::ofstream supplier(file_name);
@@ -149,7 +151,7 @@ void supplier_gen(GeneratorState& state) {
   c(supplier, "S_ACCTBAL");
   c(supplier, "S_COMMENT", true);
 
-  for (size_t row = 0; row < supplier_count; ++row) {
+  for (sql::RowCount row = 0; row < supplier_count; ++row) {
     reportProgress("tpch.supplier", row, supplier_count);
     const auto key = s_suppkey.next();
     c(supplier, key);
@@ -180,7 +182,7 @@ void supplier_gen(GeneratorState& state) {
 }
 
 
-void part_gen(GeneratorState& state) {
+void part_gen(GeneratorState& state, sql::ConnectionBase*) {
   const auto part_count = state.table("tpch.part").row_count;
   auto file_name = state.csvPath("tpch.part");
   std::ofstream part(file_name);
@@ -321,7 +323,7 @@ void part_gen(GeneratorState& state) {
 }
 
 
-void partsupp_gen(GeneratorState& state) {
+void partsupp_gen(GeneratorState& state, sql::ConnectionBase*) {
   const size_t part_count = state.table("tpch.part").row_count;
   const auto file_name = state.csvPath("tpch.partsupp");
   std::ofstream partsupp(file_name);
@@ -353,7 +355,7 @@ void partsupp_gen(GeneratorState& state) {
 }
 
 
-void customer_gen(GeneratorState& state) {
+void customer_gen(GeneratorState& state, sql::ConnectionBase*) {
   const size_t customer_count = state.table("tpch.customer").row_count;
   auto file_name = state.csvPath("tpch.customer");
   std::ofstream customer(file_name);
@@ -399,7 +401,7 @@ std::unique_ptr<std::ostream> SafeStream(std::filesystem::path file) {
   return std::make_unique<std::ofstream>(file);
 }
 
-void orders_lineitem_gen(GeneratorState& state) {
+void orders_lineitem_gen(GeneratorState& state, sql::ConnectionBase*) {
   const auto orders_count = state.table("tpch.orders").row_count;
   const auto orders_file_name = state.csvPath("tpch.orders");
   const auto lineitem_file_name = state.csvPath("tpch.lineitem");
@@ -466,9 +468,9 @@ void orders_lineitem_gen(GeneratorState& state) {
   constexpr std::string_view priorities[] = {"1-URGENT", "2-HIGH", "3-MEDIUM", "4-NOT SPECIFIED", "5-LOW"};
   Set<std::string_view> o_orderpriority(priorities);
 
-  size_t lineitem_count = 0;
+  sql::RowCount lineitem_count = 0;
   size_t key_jump = 0;
-  for (size_t row = 0; row < orders_count; ++row) {
+  for (sql::RowCount row = 0; row < orders_count; ++row) {
     // TPC-H requires only every third customer has an order and enforces with a simple modulo.
 
     uint64_t custkey = 0;

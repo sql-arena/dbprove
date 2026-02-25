@@ -28,10 +28,9 @@ ColumnCount Result::columnCount() const {
     default:
       return 0;
   }
-  return 0;
 }
 
-const RowBase& utopia::Result::nextRow() {
+const RowBase& Result::nextRow() {
   switch (data) {
     case UtopiaData::EMPTY: {
       return SentinelRow::instance();

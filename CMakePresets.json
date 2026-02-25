@@ -11,7 +11,6 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/extern/vcpkg/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays",
         "VCPKG_MANIFEST_DIR": "${sourceDir}",
         "VCPKG_MANIFEST_MODE": "ON",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed"

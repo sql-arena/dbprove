@@ -15,6 +15,8 @@
 #include <string>
 #include <pugixml.hpp>
 
+#include "dbprove/sql/connection_factory.h"
+
 
 namespace fs = std::filesystem;
 

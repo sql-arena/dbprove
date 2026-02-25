@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <functional>
 #include <set>
+#include <dbprove/common/cloud_provider.h>
 
 
 namespace sql {
@@ -12,12 +13,14 @@ class ConnectionFactory;
 namespace generator {
 class GeneratorState;
 class GeneratedTable;
-using GeneratorFunc = std::function<void(GeneratorState&)>;
+using GeneratorFunc = std::function<void(GeneratorState&, sql::ConnectionBase*)>;
 
 
 class GeneratorState {
   friend struct Registrar;
   const std::filesystem::path basePath_;
+  const CloudProvider dataProvider_;
+  const std::string dataPath_;
   static constexpr std::string_view colSeparator_ = "|";
   static constexpr std::string_view rowSeparator_ = "\n";
 
@@ -29,11 +32,17 @@ class GeneratorState {
     }
   };
 
+
   std::set<std::string, TransparentLess> ready_tables_ = {};
 
 public:
-  explicit GeneratorState(const std::filesystem::path& basePath);
+  explicit GeneratorState(const std::filesystem::path& basePath, CloudProvider dataProvider, std::string dataPath);
   ~GeneratorState();
+
+  void downloadFromCloud(std::string_view schemaName, std::string_view tableName, std::string_view relativePath);
+
+  [[nodiscard]] CloudProvider cloudProvider() const { return dataProvider_; }
+  [[nodiscard]] const std::string& dataPath() const { return dataPath_; }
 
   /**
    * Makes sure that a table is availabe on the given connection
@@ -44,7 +53,7 @@ public:
   void ensure(std::string_view table_name, sql::ConnectionFactory& conn);
 
   /**
-   * Makes sure that a table is availabe on the given connection
+   * Makes sure that a table is available on the given connection
    * @param table_names To guarantee exists and is ready
    * @param conn Connection to generate the table at
    * @return Rowcount of the generated table
@@ -54,7 +63,7 @@ public:
   /**
    * Generate a table input (if not already made) and return the row count
    */
-  sql::RowCount generate(std::string_view table_name);
+  sql::RowCount generate(std::string_view table_name, sql::ConnectionBase* conn = nullptr);
   /**
    * Load a table
    * @param table_name Table to load
@@ -120,7 +129,7 @@ struct KeyRegistrar {
 
 
 #define REGISTER_GENERATOR(NAME, DDL, FUNC, ROWS) \
-    extern void FUNC(generator::GeneratorState&); \
+    extern void FUNC(generator::GeneratorState&, sql::ConnectionBase*); \
     static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DDL, FUNC, ROWS);
 
 

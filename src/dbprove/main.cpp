@@ -64,8 +64,9 @@ sql::Credential parseCredentials(
         }
         return sql::CredentialAccessToken(engine, host, database, token.value());
       }
+    default:
+      throw std::invalid_argument("Cannot generate credentials for engine: " + engine_name);
     }
-    throw std::invalid_argument("Cannot generate credentials for engine: " + engine_name);
   } catch (const std::invalid_argument& e) {
     std::cerr << e.what() << std::endl;
     std::exit(1);
@@ -73,7 +74,7 @@ sql::Credential parseCredentials(
 }
 
 generator::GeneratorState configureDataGeneration() {
-  return generator::GeneratorState("table_data");
+  return generator::GeneratorState("./table_data", CloudProvider::GCS, "gs://sql-arena-data");
 }
 
 int main(int argc, char** argv) {

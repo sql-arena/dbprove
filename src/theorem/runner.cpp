@@ -82,4 +82,12 @@ void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   connection->close();
   proof.render();
 }
+
+void Runner::serialExplain(Query&& query, Proof& state) const
+{
+  std::vector<Query> queries;
+  queries.push_back(std::move(query));
+  auto span = std::span(queries);
+  serialExplain(span, state);
+}
 }

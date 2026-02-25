@@ -20,6 +20,7 @@ target_sources(${_targetName}
         run_ctx.cpp
         type.cpp
         data.cpp
+        test_theorem.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
         runner.h
         query.h

@@ -5,8 +5,8 @@
 #include "theorem.h"
 #include "plan/prover.h"
 #include "cli/prover.h"
-#include <utility>
-#include <set>
+
+namespace dbprove::theorem::test { void init(); }
 
 namespace dbprove::theorem {
 TheoremMap theorem_map_;
@@ -17,6 +17,7 @@ std::string all_categories_string_;
 void init() {
   plan::init();
   cli::init();
+  test::init();
 }
 
 Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func) {

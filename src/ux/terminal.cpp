@@ -24,9 +24,9 @@ void resolveTerminalWidth() {
   // Unix-based platform method to get terminal width
   struct winsize w;
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0) {
-    return w.ws_col;  // Return terminal width
+    screen_width = w.ws_col;  // Return terminal width
   } else {
-    return default_screen_width;  // Fallback to default width
+    screen_width = default_screen_width;  // Fallback to default width
   }
 #endif
 }

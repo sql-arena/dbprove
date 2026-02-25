@@ -48,6 +48,9 @@ static void handleDatabricksResponse(const CredentialAccessToken& credential, js
         "An invalid parameter was passed while connecting to: " + credential.endpoint_url + " the error was: " +
         message);
   }
+  if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || error_code == "RESOURCE_DOES_NOT_EXIST") {
+    throw InvalidObjectException(message);
+  }
   // No idea, we should probably have handled differently
   throw std::runtime_error("Databricks error: " + message);
 }
@@ -172,7 +175,22 @@ SqlVariant Connection::fetchScalar(const std::string_view statement) {
   return row->asVariant(0);
 }
 
-void Connection::bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) {
-  validateSourcePaths(source_paths);
+void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
+  // Databricks COPY INTO command
+  // COPY INTO <table_name>
+  // FROM 's3://sql-arena-data/tpch-h/sf1'
+  // FILEFORMAT = PARQUET
+  // PATTERN = '<table_name>.parquet'
+  //
+  // Note: We ignore source_paths as the requirement is to load from S3 for now.
+
+  const std::string statement =
+      "COPY INTO " + std::string(table) + " " +
+      "FROM 's3://sql-arena-data/tpch-h/sf1' " +
+      "FILEFORMAT = PARQUET " +
+      "FILES = ('" + std::string(table) + ".parquet')";
+
+  auto response = impl_->sendQuery(statement);
+  handleDatabricksResponse(token_, response);
 }
 }

@@ -61,7 +61,7 @@ public:
    * @param table to load
    * @param source_paths files used to input the load
    */
-  virtual void bulkLoad(std::string_view table, std::vector<std::filesystem::path> source_paths) = 0;
+  virtual void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) = 0;
   /**
    * @brief Convenience method to bulk load data from a single file.
    * @param table

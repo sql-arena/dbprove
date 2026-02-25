@@ -72,10 +72,33 @@ void Result::parseRows(const json& result) {
 
 Result::Result(const json& response)
   : currentRow_(new Row(this, 0)) {
-  if (!response.contains("manifest")) {
-    throw ProtocolException("Expected to find a `manifest` string in the returned json");
+  const json* root = &response;
+  if (response.contains("result") && response["result"].is_object()) {
+    root = &response["result"]; 
   }
-  const auto manifest = response["manifest"];
+  if (!root->contains("manifest")) {
+    // Some responses (e.g. EXPLAIN output) may not include a manifest. If we still have
+    // a data_array, infer a schema of STRING columns and proceed.
+    if (root->contains("data_array") && (*root)["data_array"].is_array()) {
+      size_t width = 0;
+      if (!(*root)["data_array"].empty() && (*root)["data_array"][0].is_array()) {
+        width = (*root)["data_array"][0].size();
+      }
+      if (width == 0) {
+        // No columns and no manifest; treat as empty result set
+        rowCount_ = 0;
+        return;
+      }
+      columnTypes_.assign(width, SqlTypeKind::STRING);
+      rowCount_ = (*root)["data_array"].size();
+      parseRows(*root);
+      return;
+    }
+    // Treat as an empty result to allow non-SELECT statements or unsupported responses to pass through
+    rowCount_ = 0;
+    return;
+  }
+  const auto& manifest = (*root)["manifest"];
   const bool isTruncated = manifest["truncated"].get<bool>();
   if (isTruncated) {
     throw ProtocolException("Expected to get a non truncated stream when constructing from a single Json");

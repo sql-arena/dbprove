@@ -4,6 +4,7 @@
 #include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
 
+#include <iostream>
 #include <curl/curl.h>
 #include <duckdb/common/exception.hpp>
 #include <nlohmann/json.hpp>
@@ -87,7 +88,7 @@ public:
     }
   }
 
-  json sendQuery(const std::string_view query) {
+  json sendQuery(const std::string_view query, const std::map<std::string, std::string>& tags = {}) {
     if (!curl_) {
       throw std::runtime_error("Curl not initialized");
     }
@@ -95,14 +96,25 @@ public:
     std::string readBuffer;
 
     // Prepare JSON payload with the SQL query
-    json payload = {{"statement", query},
+    json payload = {{"statement", std::string(query)},
                     {"warehouse_id", warehouse_id_},
                     {"wait_timeout", "30s"},
-                    {"disposition", "INLINE"}};
+                    {"disposition", "INLINE"}
+                    };
+
+    if (!tags.empty()) {
+      json tags_array = json::array();
+      for (const auto& [key, value] : tags) {
+        tags_array.push_back({{"key", key}, {"value", value}});
+      }
+      payload["query_tags"] = tags_array;
+    }
+
     const std::string jsonPayload = payload.dump();
 
     // Set curl options
     curl_easy_setopt(curl_, CURLOPT_URL, endpoint_.c_str());
+    curl_easy_setopt(curl_, CURLOPT_POST, 1L);
     curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
     curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, jsonPayload.c_str());
@@ -130,6 +142,54 @@ public:
 
     return json::parse(readBuffer);
   }
+
+  json getRequest(const std::string& path) {
+    if (!curl_) {
+      throw std::runtime_error("Curl not initialized");
+    }
+
+    std::string readBuffer;
+    
+    // Construct full URL
+    std::string base_url = endpoint_;
+    size_t api_pos = base_url.find("/api/2.0/");
+    if (api_pos != std::string::npos) {
+      base_url = base_url.substr(0, api_pos);
+    }
+    std::string url = base_url + path;
+
+    // Set curl options
+    curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
+
+    // Set up headers
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Accept: application/json");
+
+    // Add the PAT token as Authorization header
+    const std::string authHeader = "Authorization: Bearer " + token_;
+    headers = curl_slist_append(headers, authHeader.c_str());
+    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+
+    const CURLcode res = curl_easy_perform(curl_);
+
+    curl_slist_free_all(headers);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+      std::stringstream errorMsg;
+      errorMsg << "curl_easy_perform() (GET) failed: " << curl_easy_strerror(res);
+      throw std::runtime_error(errorMsg.str());
+    }
+
+    return json::parse(readBuffer);
+  }
+
+  json getHistory() {
+    return getRequest("/api/2.0/sql/history/queries?max_results=10&include_metrics=true");
+  }
 };
 
 Connection::Connection(const CredentialAccessToken& credential, const Engine& engine)
@@ -144,6 +204,24 @@ Connection::~Connection() {
 void Connection::execute(std::string_view statement) {
   auto response = impl_->sendQuery(statement);
   handleDatabricksResponse(token_, response);
+}
+
+std::string Connection::execute(std::string_view statement, const std::map<std::string, std::string>& tags) {
+  auto response = impl_->sendQuery(statement, tags);
+  handleDatabricksResponse(token_, response);
+  
+  std::string statement_id;
+  std::string query_id;
+  
+  if (response.contains("statement_id")) {
+    statement_id = response["statement_id"].get<std::string>();
+  }
+
+  return statement_id;
+}
+
+json Connection::getHistory() {
+  return impl_->getHistory();
 }
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {

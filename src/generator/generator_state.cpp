@@ -38,8 +38,18 @@ namespace generator
         const std::string_view tableName,
         const std::string_view relativePath)
     {
+        if (cloudProvider() == CloudProvider::AWS) {
+            PLOGI << "Cloud provider is AWS (S3), skipping local download as bulk load can use S3 directly.";
+            const auto fullTablename = std::format("{}.{}", schemaName, tableName);
+            // We still need to register it as "generated" so the load() logic knows it's ready to be loaded via bulkLoad
+            // But we don't have a local path. Connection::bulkLoad for Databricks currently ignores the source_paths 
+            // and uses a hardcoded S3 path.
+            table(tableName).is_generated = true;
+            return;
+        }
+
         if (cloudProvider() != CloudProvider::GCS) {
-            throw std::runtime_error("region_download currently supports only Google Cloud Storage (GCS)");
+            throw std::runtime_error("downloadFromCloud currently supports only Google Cloud Storage (GCS) for local downloads");
         }
 
         dbprove::common::make_directory(basePath_);

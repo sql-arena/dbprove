@@ -21,3 +21,7 @@ The following is the authors preferences
 
 - Suggest only the change requested, do not try to add additional functions not requested
 - Always seeks out existing functionality in libraries already provided before suggesting additional, third party code
+- When something fails (for example, missing expected headers or API fields), throw an exception instead of returning a bogus value. Early failure is preferred over silent continuation with incorrect state.
+- **Avoid deep nesting**: Use early exits (`return`, `continue`, `break`) to keep the "happy path" flat and readable.
+- **Explicit Logging**: Always log key identifiers (e.g., query IDs, statement IDs, timestamps) using the available logging framework (`PLOGI`) or `std::cout` when appropriate for diagnostics.
+- **Robust Error Handling**: Do not swallow exceptions in low-level API handlers unless recovery is truly possible. Throw descriptive `std::runtime_error` or custom exceptions when expectations are not met.

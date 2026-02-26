@@ -2,6 +2,7 @@
 env.sh
 .output.txt
 *.d
+node_modules/
 
 # Compiled Object files
 *.slo

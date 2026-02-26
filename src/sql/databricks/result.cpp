@@ -16,6 +16,7 @@ SqlTypeKind map_databricks_type(const std::string& dbrick_type) {
   static std::map<std::string, SqlTypeKind> m = {
       {"INT", SqlTypeKind::INT},
       {"STRING", SqlTypeKind::STRING},
+      {"LONG", SqlTypeKind::BIGINT},
   };
   if (!m.contains(dbrick_type)) {
     throw ProtocolException("Do not know how to map Databricks type: " + dbrick_type);
@@ -84,15 +85,12 @@ Result::Result(const json& response)
       if (!(*root)["data_array"].empty() && (*root)["data_array"][0].is_array()) {
         width = (*root)["data_array"][0].size();
       }
-      if (width == 0) {
-        // No columns and no manifest; treat as empty result set
-        rowCount_ = 0;
+      if (width > 0) {
+        columnTypes_.assign(width, SqlTypeKind::STRING);
+        rowCount_ = (*root)["data_array"].size();
+        parseRows(*root);
         return;
       }
-      columnTypes_.assign(width, SqlTypeKind::STRING);
-      rowCount_ = (*root)["data_array"].size();
-      parseRows(*root);
-      return;
     }
     // Treat as an empty result to allow non-SELECT statements or unsupported responses to pass through
     rowCount_ = 0;
@@ -108,13 +106,14 @@ Result::Result(const json& response)
   }
   const auto schema = manifest["schema"];
 
-  rowCount_ += manifest["total_row_count"].get<int64_t>();
+  rowCount_ = manifest["total_row_count"].get<int64_t>();
   for (auto& column : schema["columns"]) {
     auto dbrick_type_name = column["type_name"];
     columnTypes_.push_back(map_databricks_type(dbrick_type_name));
   }
 
   if (!response.contains("result")) {
+    if (rowCount_ == 0) return;
     throw ProtocolException("Expected to find a `result` string in the json");
   }
   const auto result = response["result"];

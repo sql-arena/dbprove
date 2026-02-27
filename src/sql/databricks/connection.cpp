@@ -9,6 +9,8 @@
 #include <duckdb/common/exception.hpp>
 #include <nlohmann/json.hpp>
 
+#include "plog/Log.h"
+
 
 namespace sql::databricks {
 using namespace nlohmann;
@@ -69,16 +71,12 @@ public:
     : connection_(connection)
     , curl_(nullptr)
     , token_(token.token)
-    , endpoint_(token.endpoint_url)
+    , endpoint_("https://" + token.endpoint_url)
     , warehouse_id_(token.database) {
     curl_ = curl_easy_init();
     assert(!endpoint_.empty());
     if (!curl_) {
       throw std::runtime_error("Failed to initialize curl");
-    }
-
-    if (!to_lower(endpoint_).starts_with("http")) {
-      endpoint_ = "https://" + endpoint_;
     }
   }
 
@@ -89,11 +87,9 @@ public:
   }
 
   json sendQuery(const std::string_view query, const std::map<std::string, std::string>& tags = {}) {
-    if (!curl_) {
-      throw std::runtime_error("Curl not initialized");
-    }
-
     std::string readBuffer;
+    std::string apiUrl = endpoint_ + "/api/2.0/sql/statements/";
+    PLOGI << "Sending Databricks query to " << apiUrl;
 
     // Prepare JSON payload with the SQL query
     json payload = {{"statement", std::string(query)},
@@ -113,7 +109,7 @@ public:
     const std::string jsonPayload = payload.dump();
 
     // Set curl options
-    curl_easy_setopt(curl_, CURLOPT_URL, endpoint_.c_str());
+    curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
     curl_easy_setopt(curl_, CURLOPT_POST, 1L);
     curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
@@ -144,28 +140,19 @@ public:
   }
 
   json getRequest(const std::string& path) {
-    if (!curl_) {
-      throw std::runtime_error("Curl not initialized");
-    }
-
     std::string readBuffer;
-    
-    // Construct full URL
-    std::string base_url = endpoint_;
-    size_t api_pos = base_url.find("/api/2.0/");
-    if (api_pos != std::string::npos) {
-      base_url = base_url.substr(0, api_pos);
-    }
-    std::string url = base_url + path;
+    std::string apiUrl = endpoint_ + path;
+
+    PLOGI << "Sending Databricks GET request to" << apiUrl;
 
     // Set curl options
-    curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
     curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
     curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
 
     // Set up headers
-    struct curl_slist* headers = nullptr;
+    curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Accept: application/json");
 
     // Add the PAT token as Authorization header

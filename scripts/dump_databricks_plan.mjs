@@ -8,9 +8,13 @@ function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === "-v") {
+      args.verbose = "1";
+      continue;
+    }
     if (!a.startsWith("--")) continue;
     const key = a.slice(2);
-    const val = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : "1";
+    const val = argv[i + 1] && !argv[i + 1].startsWith("--") && !argv[i+1].startsWith("-") ? argv[++i] : "1";
     args[key] = val;
   }
   return args;
@@ -19,15 +23,14 @@ function parseArgs(argv) {
 function usageAndExit(msg) {
   if (msg) console.error(msg);
   console.error(`Usage:
-  node dump_dbx_plan.mjs \\
+  node scripts/dump_databricks_plan.mjs \\
     --workspace <workspace URL> \\
     --o <warehouse_id> \\
     --queryId <queryId>> \\
-    --queryStartTimeMs 1772100936727 \\
     [--headless 0|1] \\
     [--profileDir ~/.databricks-playwright-profile] \\
     [--timeoutMs 120000] \\
-    [--verbose 0|1]
+    [-v]
 
 Emits the captured plan payload JSON to stdout and exits 0.
 
@@ -61,14 +64,15 @@ function looksLikeLogin(title, url) {
   const workspace = args.workspace;
   const orgId = args.o;
   const queryId = args.queryId;
-  const queryStartTimeMs = args.queryStartTimeMs;
 
-  if (!workspace || !orgId || !queryId || !queryStartTimeMs) {
-    usageAndExit("Missing required args.");
+  if (!workspace) {
+    usageAndExit("Missing required --workspace arg.");
   }
 
+  const isAuthOnly = !orgId || !queryId;
+
   const headless = (args.headless ?? "1") === "1";
-  const verbose = (args.verbose ?? "1") === "1";
+  const verbose = (args.verbose ?? "0") === "1";
   const timeoutMs = parseInt(args.timeoutMs ?? "120000", 10);
 
   function log(...msg) {
@@ -84,12 +88,28 @@ function looksLikeLogin(title, url) {
   log("Using profile directory:", profileDir);
   fs.mkdirSync(profileDir, { recursive: true });
 
-  // Construct URL (this is the one that shows the query details/profile)
-  const url =
-    `${workspace.replace(/\/$/, "")}` +
-    `/sql/history?o=${encodeURIComponent(orgId)}` +
-    `&queryId=${encodeURIComponent(queryId)}`
-      // +`&queryStartTimeMs=${encodeURIComponent(queryStartTimeMs)}`;
+  // Construct URL
+  let url = workspace
+
+  if (url.endsWith("/")) {
+    throw new Error("Workspace URL must not end with a slash");
+  }
+  if (url.startsWith("http://")) {
+    throw new Error("Workspace URL must be HTTPS");
+  }
+
+  if (!url.startsWith("https://")) {
+    url = `https://${url}`;
+  }
+
+
+  if (!isAuthOnly) {
+    url += `/sql/history?o=${encodeURIComponent(orgId)}` +
+           `&queryId=${encodeURIComponent(queryId)}`;
+  } else {
+    // Just go to the base SQL URL or workspace root if we're only authenticating
+    url += `/sql`;
+  }
 
   log("Target URL:", url);
 
@@ -165,11 +185,26 @@ function looksLikeLogin(title, url) {
       process.exit(10);
     } else {
       console.error("Login required. Complete login in the opened browser window.");
-      console.error("Press Enter in this terminal when you are back on the query page.");
-      await new Promise((resolve) => process.stdin.once("data", resolve));
-      log("Resuming after user login...");
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      if (isAuthOnly) {
+        console.error("The browser will stay open until you close it or login is detected.");
+        // Wait for URL to change away from login or browser to close
+        while (!context.isClosed() && looksLikeLogin(await page.title().catch(() => ""), page.url())) {
+          await page.waitForTimeout(2000);
+        }
+        log("Login detected or browser closed.");
+      } else {
+        console.error("Press Enter in this terminal when you are back on the query page.");
+        await new Promise((resolve) => process.stdin.once("data", resolve));
+        log("Resuming after user login...");
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      }
     }
+  }
+
+  if (isAuthOnly) {
+    log("Authentication mode: exiting now.");
+    await context.close();
+    process.exit(0);
   }
 
   // Give the UI time to issue GraphQL calls

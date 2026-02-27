@@ -86,7 +86,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
         if (env_host.value().ends_with("/")) {
           env_host = env_host.value().substr(0, env_host.value().size() - 1);
         }
-        host = env_host.value() + "/api/2.0/sql/statements";
+        host = env_host.value();
       }
       break;
     }

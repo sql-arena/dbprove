@@ -24,12 +24,14 @@ public:
   void analyse(std::string_view table_name) override;
 
 private:
-  std::string getOrgId(std::string& workspace_url);
+  std::string getOrgId() const;
   struct QueryHistoryInfo {
     std::string query_id;
     std::string cache_query_id;
     int64_t start_time_ms;
   };
   QueryHistoryInfo getQueryHistoryInfo(const std::string& statement_id);
+  std::string runNodeDumpPlan(const std::string& statement_id,
+                                    const std::string& startTimeMs) const;
 };
 }

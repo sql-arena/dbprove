@@ -2,13 +2,14 @@
 
 #include <iostream>
 
+
 namespace sql {
 std::string RowBase::dump() const {
-  std::string r;
+  std::string out = "ColumnCount: " + std::to_string(columnCount()) + "]\n";
   for (size_t i = 0; i < columnCount(); ++i) {
-    r += asString(i) + " ";
+    out += asString(i) + "::";
   }
-  return "r";
+  return out;
 }
 
 std::unique_ptr<MaterialisedRow> RowBase::materialise() const {

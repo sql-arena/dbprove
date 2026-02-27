@@ -12,255 +12,272 @@
 #include "plog/Log.h"
 
 
-namespace sql::databricks {
-using namespace nlohmann;
+namespace sql::databricks
+{
+    using namespace nlohmann;
 
-static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* s) {
-  size_t newLength = size * nmemb;
-  try {
-    s->append(static_cast<char*>(contents), newLength);
-    return newLength;
-  } catch (std::bad_alloc&) {
-    // Handle memory problem
-    return 0;
-  }
-}
-
-/**
- *
- * Deal with various response code coming back from DataBricks (Because HTTP error codes are so last year)
- */
-static void handleDatabricksResponse(const CredentialAccessToken& credential, json& response) {
-  if (!response.contains("error_code")) {
-    return;
-  }
-  const auto error_code = response["error_code"].get<std::string>();
-  const auto message = response["message"].get<std::string>();
-  if (error_code == "PERMISSION_DENIED") {
-    throw ConnectionException(credential, "Permission denied " + message);
-  }
-  if (error_code == "INVALID_TOKEN") {
-    throw PermissionDeniedException("Invalid token " + message);
-  }
-  if (error_code == "ENDPOINT_NOT_FOUND") {
-    throw ConnectionException(credential, "Could not find host at: " + credential.endpoint_url);
-  }
-  if (error_code == "INVALID_PARAMETER_VALUE") {
-    throw ConnectionException(
-        credential,
-        "An invalid parameter was passed while connecting to: " + credential.endpoint_url + " the error was: " +
-        message);
-  }
-  if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || error_code == "RESOURCE_DOES_NOT_EXIST") {
-    throw InvalidObjectException(message);
-  }
-  // No idea, we should probably have handled differently
-  throw std::runtime_error("Databricks error: " + message);
-}
-
-
-class Connection::Pimpl {
-  Connection& connection_;
-  CURL* curl_;
-  const std::string token_;
-  std::string endpoint_;
-  std::string warehouse_id_;
-
-public:
-  explicit Pimpl(Connection& connection, const CredentialAccessToken& token)
-    : connection_(connection)
-    , curl_(nullptr)
-    , token_(token.token)
-    , endpoint_("https://" + token.endpoint_url)
-    , warehouse_id_(token.database) {
-    curl_ = curl_easy_init();
-    assert(!endpoint_.empty());
-    if (!curl_) {
-      throw std::runtime_error("Failed to initialize curl");
-    }
-  }
-
-  ~Pimpl() {
-    if (curl_) {
-      curl_easy_cleanup(curl_);
-    }
-  }
-
-  json sendQuery(const std::string_view query, const std::map<std::string, std::string>& tags = {}) {
-    std::string readBuffer;
-    std::string apiUrl = endpoint_ + "/api/2.0/sql/statements/";
-    PLOGI << "Sending Databricks query to " << apiUrl;
-
-    // Prepare JSON payload with the SQL query
-    json payload = {{"statement", std::string(query)},
-                    {"warehouse_id", warehouse_id_},
-                    {"wait_timeout", "30s"},
-                    {"disposition", "INLINE"}
-                    };
-
-    if (!tags.empty()) {
-      json tags_array = json::array();
-      for (const auto& [key, value] : tags) {
-        tags_array.push_back({{"key", key}, {"value", value}});
-      }
-      payload["query_tags"] = tags_array;
+    static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* s)
+    {
+        size_t newLength = size * nmemb;
+        try {
+            s->append(static_cast<char*>(contents), newLength);
+            return newLength;
+        } catch (std::bad_alloc&) {
+            // Handle memory problem
+            return 0;
+        }
     }
 
-    const std::string jsonPayload = payload.dump();
+    /**
+     *
+     * Deal with various response code coming back from DataBricks (Because HTTP error codes are so last year)
+     */
+    static void handleDatabricksResponse(const CredentialAccessToken& credential, json& response)
+    {
+        if (!response.contains("error_code")) {
+            return;
+        }
+        const auto error_code = response["error_code"].get<std::string>();
+        const auto message = response["message"].get<std::string>();
 
-    // Set curl options
-    curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
-    curl_easy_setopt(curl_, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
-    curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, jsonPayload.c_str());
-
-    // Set up headers
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, "Accept: application/json");
-
-    // Add the PAT token as Authorization header
-    const std::string authHeader = "Authorization: Bearer " + token_;
-    headers = curl_slist_append(headers, authHeader.c_str());
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
-
-    const CURLcode res = curl_easy_perform(curl_);
-
-    curl_slist_free_all(headers);
-
-    // Check for errors
-    if (res != CURLE_OK) {
-      std::stringstream errorMsg;
-      errorMsg << "curl_easy_perform() failed: " << curl_easy_strerror(res);
-      throw std::runtime_error(errorMsg.str());
+        if (error_code == "PERMISSION_DENIED") {
+            throw ConnectionException(credential, "Permission denied " + message);
+        }
+        if (error_code == "INVALID_TOKEN") {
+            throw PermissionDeniedException("Invalid token " + message);
+        }
+        if (error_code == "ENDPOINT_NOT_FOUND") {
+            throw ConnectionException(credential, "Could not find host at: " + credential.endpoint_url + " the error was: " + message);
+        }
+        if (error_code == "INVALID_PARAMETER_VALUE") {
+            throw ConnectionException(
+                credential,
+                "An invalid parameter was passed while connecting to: " + credential.endpoint_url + " the error was: " +
+                message);
+        }
+        if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || error_code == "RESOURCE_DOES_NOT_EXIST") {
+            throw InvalidObjectException(message);
+        }
+        // No idea, we should probably have handled differently
+        throw std::runtime_error("Databricks error: " + message);
     }
 
-    return json::parse(readBuffer);
-  }
 
-  json getRequest(const std::string& path) {
-    std::string readBuffer;
-    std::string apiUrl = endpoint_ + path;
+    class Connection::Pimpl
+    {
+        Connection& connection_;
+        CURL* curl_;
+        const std::string token_;
+        std::string endpoint_;
+        std::string warehouse_id_;
 
-    PLOGI << "Sending Databricks GET request to" << apiUrl;
+    public:
+        explicit Pimpl(Connection& connection, const CredentialAccessToken& token)
+            : connection_(connection)
+            , curl_(nullptr)
+            , token_(token.token)
+            , endpoint_("https://" + token.endpoint_url)
+            , warehouse_id_(token.database)
+        {
+            curl_ = curl_easy_init();
+            assert(!endpoint_.empty());
+            if (!curl_) {
+                throw std::runtime_error("Failed to initialize curl");
+            }
+        }
 
-    // Set curl options
-    curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
-    curl_easy_setopt(curl_, CURLOPT_HTTPGET, 1L);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
+        ~Pimpl()
+        {
+            if (curl_) {
+                curl_easy_cleanup(curl_);
+            }
+        }
 
-    // Set up headers
-    curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "Accept: application/json");
+        json sendQuery(const std::string_view query, const std::map<std::string, std::string>& tags = {})
+        {
+            std::string readBuffer;
+            std::string apiUrl = endpoint_ + "/api/2.0/sql/statements/";
+            PLOGI << "Sending Databricks query to " << apiUrl;
+            PLOGI << "Query: " << query;
 
-    // Add the PAT token as Authorization header
-    const std::string authHeader = "Authorization: Bearer " + token_;
-    headers = curl_slist_append(headers, authHeader.c_str());
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+            // Prepare JSON payload with the SQL query
+            json payload = {
+                {"statement", std::string(query)},
+                {"warehouse_id", warehouse_id_},
+                {"wait_timeout", "30s"},
+                {"disposition", "INLINE"}
+            };
 
-    const CURLcode res = curl_easy_perform(curl_);
+            if (!tags.empty()) {
+                json tags_array = json::array();
+                for (const auto& [key, value] : tags) {
+                    tags_array.push_back({{"key", key}, {"value", value}});
+                }
+                payload["query_tags"] = tags_array;
+            }
 
-    curl_slist_free_all(headers);
+            const std::string jsonPayload = payload.dump();
 
-    // Check for errors
-    if (res != CURLE_OK) {
-      std::stringstream errorMsg;
-      errorMsg << "curl_easy_perform() (GET) failed: " << curl_easy_strerror(res);
-      throw std::runtime_error(errorMsg.str());
+            // Set curl options
+            curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
+            curl_easy_setopt(curl_, CURLOPT_POST, 1L);
+            curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
+            curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, jsonPayload.c_str());
+
+            // Set up headers
+            struct curl_slist* headers = nullptr;
+            headers = curl_slist_append(headers, "Content-Type: application/json");
+            headers = curl_slist_append(headers, "Accept: application/json");
+
+            // Add the PAT token as Authorization header
+            const std::string authHeader = "Authorization: Bearer " + token_;
+            headers = curl_slist_append(headers, authHeader.c_str());
+            curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+
+            const CURLcode res = curl_easy_perform(curl_);
+
+            curl_slist_free_all(headers);
+
+            // Check for errors
+            if (res != CURLE_OK) {
+                std::stringstream errorMsg;
+                errorMsg << "curl_easy_perform() failed: " << curl_easy_strerror(res);
+                throw std::runtime_error(errorMsg.str());
+            }
+
+            curl_easy_reset(curl_);
+            return json::parse(readBuffer);
+        }
+
+        json queryHistory(const std::string& statement_id) const
+        {
+            std::string readBuffer;
+            std::string apiUrl = endpoint_ + "/api/2.0/sql/history/queries";
+
+            PLOGI << "Sending Databricks GET request to" << apiUrl;
+
+            // Set curl options
+            curl_easy_setopt(curl_, CURLOPT_URL, apiUrl.c_str());
+            curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback);
+            curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &readBuffer);
+            curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "GET");
+
+            json payload = {
+                {"max_results", 1},
+                {"filter_by",json{
+                    {"statement_ids", json::array({ statement_id})}}}
+            };
+            std::string body = payload.dump();
+            curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, body.c_str());
+
+            // Set up headers
+            curl_slist* headers = nullptr;
+            headers = curl_slist_append(headers, "Accept: application/json");
+
+            // Add the PAT token as Authorization header
+            const std::string authHeader = "Authorization: Bearer " + token_;
+            headers = curl_slist_append(headers, authHeader.c_str());
+            curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+
+            const CURLcode res = curl_easy_perform(curl_);
+
+            curl_slist_free_all(headers);
+
+            // Check for errors
+            if (res != CURLE_OK) {
+                std::stringstream errorMsg;
+                errorMsg << "curl_easy_perform() (GET) failed: " << curl_easy_strerror(res);
+                throw std::runtime_error(errorMsg.str());
+            }
+            curl_easy_reset(curl_);
+            return json::parse(readBuffer);
+        }
+    };
+
+    Connection::Connection(const CredentialAccessToken& credential, const Engine& engine)
+        : ConnectionBase(credential, engine)
+        , impl_(std::make_unique<Pimpl>(*this, credential))
+        , token_(credential)
+    {
     }
 
-    return json::parse(readBuffer);
-  }
+    Connection::~Connection()
+    {
+    }
 
-  json getHistory() {
-    return getRequest("/api/2.0/sql/history/queries?max_results=10&include_metrics=true");
-  }
-};
+    void Connection::execute(std::string_view statement)
+    {
+        auto response = impl_->sendQuery(statement);
+        handleDatabricksResponse(token_, response);
+    }
 
-Connection::Connection(const CredentialAccessToken& credential, const Engine& engine)
-  : ConnectionBase(credential, engine)
-  , impl_(std::make_unique<Pimpl>(*this, credential))
-  , token_(credential) {
-}
+    std::string Connection::execute(std::string_view statement, const std::map<std::string, std::string>& tags)
+    {
+        auto response = impl_->sendQuery(statement, tags);
+        handleDatabricksResponse(token_, response);
 
-Connection::~Connection() {
-}
+        std::string statement_id;
+        std::string query_id;
 
-void Connection::execute(std::string_view statement) {
-  auto response = impl_->sendQuery(statement);
-  handleDatabricksResponse(token_, response);
-}
+        if (response.contains("statement_id")) {
+            statement_id = response["statement_id"].get<std::string>();
+        }
 
-std::string Connection::execute(std::string_view statement, const std::map<std::string, std::string>& tags) {
-  auto response = impl_->sendQuery(statement, tags);
-  handleDatabricksResponse(token_, response);
-  
-  std::string statement_id;
-  std::string query_id;
-  
-  if (response.contains("statement_id")) {
-    statement_id = response["statement_id"].get<std::string>();
-  }
+        return statement_id;
+    }
 
-  return statement_id;
-}
 
-json Connection::getHistory() {
-  return impl_->getHistory();
-}
+    std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement)
+    {
+        auto response = impl_->sendQuery(statement);
+        handleDatabricksResponse(token_, response);
+        auto out = std::make_unique<Result>(response);
+        return out;
+    }
 
-std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
-  auto response = impl_->sendQuery(statement);
-  handleDatabricksResponse(token_, response);
-  return std::make_unique<Result>(response);
-}
+    void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths)
+    {
+        // TODO: should have a general way to map table to its location
 
-std::unique_ptr<RowBase> Connection::fetchRow(const std::string_view statement) {
-  auto response = impl_->sendQuery(statement);
-  handleDatabricksResponse(token_, response);
-  auto result = new Result(response);
-  const auto row_count = result->rowCount();
-  if (row_count == 0) {
-    throw EmptyResultException(statement);
-  }
-  if (row_count > 1) {
-    throw InvalidRowsException("Expected to find a single row in the data, but found: " + std::to_string(row_count),
-                               statement);
-  }
-  return std::make_unique<Row>(result, 0, true);
-}
+        const auto [schema_name, table_name] = splitTable(table);
 
-SqlVariant Connection::fetchScalar(const std::string_view statement) {
-  const auto row = fetchRow(statement);
-  if (row->columnCount() != 1) {
-    throw InvalidColumnsException("Expected to find a single column in the data", statement);
-  }
-  return row->asVariant(0);
-}
+        const std::string statement = "COPY INTO " + std::string(table) + " " + "FROM 's3://sql-arena-data/tpc-h/sf1' "
+            + "FILEFORMAT = PARQUET " + "FILES = ('" + table_name + ".parquet')";
 
-void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
-  // TODO: should have a general way to map table to its location
+        auto response = impl_->sendQuery(statement);
+        handleDatabricksResponse(token_, response);
+    }
 
-  const auto [schema_name, table_name] = splitTable(table);
+    const ConnectionBase::TypeMap& Connection::typeMap() const
+    {
+        static const TypeMap map = {{"INT", "BIGINT"}};
+        return map;
+    }
 
-  const std::string statement =
-      "COPY INTO " + std::string(table) + " " +
-      "FROM 's3://sql-arena-data/tpc-h/sf1' " +
-      "FILEFORMAT = PARQUET " +
-      "FILES = ('" + table_name + ".parquet')";
+    void Connection::analyse(const std::string_view table_name)
+    {
+        execute("ANALYZE TABLE " + std::string(table_name) + " COMPUTE STATISTICS");
+    }
 
-  auto response = impl_->sendQuery(statement);
-  handleDatabricksResponse(token_, response);
-}
+    json Connection::queryHistory(const std::string& statement_id) const
+    {
+        unsigned remaining_retry = 3;
+        while (remaining_retry-- > 0) {
+            PLOGI << "Collecting history query history API - remaining retries: " << remaining_retry;
+            sleep(1);
+            auto response =  impl_->queryHistory(statement_id);
 
-const ConnectionBase::TypeMap& Connection::typeMap() const {
-  static const TypeMap map = {{"INT", "BIGINT"}};
-  return map;
-}
-
-void Connection::analyse(const std::string_view table_name) {
-  execute("ANALYZE TABLE " + std::string(table_name) + " COMPUTE STATISTICS");
-}
+            if (response["res"].size() == 0) {
+                /* Not there yet*/
+                continue;
+            }
+            if (!response["res"][0].value("is_final", false)) {
+                /* Not "consistent" yet (this is so fucked up) */
+                continue;
+            }
+            return response;
+        }
+        throw std::runtime_error("Could not find statement_id" + statement_id + " in history API.");
+    }
 }

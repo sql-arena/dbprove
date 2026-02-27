@@ -36,7 +36,7 @@ class GeneratorState {
   std::set<std::string, TransparentLess> ready_tables_ = {};
 
 public:
-  explicit GeneratorState(const std::filesystem::path& basePath, CloudProvider dataProvider, std::string dataPath);
+  explicit GeneratorState(const std::filesystem::path& basePath, CloudProvider dataProvider = CloudProvider::NONE, std::string dataPath = "");
   ~GeneratorState();
 
   void downloadFromCloud(std::string_view schemaName, std::string_view tableName, std::string_view relativePath);

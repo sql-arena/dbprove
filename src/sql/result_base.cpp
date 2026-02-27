@@ -2,6 +2,7 @@
 #include "result_base.h"
 
 #include "sql_exceptions.h"
+#include "plog/Log.h"
 
 namespace sql {
 RowIterable ResultBase::rows() {
@@ -20,5 +21,16 @@ void ResultBase::drain() {
   for (auto& _ : rows()) {
     // Do nothing
   }
+}
+
+std::string ResultBase::dump()
+{
+  std::string out = "Total Rows: " + std::to_string(rowCount()) + "\n";
+  for (const auto& r : rows()) {
+    std::string rowDump = r.dump();
+    out += rowDump;
+  }
+  reset();
+  return std::move(out);
 }
 }

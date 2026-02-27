@@ -190,6 +190,8 @@ public:
     }
     return *this;
   }
+
+  [[nodiscard]] std::string get() const { return value_; }
 };
 
 
@@ -217,6 +219,10 @@ public:
   }
 
   explicit SqlVariant(const SqlDecimal& v)
+    : data(v) {
+  }
+
+  explicit SqlVariant(const SqlFloat& v)
     : data(v) {
   }
 
@@ -264,7 +270,28 @@ public:
     if (is<SqlString>()) {
       return get<SqlString>().get();
     }
-    throw std::runtime_error("Value is not a string");
+    if (is<SqlBigInt>()) {
+      return std::to_string(get<SqlBigInt>().get());
+    }
+    if (is<SqlInt>()) {
+      return std::to_string(get<SqlInt>().get());
+    }
+    if (is<SqlSmallInt>()) {
+      return std::to_string(get<SqlSmallInt>().get());
+    }
+    if (is<SqlFloat>()) {
+      return std::to_string(get<SqlFloat>().get());
+    }
+    if (is<SqlDouble>()) {
+      return std::to_string(get<SqlDouble>().get());
+    }
+    if (is<SqlDecimal>()) {
+      return get<SqlDecimal>().get();
+    }
+    if (is<SqlNull>()) {
+      return "NULL";
+    }
+    throw std::runtime_error("No way to convert to string");
   }
 
   [[nodiscard]] double asDouble() const {
@@ -301,8 +328,29 @@ public:
 
 
   [[nodiscard]] SqlTypeKind kind() const {
-    if (std::holds_alternative<SqlInt>(data)) {
+    if (is<SqlInt>()) {
       return SqlTypeKind::INT;
+    }
+    if (is<SqlBigInt>()) {
+      return SqlTypeKind::BIGINT;
+    }
+    if (is<SqlSmallInt>()) {
+      return SqlTypeKind::SMALLINT;
+    }
+    if (is<SqlFloat>()) {
+      return SqlTypeKind::REAL;
+    }
+    if (is<SqlDouble>()) {
+      return SqlTypeKind::DOUBLE;
+    }
+    if (is<SqlString>()) {
+      return SqlTypeKind::STRING;
+    }
+    if (is<SqlDecimal>()) {
+      return SqlTypeKind::DECIMAL;
+    }
+    if (is<SqlNull>()) {
+      return SqlTypeKind::SQL_NULL;
     }
     return SqlTypeKind::UNKNOWN;
   }

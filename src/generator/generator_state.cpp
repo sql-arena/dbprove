@@ -183,7 +183,6 @@ namespace generator
         }
         PLOGI << "Table: " << table_name << " input being generated...";
         table(table_name).generator(*this, conn);
-        PLOGI << "Table: " << table_name << " input successfully generated";
 
         return target_row_count;
     }

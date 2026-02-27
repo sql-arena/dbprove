@@ -33,7 +33,7 @@ public:
    * the rowCount is not available until all rows have been spooled
    */
   void drain();
-
+  std::string dump();
 protected:
   /// @brief return the next row or nullptr if no more rows
   virtual const RowBase& nextRow() = 0;

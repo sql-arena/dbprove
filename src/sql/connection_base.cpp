@@ -1,5 +1,6 @@
 #include "connection_base.h"
 
+#include <iostream>
 #include <regex>
 
 #include "sql_exceptions.h"
@@ -14,6 +15,7 @@ const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
 }
 
 std::unique_ptr<RowBase> ConnectionBase::fetchRow(const std::string_view statement) {
+
   const auto result = fetchAll(statement);
   std::unique_ptr<MaterialisedRow> first_row = nullptr;
   for (auto& row : result->rows()) {
@@ -58,11 +60,9 @@ void ConnectionBase::analyse(std::string_view table_name) {
 std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view table) {
   const std::string dumb_row_count = "SELECT COUNT(*) FROM " + std::string(table);
   try {
-    auto v = fetchScalar(dumb_row_count);
+    const auto v = fetchScalar(dumb_row_count);
     return v.get<SqlBigInt>();
   } catch (InvalidObjectException&) {
-    return std::nullopt;
-  } catch (const std::exception&) {
     return std::nullopt;
   }
 }

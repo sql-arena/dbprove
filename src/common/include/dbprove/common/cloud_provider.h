@@ -2,5 +2,5 @@
 
 enum class CloudProvider
 {
-    AWS, GCS, AZURE
+    AWS, GCS, AZURE, NONE
 };

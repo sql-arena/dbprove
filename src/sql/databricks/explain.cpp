@@ -31,29 +31,37 @@ namespace sql::databricks
     {
         std::map<std::string, std::string> tags = {{"dbprove", "DBPROVE"}};
         // NOTE: We must disable caching, if not, we end up with a query_id that is not the actual one that has the plan
-        std::string statement_id = execute("SET use_cached_result = false;" + std::string(statement), tags);
+        std::string statement_id = execute(statement, tags);
 
+        PLOGI << "Gathering data for Statement ID: " << statement_id;
         auto info = getQueryHistoryInfo(statement_id);
         std::string start_time_ms = std::to_string(info.start_time_ms);
 
+        PLOGI << "Finding Org ID: " << statement_id;
         std::string org_id = getOrgId();
 
         // find the actual execution using the ugly, undocumented API
         std::string actual_statement_id = (info.cache_query_id.empty() ? info.query_id : info.cache_query_id);
         std::string scraped_json = runNodeDumpPlan(actual_statement_id, start_time_ms);
         auto plan_json = json::parse(scraped_json);
-        PLOGI << "Plan JSON" << plan_json.dump(2);
 
         // Find the estimated query plan to get row estimates
-        const std::string explain_stmt = std::string("EXPLAIN EXTENDED ") + std::string(statement);
+        PLOGI << "Running Estimation EXPLAIN";
+        const std::string explain_stmt = std::string("EXPLAIN COST ") + std::string(statement);
 
-        auto estimate_data = fetchScalar(explain_stmt).asString();
-        PLOGI << "Estimated FuckedUp" << estimate_data;
+        auto r =  fetchAll(explain_stmt);
+        std::string estimate_data;
+        for (auto& row : r->rows()) {
+            estimate_data += row[0].asString();
+            break;
+        }
 
         // Return an empty minimal plan for now so we can wire up the flow end-to-end
         auto root = std::make_unique<Select>();
         return std::make_unique<Plan>(std::move(root));
     }
+
+
 
     std::string Connection::getOrgId() const
     {
@@ -148,8 +156,7 @@ namespace sql::databricks
 
     Connection::QueryHistoryInfo Connection::getQueryHistoryInfo(const std::string& statement_id)
     {
-        auto response = getHistory();
-
+        auto response = queryHistory(statement_id);
         if (!response.contains("res") || !response["res"].is_array()) {
             throw std::runtime_error("History API response missing 'res' array.");
         }
@@ -169,7 +176,6 @@ namespace sql::databricks
             if (query_id != statement_id) {
                 continue;
             }
-
             if (q.contains("cache_query_id")) {
                 cache_query_id = q["cache_query_id"].get<std::string>();
             }
@@ -181,8 +187,6 @@ namespace sql::databricks
             if (q.contains("query_start_time_ms")) {
                 start_time_ms = q["query_start_time_ms"].get<int64_t>();
             }
-            PLOGI << "Found query in history API. statement_id: " << statement_id << ", query_id: " << query_id <<
- ", cache_query_id: " << cache_query_id << ", start_time_ms: " << start_time_ms;
         }
 
         if (query_id.empty()) {

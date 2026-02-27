@@ -64,10 +64,7 @@ public:
 
   [[nodiscard]] std::string asString(const size_t index) const {
     const auto v = get(index);
-    if (!v.is<SqlString>()) {
-      throw std::runtime_error("Not a string");
-    }
-    return v.get<SqlString>().get();
+    return v.asString();;
   }
 
   [[nodiscard]] double asDouble(const size_t index) const {

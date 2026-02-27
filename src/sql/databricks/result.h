@@ -24,5 +24,6 @@ namespace sql::databricks
 
     protected:
         const RowBase& nextRow() override;
+        void reset() override;
     };
 }

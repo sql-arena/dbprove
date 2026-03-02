@@ -10,6 +10,7 @@
 #include "sort.h"
 #include "explain/node.h"
 #include "explain/plan.h"
+#include "distribution.h"
 #include <unordered_set>
 #include "select.h"
 #include <dbprove/common/config.h>
@@ -91,9 +92,11 @@ namespace sql::databricks
             node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
         } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
             Join::Type type = Join::Type::INNER;
-            if (name.find("Left Outer") != std::string::npos) type = Join::Type::LEFT_OUTER;
-            else if (name.find("Right Outer") != std::string::npos) type = Join::Type::RIGHT_OUTER;
-            else if (name.find("Full Outer") != std::string::npos) type = Join::Type::FULL;
+    if (name.find("Left Outer") != std::string::npos || name.find("LeftOuter") != std::string::npos) type = Join::Type::LEFT_OUTER;
+    else if (name.find("Right Outer") != std::string::npos || name.find("RightOuter") != std::string::npos) type = Join::Type::RIGHT_OUTER;
+    else if (name.find("Full Outer") != std::string::npos || name.find("FullOuter") != std::string::npos) type = Join::Type::FULL;
+    else if (name.find("Left Semi") != std::string::npos || name.find("LeftSemi") != std::string::npos) type = Join::Type::LEFT_SEMI_INNER;
+    else if (name.find("Left Anti") != std::string::npos || name.find("LeftAnti") != std::string::npos) type = Join::Type::LEFT_ANTI;
 
             std::string condition;
             if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
@@ -118,7 +121,11 @@ namespace sql::databricks
             node = std::make_unique<Join>(type, Join::Strategy::HASH, condition);
             node->rows_estimated = ctx.row_estimates.contains("Join") ? ctx.row_estimates.at("Join") : NAN;
         } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
-            node = std::make_unique<Projection>(std::vector<Column>{}); // Map Exchange to Projection for now
+            Distribute::Strategy strategy = Distribute::Strategy::HASH;
+            if (name.find("Broadcast") != std::string::npos || tag.find("BROADCAST") != std::string::npos) {
+                strategy = Distribute::Strategy::BROADCAST;
+            }
+            node = std::make_unique<Distribute>(strategy, std::vector<Column>{});
         }
 
         if (!node) {

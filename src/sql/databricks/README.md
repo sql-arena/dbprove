@@ -40,8 +40,8 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Map to `SORT`. |
 | `Aggregate` | `AGGREGATE` | Grouping and aggregation. |
-| `Join` | `JOIN` | Join operations. Supports Inner, Outer, etc. |
-| `Exchange` / `Shuffle` | `EXCHANGE` | Data movement. Map to `PROJECT` for canonical view. |
+| `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti. |
+| `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 | `Photon Result Stage` | `PROJECT` | Result collection stage. |
 

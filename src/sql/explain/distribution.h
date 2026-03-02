@@ -20,7 +20,16 @@ namespace sql::explain
         {
         }
 
-        std::string compactSymbolic() const override;;
+        [[nodiscard]] std::string compactSymbolic() const override;
+        [[nodiscard]] std::string renderMuggle(size_t max_width) const override {
+            switch (strategy) {
+                case Strategy::HASH: return "HASH DISTRIBUTE";
+                case Strategy::BROADCAST: return "BROADCAST";
+                case Strategy::ROUND_ROBIN: return "ROUND ROBIN";
+                case Strategy::GATHER: return "GATHER";
+            }
+            return "DISTRIBUTION";
+        }
 
         std::vector<Column> columns_distribute;
         Strategy strategy;

@@ -21,6 +21,7 @@ The following rules apply to the C/C++ coding style
 The following is the author's preference:
 
 - **Minimal Changes**: Suggest only the change requested, do not try to add additional functions not requested.
+- **DRY Principle**: Always prefer DRY (Don't Repeat Yourself) code. Extract repeated boilerplate into reusable functions or classes to keep the codebase maintainable and clean.
 - **Library Reuse**: Always seek out existing functionality in libraries already provided before suggesting additional, third-party code.
 - **Fail Fast**: When something fails (for example, missing expected headers or API fields), throw an exception instead of returning a bogus value. Early failure is preferred over silent continuation with incorrect state.
 - **Scratchpad**: Use the `scratchpad/` directory for any temporary files or outputs created during the session. This directory is `.gitignored`.

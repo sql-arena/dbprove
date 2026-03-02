@@ -43,8 +43,14 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Join` | `JOIN` | Join operations. Supports Inner, Outer, etc. |
 | `Exchange` / `Shuffle` | `EXCHANGE` | Data movement. Map to `PROJECT` for canonical view. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
+| `Photon Result Stage` | `PROJECT` | Result collection stage. |
 
-## JSON Node Observation: Scan
+## Join Keys Extraction
+
+Join keys are extracted from the `metaData` array within the Spark execution graph JSON.
+Specifically, we look for items with `key` as `LEFT_KEYS` and `RIGHT_KEYS`. These keys are typically stored in the `values` array of the metadata item. We combine them into a canonical `ON left = right` condition.
+
+## Row Estimates Integration
 
 For a simple scan query (`SELECT val FROM test.pk`), the following was observed in the JSON:
 -   **Node Name**: `Scan ybaws.test.pk` (includes catalog/schema).

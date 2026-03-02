@@ -90,7 +90,32 @@ namespace sql::databricks
             node = std::make_unique<Select>();
             node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
         } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
-            node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, "");
+            Join::Type type = Join::Type::INNER;
+            if (name.find("Left Outer") != std::string::npos) type = Join::Type::LEFT_OUTER;
+            else if (name.find("Right Outer") != std::string::npos) type = Join::Type::RIGHT_OUTER;
+            else if (name.find("Full Outer") != std::string::npos) type = Join::Type::FULL;
+
+            std::string condition;
+            if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+                std::string left_keys, right_keys;
+                for (const auto& meta : node_json["metaData"]) {
+                    std::string key = meta.value("key", "");
+                    if (key == "LEFT_KEYS") {
+                        if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
+                            left_keys = meta["values"][0].get<std::string>();
+                        }
+                    } else if (key == "RIGHT_KEYS") {
+                        if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
+                            right_keys = meta["values"][0].get<std::string>();
+                        }
+                    }
+                }
+                if (!left_keys.empty() && !right_keys.empty()) {
+                    condition = left_keys + " = " + right_keys;
+                }
+            }
+
+            node = std::make_unique<Join>(type, Join::Strategy::HASH, condition);
             node->rows_estimated = ctx.row_estimates.contains("Join") ? ctx.row_estimates.at("Join") : NAN;
         } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
             node = std::make_unique<Projection>(std::vector<Column>{}); // Map Exchange to Projection for now

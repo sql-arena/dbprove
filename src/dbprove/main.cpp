@@ -12,6 +12,7 @@
 #include <ranges>
 #include <plog/Log.h>
 #include <plog/Initializers/RollingFileInitializer.h>
+#include <plog/Initializers/ConsoleInitializer.h>
 
 namespace fs = std::filesystem;
 
@@ -91,11 +92,14 @@ int main(int argc, char** argv) {
   std::vector<std::string> all_theorems;
   std::string engine_arg;
   uint32_t port;
+  bool verbose = false;
 
   app.set_help_flag("-?", "--help");
   app.add_option(
       "-e, --engine",
       engine_arg);
+
+  app.add_flag("-v, --verbose", verbose, "Log to stdout");
 
   app.add_option("-h,--host",
                  host, "Host or endpoint");
@@ -116,7 +120,14 @@ int main(int argc, char** argv) {
 
   const auto log_directory = dbprove::common::make_directory("logs");
   const std::string log_file = log_directory.string() + "/dbprove.log";
-  plog::init<plog::DBProveFormatter>(plog::info, log_file.c_str(), 1000000, 5);
+  const auto log_level = verbose ? plog::debug : plog::info;
+
+  plog::init<plog::DBProveFormatter>(log_level, log_file.c_str(), 1000000, 5);
+  if (verbose) {
+      plog::init<plog::DBProveFormatter>(plog::debug, plog::streamStdOut);
+  } else {
+      plog::init<plog::DBProveFormatter>(plog::info, plog::streamStdOut);
+  }
 
   const sql::Engine engine(engine_arg);
   ux::Terminal::configure();

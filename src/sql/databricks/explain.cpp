@@ -4,20 +4,242 @@
 #include <array>
 
 #include "connection.h"
-#include <dbprove/sql/explain/plan.h>
+#include "group_by.h"
+#include "join.h"
+#include "scan.h"
+#include "sort.h"
+#include "explain/node.h"
+#include "explain/plan.h"
+#include <unordered_set>
 #include "select.h"
 #include <dbprove/common/config.h>
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 #include <plog/Log.h>
+#include <regex>
 
-
+#include "explain_context.h"
 
 namespace sql::databricks
 {
     using namespace sql::explain;
     using nlohmann::json;
+
+    void parseExplainCost(const std::string& estimate_data, ExplainContext& context)
+    {
+        // Databricks EXPLAIN COST output typically contains lines like:
+        // == Optimized Logical Plan ==
+        // +- OperatorName ..., Statistics(sizeInBytes=..., rowCount=5.86E+6, ...)
+        //
+        // We want to capture the operator name and the row estimate.
+        
+        // Match operator name (skipping prefix characters like +-, |, and spaces)
+        // and then skip everything until "rowCount=" followed by a number (including scientific notation).
+        std::regex line_regex(R"(([A-Z][A-Za-z]+).*Statistics\(.*rowCount=([0-9.E\+\-]+))");
+        std::smatch match;
+
+        std::istringstream stream(estimate_data);
+        std::string line;
+        while (std::getline(stream, line)) {
+            if (std::regex_search(line, match, line_regex)) {
+                if (match.size() == 3) {
+                    std::string op_name = match[1].str();
+                    try {
+                        double rows = std::stod(match[2].str());
+                        
+                        // Since multiple operators might have the same name, we might need a more unique key later,
+                        // but for now, we follow the instruction: "populate the context with a map of nodes and their row estimates"
+                        context.row_estimates[op_name] = rows;
+                        PLOGD << "Found estimate: " << op_name << " -> " << rows;
+                    } catch (const std::exception& e) {
+                        PLOGW << "Failed to parse row count '" << match[2].str() << "' for operator " << op_name << ": " << e.what();
+                    }
+                }
+            }
+        }
+    }
+
+    std::unique_ptr<Node> createNodeFromSparkType(const std::string& name, const json& node_json, const ExplainContext& ctx) {
+        std::unique_ptr<Node> node;
+        if (name.find("Scan") != std::string::npos) {
+            std::string table = name;
+            size_t last_space = name.find_last_of(' ');
+            if (last_space != std::string::npos) {
+                table = name.substr(last_space + 1);
+            }
+            node = std::make_unique<Scan>(table);
+            node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
+        }
+        else if (name.find("Aggregate") != std::string::npos) {
+            node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, std::vector<Column>{}, std::vector<Column>{});
+            node->rows_estimated = ctx.row_estimates.contains("Aggregate") ? ctx.row_estimates.at("Aggregate") : NAN;
+        }
+        else if (name == "Sort") {
+            node = std::make_unique<Sort>(std::vector<Column>{});
+            node->rows_estimated = ctx.row_estimates.contains("Sort") ? ctx.row_estimates.at("Sort") : NAN;
+        }
+        else if (name == "Project") {
+            node = std::make_unique<Select>();
+            node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
+        }
+        else if (name == "Filter") {
+            node = std::make_unique<Select>();
+            node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
+        }
+        else if (name.find("Join") != std::string::npos) {
+             node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, "");
+        }
+        else {
+            node = std::make_unique<Select>();
+        }
+
+        if (node && node_json.contains("metadata") && node_json["metadata"].is_object()) {
+            const auto& metadata = node_json["metadata"];
+            // Databricks often puts actual rows in "number of output rows" or similar fields
+            for (auto it = metadata.begin(); it != metadata.end(); ++it) {
+                std::string key = it.key();
+                if (key.find("rows") != std::string::npos || key.find("Rows") != std::string::npos) {
+                    try {
+                        std::string val_str = it.value().get<std::string>();
+                        // Remove commas and other formatting
+                        val_str.erase(std::remove(val_str.begin(), val_str.end(), ','), val_str.end());
+                        node->rows_actual = std::stod(val_str);
+                        PLOGD << "Extracted actual rows for " << name << ": " << node->rows_actual;
+                    } catch (...) {}
+                }
+            }
+        }
+
+        return node;
+    }
+
+    std::unique_ptr<Plan> buildExplainPlan(const ExplainContext& ctx) {
+        const json* current = &ctx.scraped_plan;
+        std::function<const json*(const json&)> findGraphContainer = [&](const json& j) -> const json* {
+            if (j.is_object()) {
+                if (j.contains("nodes") && j["nodes"].is_array() && 
+                    j.contains("edges") && j["edges"].is_array()) {
+                    return &j;
+                }
+                for (auto it = j.begin(); it != j.end(); ++it) {
+                    const json* res = findGraphContainer(it.value());
+                    if (res) return res;
+                }
+            } else if (j.is_array()) {
+                for (const auto& item : j) {
+                    const json* res = findGraphContainer(item);
+                    if (res) return res;
+                }
+            }
+            return nullptr;
+        };
+
+        const json* graph_json = findGraphContainer(ctx.scraped_plan);
+        if (!graph_json) {
+             throw std::runtime_error("No execution graph found in scraped JSON");
+        }
+
+        PLOGD << "Building plan from graph with " << (*graph_json)["nodes"].size() << " nodes";
+
+        std::map<std::string, std::unique_ptr<Node>> nodes;
+        std::map<std::string, std::string> child_to_parent;
+        std::unordered_set<std::string> all_node_ids;
+
+        for (const auto& node_json : (*graph_json)["nodes"]) {
+            std::string id = node_json.contains("id") ? node_json["id"].is_string() ? node_json["id"].get<std::string>() : node_json["id"].dump() : "unknown";
+            if (id.starts_with("\"") && id.ends_with("\"")) id = id.substr(1, id.size() - 2);
+
+            std::string name = node_json.contains("name") ? node_json["name"].get<std::string>() : "unknown";
+            
+            auto node = createNodeFromSparkType(name, node_json, ctx);
+            nodes[id] = std::move(node);
+            all_node_ids.insert(id);
+        }
+
+        for (const auto& edge : (*graph_json)["edges"]) {
+            std::string fromId, toId;
+            if (edge.contains("fromId")) {
+                fromId = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
+            }
+            if (edge.contains("toId")) {
+                toId = edge["toId"].is_string() ? edge["toId"].get<std::string>() : edge["toId"].dump();
+            }
+            if (fromId.starts_with("\"") && fromId.ends_with("\"")) fromId = fromId.substr(1, fromId.size() - 2);
+            if (toId.starts_with("\"") && toId.ends_with("\"")) toId = toId.substr(1, toId.size() - 2);
+            
+            if (!fromId.empty() && !toId.empty()) {
+                child_to_parent[fromId] = toId;
+            }
+        }
+
+        // Identify root (node with no consumer)
+        std::string root_id;
+        for (const auto& id : all_node_ids) {
+            bool is_producer = false;
+            bool is_consumer = false;
+            for (const auto& edge : (*graph_json)["edges"]) {
+                std::string from, to;
+                if (edge.contains("fromId")) from = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
+                if (edge.contains("toId")) to = edge["toId"].is_string() ? edge["toId"].get<std::string>() : edge["toId"].dump();
+                if (from.starts_with("\"") && from.ends_with("\"")) from = from.substr(1, from.size() - 2);
+                if (to.starts_with("\"") && to.ends_with("\"")) to = to.substr(1, to.size() - 2);
+                
+                if (from == id) is_producer = true;
+                if (to == id) is_consumer = true;
+            }
+            // Root is the final consumer (it has children/producers feeding it, but it feeds nothing else)
+            if (is_consumer && !is_producer) {
+                 root_id = id;
+            }
+        }
+
+        // Build the tree: Parent (toId) -> addChild(Child (fromId))
+        // In Databricks Edges: Producer (Child) -> Consumer (Parent)
+        for (const auto& edge : (*graph_json)["edges"]) {
+            std::string child_id, parent_id;
+            if (edge.contains("fromId")) child_id = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
+            if (edge.contains("toId")) parent_id = edge["toId"].is_string() ? edge["toId"].get<std::string>() : edge["toId"].dump();
+            if (child_id.starts_with("\"") && child_id.ends_with("\"")) child_id = child_id.substr(1, child_id.size() - 2);
+            if (parent_id.starts_with("\"") && parent_id.ends_with("\"")) parent_id = parent_id.substr(1, parent_id.size() - 2);
+
+            if (nodes.contains(parent_id) && nodes.contains(child_id)) {
+                if (nodes[parent_id] && nodes[child_id]) {
+                    nodes[parent_id]->addChild(std::move(nodes[child_id]));
+                }
+            }
+        }
+
+        if (root_id.empty() || !nodes.contains(root_id) || !nodes[root_id]) {
+            throw std::runtime_error("Could not identify root node of the Databricks plan");
+        }
+
+        auto root = std::move(nodes[root_id]);
+        return std::make_unique<Plan>(std::move(root));
+    }
+
+    void walkPlanJson(const json& plan_json) {
+        // Deep recursive search for anything that looks like a graph
+        std::function<void(const json&)> findGraphs = [&](const json& j) {
+            if (j.is_object()) {
+                if (j.contains("nodes") && j["nodes"].is_array() && 
+                    j.contains("edges") && j["edges"].is_array()) {
+                    
+                    PLOGD << "Found a graph structure with " << j["nodes"].size() << " nodes";
+                    return;
+                }
+                for (auto it = j.begin(); it != j.end(); ++it) {
+                    findGraphs(it.value());
+                }
+            } else if (j.is_array()) {
+                for (const auto& item : j) {
+                    findGraphs(item);
+                }
+            }
+        };
+
+        findGraphs(plan_json);
+    }
 
     static size_t HeaderCallback(char* buffer, size_t size, size_t nitems, void* userdata)
     {
@@ -43,7 +265,15 @@ namespace sql::databricks
         // find the actual execution using the ugly, undocumented API
         std::string actual_statement_id = (info.cache_query_id.empty() ? info.query_id : info.cache_query_id);
         std::string scraped_json = runNodeDumpPlan(actual_statement_id, start_time_ms);
-        auto plan_json = json::parse(scraped_json);
+        
+        ExplainContext context;
+        try {
+            context.scraped_plan = json::parse(scraped_json);
+        } catch (const std::exception& e) {
+            PLOGE << "Failed to parse scraped JSON: " << e.what();
+            PLOGE << "Raw JSON snippet: " << scraped_json.substr(0, 1000);
+            throw;
+        }
 
         // Find the estimated query plan to get row estimates
         PLOGI << "Running Estimation EXPLAIN";
@@ -53,12 +283,19 @@ namespace sql::databricks
         std::string estimate_data;
         for (auto& row : r->rows()) {
             estimate_data += row[0].asString();
-            break;
+            // EXPLAIN COST typically returns a single row with the whole plan,
+            // but let's be safe and collect all if it's multiple rows.
+            estimate_data += "\n";
         }
 
-        // Return an empty minimal plan for now so we can wire up the flow end-to-end
-        auto root = std::make_unique<Select>();
-        return std::make_unique<Plan>(std::move(root));
+        context.raw_explain = estimate_data;
+        parseExplainCost(context.raw_explain, context);
+        context.dump();
+
+        PLOGI << "Walking Scraped JSON Plan Tree";
+        walkPlanJson(context.scraped_plan);
+
+        return buildExplainPlan(context);
     }
 
 

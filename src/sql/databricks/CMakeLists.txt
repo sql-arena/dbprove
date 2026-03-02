@@ -11,6 +11,8 @@ target_sources(${_targetName}
         connection.cpp
         row.cpp
         explain.cpp
+        explain_context.cpp
+        explain_context.h
 )
 
 target_include_directories(${_targetName}

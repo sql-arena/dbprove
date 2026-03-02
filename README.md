@@ -5,7 +5,7 @@ Tool to analyse, benchmark and prove the capabilities of a database engine
 
 # Building `dbprove` from source
 
-The goal of `dbprove` is to be static, fully self contained binary. 
+The goal of `dbprove` is to be a static, fully self-contained binary. 
 
 Whenever possible, the libraries needed from these vendors will be statically linked into
 `dbprove`.
@@ -13,6 +13,14 @@ Whenever possible, the libraries needed from these vendors will be statically li
 Of course, that won't always work - because some database vendors don't even distribute
 their driver source or even allow static linking (ex: Oracle and Teradata). For those 
 cases, `dbprove` will dynamically try to load the library at startup.
+
+## CMake Presets
+The project uses CMake presets for configuration. To build on macOS with Apple Silicon (ARM64), use:
+```bash
+cmake --preset osx-arm-base
+cmake --build out/build/osx-arm-base --target dbprove
+```
+The `osx-arm-base` preset is configured to build with `CMAKE_BUILD_TYPE: Debug` by default to ensure symbols are available for debugging.
 
 ## Contributing to Driver development and adding your own Database Driver
 There is a lot of work involved with adding new drivers to `dbprove`. Each database
@@ -25,6 +33,19 @@ that are licensed on less restrictive terms will be preferred. When no other dri
 exists - dynamic og runtime loading  is acceptable. It is important that `dbprove`
 can always run with drivers that it has statically linked and that newly added drivers
 do not cause it to fail on startup.
+
+# Databricks Support
+Databricks connectivity relies on a browser-based authentication flow for some features (like plan dumping). 
+
+## Authentication
+Before running Databricks-related commands that require a browser session, run the authentication script:
+```bash
+./authenticate_databricks.sh
+```
+This script will open a browser window using Playwright. Complete the login and 2FA process, then close the browser. Your session will be saved in a local profile (`~/.databricks-playwright-profile`) and reused by `dbprove`.
+
+# Coding Guidelines
+Detailed coding guidelines for contributors and AI agents are maintained in [ai-rules.md](ai-rules.md).
 
 # Thirdparty Rules
 

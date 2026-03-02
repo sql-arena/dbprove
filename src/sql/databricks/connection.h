@@ -16,6 +16,7 @@ public:
   std::string execute(std::string_view statement, const std::map<std::string, std::string>& tags);
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  std::string version() override;
   nlohmann::json queryHistory(const std::string& statement_id) const;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   const TypeMap& typeMap() const override;

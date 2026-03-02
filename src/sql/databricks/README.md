@@ -18,8 +18,9 @@ The scraped JSON is a complex object representing the query execution history. T
     -   `nodeDescription`: Detailed description (often containing schema, expressions, and metadata).
     -   `metrics`: Actual execution metrics (if the query has run), such as `number of output rows`.
 -   `edges`: Defines the producer-to-consumer relationship between nodes.
-    -   `fromId`: Producer node ID.
-    -   `toId`: Consumer node ID.
+    -   **Important Note**: In the Databricks execution graph JSON, edges actually go from **CONSUMER to PRODUCER**. 
+    -   `fromId`: Consumer node ID (closer to the result).
+    -   `toId`: Producer node ID (closer to the data source).
 
 ## Mapping to Canonical Plan (dbprove)
 

@@ -307,6 +307,15 @@ namespace sql::databricks
         execute("ANALYZE TABLE " + std::string(table_name) + " COMPUTE STATISTICS");
     }
 
+    std::string Connection::version()
+    {
+        try {
+            return fetchScalar("SELECT version()").asString();
+        } catch (...) {
+            return "Databricks (version unknown)";
+        }
+    }
+
     json Connection::queryHistory(const std::string& statement_id) const
     {
         unsigned remaining_retry = 3;

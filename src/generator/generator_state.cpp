@@ -153,7 +153,13 @@ namespace generator
             }
             std::unique_ptr<sql::ConnectionBase> cn = conn.create();
             load(table_name, *cn);
-            generate(table_name, cn.get());
+            
+            // If load() marked the table as ready, we don't need to generate it
+            if (!ready_tables_.contains(table_name)) {
+                generate(table_name, cn.get());
+                // We mark it ready after generation
+                ready_tables_.insert(std::string(table_name));
+            }
 
             declareKeys(table_name, *cn);
         }
@@ -205,31 +211,36 @@ namespace generator
             PLOGD << "Table: " << table_name << " already exists with " << *existing_rows << " rows";
         }
         const auto expected_rows = table(table_name).row_count;
-        if (existing_rows.value_or(0) == 0 || (existing_rows.value() != expected_rows && !table(table_name).is_generated)) {
-            if (table(table_name).is_generated && exists(table(table_name).path)) {
-                PLOGI << "Table: " << table_name << " exists but has no rows. Loading it from file: " << table(table_name).
-    path.string() << "...";
-                conn.bulkLoad(table_name, {table(table_name).path});
-            } else if (!table(table_name).is_generated) {
-                 PLOGI << "Table: " << table_name << " has no rows and no generator file was produced. Assuming it was loaded by INSERT statements in generator.";
-                 existing_rows = conn.tableRowCount(table_name);
+
+        // If it's a generated table, it must have EXACTLY the right amount of rows (roughly)
+        if (table(table_name).is_generated) {
+            if (existing_rows.value_or(0) == 0 || existing_rows.value() < 0.9 * expected_rows || existing_rows.value() > 1.1 * expected_rows) {
+                if (exists(table(table_name).path)) {
+                    PLOGI << "Table: " << table_name << " exists but has incorrect row count (" << existing_rows.value_or(0)
+                          << "). Loading it from file: " << table(table_name).path.string() << "...";
+                    conn.bulkLoad(table_name, {table(table_name).path});
+                } else {
+                    PLOGI << "Table: " << table_name << " needs re-generation (count: " << existing_rows.value_or(0) << ")";
+                    return 0; // Trigger generate() in ensure()
+                }
+            }
+        } else {
+            // If it's NOT a generated table (it uses a generator function), we are more lenient if it already has rows.
+            // But if it has 0 rows, we definitely need to run the generator.
+            if (existing_rows.value_or(0) == 0) {
+                PLOGI << "Table: " << table_name << " has no rows and no generator file. Triggering generator function...";
+                return 0; // Trigger generate() in ensure()
             }
             
-            const auto generated_row_count = table(table_name).row_count;
-            PLOGI << "Table: " << table_name << " needs analysis...";
-            conn.analyse(table_name);
-            PLOGI << "Table: " << table_name << " is ready with " + std::to_string(generated_row_count) + " rows";
-            return generated_row_count;
-        }
-        if (existing_rows.value() < 0.9 * expected_rows || existing_rows.value() > 1.1 * expected_rows) {
-            std::string wrong_row_count_error = "Table: " + std::string(table_name) + " has " + std::to_string(
-                existing_rows.value()) + " rows. ";
-            wrong_row_count_error += "Which does not match the expected " + std::to_string(table(table_name).row_count);
-            PLOGE << wrong_row_count_error;
-            throw std::runtime_error(wrong_row_count_error);
+            // If it has rows, but not exactly what we expected, we still accept it as "ready" for now,
+            // because running the generator function might be expensive or append data if not idempotent.
+            // The user can always manually TRUNCATE if they want a fresh start.
+            if (existing_rows.value() != expected_rows) {
+                PLOGW << "Table: " << table_name << " has " << existing_rows.value() << " rows, but we expected " << expected_rows << ". Continuing anyway.";
+            }
         }
 
-        PLOGI << "Table: " << table_name << " is already in the database with the correct count of: " + std::to_string(
+        PLOGI << "Table: " << table_name << " is already in the database with " + std::to_string(
             existing_rows.value()) + " rows";
 
         ready_tables_.insert(std::string(table_name));

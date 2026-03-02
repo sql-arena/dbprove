@@ -30,6 +30,10 @@ void fk_gen(GeneratorState& state, sql::ConnectionBase* conn) {
 
     PLOGI << "Generating test.fk using INSERT statements...";
     
+    try {
+        conn->execute("DELETE FROM test.fk");
+    } catch (...) {}
+    
     for (int i = 1; i <= 10; ++i) {
         int pk_id = (i + 1) / 2;
         std::string stmt = "INSERT INTO test.fk (id, pk_id, fk_val) VALUES (" + 

@@ -5,7 +5,7 @@
 
 
 TEST_CASE("Empty Results iterate right", "[Result]") {
-  sql::utopia::Connection connection;
+  sql::utopia::Connection connection(sql::CredentialNone(), sql::Engine("utopia"));
   auto resultEmpty = connection.fetchAll(";");
   bool reached = false;
   for (auto& _ : resultEmpty->rows()) {
@@ -15,7 +15,7 @@ TEST_CASE("Empty Results iterate right", "[Result]") {
 }
 
 TEST_CASE("Iterate and read rows values", "[Result]") {
-  sql::utopia::Connection connection;
+  sql::utopia::Connection connection(sql::CredentialNone(), sql::Engine("utopia"));
   auto result10 = connection.fetchAll("/* n10 */ SELECT n FROM n10;");
   int64_t actual_sum = 0;
   for (auto& row : result10->rows()) {

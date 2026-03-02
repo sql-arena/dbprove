@@ -67,7 +67,9 @@ namespace sql::databricks
                                                   const ExplainContext& ctx)
     {
         std::unique_ptr<Node> node;
-        if (name.find("Scan") != std::string::npos) {
+        std::string tag = node_json.value("tag", "");
+
+        if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
             std::string table = name;
             size_t last_space = name.find_last_of(' ');
             if (last_space != std::string::npos) {
@@ -75,33 +77,39 @@ namespace sql::databricks
             }
             node = std::make_unique<Scan>(table);
             node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
-        } else if (name.find("Aggregate") != std::string::npos) {
+        } else if (name.find("Aggregate") != std::string::npos || tag.find("AGGREGATE") != std::string::npos) {
             node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, std::vector<Column>{}, std::vector<Column>{});
             node->rows_estimated = ctx.row_estimates.contains("Aggregate") ? ctx.row_estimates.at("Aggregate") : NAN;
-        } else if (name == "Sort") {
+        } else if (name == "Sort" || tag.find("SORT") != std::string::npos) {
             node = std::make_unique<Sort>(std::vector<Column>{});
             node->rows_estimated = ctx.row_estimates.contains("Sort") ? ctx.row_estimates.at("Sort") : NAN;
-        } else if (name == "Project") {
+        } else if (name == "Project" || tag.find("PROJECT") != std::string::npos) {
             node = std::make_unique<Select>();
             node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
-        } else if (name == "Filter") {
+        } else if (name == "Filter" || tag.find("FILTER") != std::string::npos) {
             node = std::make_unique<Select>();
             node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
-        } else if (name.find("Join") != std::string::npos) {
+        } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
             node = std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, "");
-        } else {
-            node = std::make_unique<Projection>(std::vector<Column>{});
+            node->rows_estimated = ctx.row_estimates.contains("Join") ? ctx.row_estimates.at("Join") : NAN;
+        } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
+            node = std::make_unique<Projection>(std::vector<Column>{}); // Map Exchange to Projection for now
         }
 
-        if (node && node_json.contains("metadata") && node_json["metadata"].is_object()) {
-            const auto& metadata = node_json["metadata"];
-            // Databricks often puts actual rows in "number of output rows" or similar fields
-            for (auto it = metadata.begin(); it != metadata.end(); ++it) {
-                std::string key = it.key();
-                if (key.find("rows") != std::string::npos || key.find("Rows") != std::string::npos) {
+        if (!node) {
+            // Fallback for unknown nodes that might be important (stages, adaptive plan wrappers, etc.)
+            if (tag.find("SINK") != std::string::npos || tag.find("RESULT") != std::string::npos || 
+                tag.find("STAGE") != std::string::npos || tag.find("PLAN") != std::string::npos) {
+                 node = std::make_unique<Projection>(std::vector<Column>{});
+            }
+        }
+
+        if (node && node_json.contains("metrics") && node_json["metrics"].is_array()) {
+            for (const auto& metric : node_json["metrics"]) {
+                std::string key = metric.value("key", "");
+                if (key == "NUMBER_OUTPUT_ROWS") {
                     try {
-                        std::string val_str = it.value().get<std::string>();
-                        // Remove commas and other formatting
+                        std::string val_str = metric.value("value", "0");
                         val_str.erase(std::remove(val_str.begin(), val_str.end(), ','), val_str.end());
                         node->rows_actual = std::stod(val_str);
                         PLOGD << "Extracted actual rows for " << name << ": " << node->rows_actual;
@@ -116,7 +124,7 @@ namespace sql::databricks
 
     std::unique_ptr<Plan> buildExplainPlan(const ExplainContext& ctx)
     {
-        const json* current = &ctx.scraped_plan;
+        const json* graph_json = nullptr;
         std::function<const json*(const json&)> findGraphContainer = [&](const json& j) -> const json* {
             if (j.is_object()) {
                 if (j.contains("nodes") && j["nodes"].is_array() && j.contains("edges") && j["edges"].is_array()) {
@@ -124,107 +132,101 @@ namespace sql::databricks
                 }
                 for (auto it = j.begin(); it != j.end(); ++it) {
                     const json* res = findGraphContainer(it.value());
-                    if (res)
-                        return res;
+                    if (res) return res;
                 }
             } else if (j.is_array()) {
                 for (const auto& item : j) {
                     const json* res = findGraphContainer(item);
-                    if (res)
-                        return res;
+                    if (res) return res;
                 }
             }
             return nullptr;
         };
 
-        const json* graph_json = findGraphContainer(ctx.scraped_plan);
+        graph_json = findGraphContainer(ctx.scraped_plan);
         if (!graph_json) {
             throw std::runtime_error("No execution graph found in scraped JSON");
         }
 
         PLOGD << "Building plan from graph with " << (*graph_json)["nodes"].size() << " nodes";
 
-        std::map<std::string, std::unique_ptr<Node>> nodes;
-        std::map<std::string, std::string> child_to_parent;
-        std::unordered_set<std::string> all_node_ids;
+        struct NodeInfo {
+            std::string id;
+            std::string name;
+            std::string tag;
+            std::unique_ptr<Node> node;
+            bool is_root = true;
+        };
 
+        std::map<std::string, NodeInfo> info_map;
+        // First pass: create all nodes and map them by ID
         for (const auto& node_json : (*graph_json)["nodes"]) {
-            std::string id = node_json.contains("id")
-                                 ? node_json["id"].is_string()
-                                       ? node_json["id"].get<std::string>()
-                                       : node_json["id"].dump()
-                                 : "unknown";
-            if (id.starts_with("\"") && id.ends_with("\""))
-                id = id.substr(1, id.size() - 2);
+            std::string id = node_json.value("id", "unknown");
+            if (id.starts_with("\"") && id.ends_with("\"")) id = id.substr(1, id.size() - 2);
 
-            std::string name = node_json.contains("name") ? node_json["name"].get<std::string>() : "unknown";
+            std::string name = node_json.value("name", "unknown");
+            std::string tag = node_json.value("tag", "");
 
             auto node = createNodeFromSparkType(name, node_json, ctx);
-            nodes[id] = std::move(node);
-            all_node_ids.insert(id);
-        }
-
-        for (const auto& edge : (*graph_json)["edges"]) {
-            std::string fromId, toId;
-            if (edge.contains("fromId")) {
-                fromId = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
-            }
-            if (edge.contains("toId")) {
-                toId = edge["toId"].is_string() ? edge["toId"].get<std::string>() : edge["toId"].dump();
-            }
-            if (fromId.starts_with("\"") && fromId.ends_with("\""))
-                fromId = fromId.substr(1, fromId.size() - 2);
-            if (toId.starts_with("\"") && toId.ends_with("\""))
-                toId = toId.substr(1, toId.size() - 2);
-
-            if (!fromId.empty() && !toId.empty()) {
-                child_to_parent[fromId] = toId;
+            if (node) {
+                info_map[id] = {id, name, tag, std::move(node), true};
             }
         }
 
-        // Identify roots
-        std::unordered_set<std::string> is_from;
+        // Second pass: Identify all parent-child relationships
+        std::map<std::string, std::vector<std::string>> parent_to_children;
         for (const auto& edge : (*graph_json)["edges"]) {
-            std::string from = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
-            if (from.starts_with("\"") && from.ends_with("\"")) from = from.substr(1, from.size() - 2);
-            is_from.insert(from);
+            std::string fromId = edge.value("fromId", "");
+            std::string toId = edge.value("toId", "");
+            if (fromId.starts_with("\"") && fromId.ends_with("\"")) fromId = fromId.substr(1, fromId.size() - 2);
+            if (toId.starts_with("\"") && toId.ends_with("\"")) toId = toId.substr(1, toId.size() - 2);
+
+            if (info_map.contains(fromId) && info_map.contains(toId)) {
+                parent_to_children[fromId].push_back(toId);
+                info_map[toId].is_root = false;
+            }
         }
 
-        std::vector<std::string> roots;
-        for (const auto& id : all_node_ids) {
-            if (!is_from.contains(id)) roots.push_back(id);
-        }
+        // Recursive helper to link nodes bottom-up
+        std::function<void(const std::string&)> linkRecursively = [&](const std::string& parent_id) {
+            if (!parent_to_children.contains(parent_id)) return;
 
-        std::string root_id = roots.empty() ? "" : roots[0];
-        PLOGD << "Identified root candidate: " << root_id;
+            auto children_ids = parent_to_children[parent_id];
+            for (const auto& child_id : children_ids) {
+                // Link children of this child first
+                linkRecursively(child_id);
 
-        // Build the tree: fromId -> toId
-        // In Databricks execution graph JSON:
-        // edges go from CONSUMER (fromId) to PRODUCER (toId)
-        for (const auto& edge : (*graph_json)["edges"]) {
-            std::string parent_id, child_id;
-            if (edge.contains("fromId"))
-                parent_id = edge["fromId"].is_string() ? edge["fromId"].get<std::string>() : edge["fromId"].dump();
-            if (edge.contains("toId"))
-                child_id = edge["toId"].is_string() ? edge["toId"].get<std::string>() : edge["toId"].dump();
-            if (parent_id.starts_with("\"") && parent_id.ends_with("\""))
-                parent_id = parent_id.substr(1, parent_id.size() - 2);
-            if (child_id.starts_with("\"") && child_id.ends_with("\""))
-                child_id = child_id.substr(1, child_id.size() - 2);
-
-            if (nodes.contains(parent_id) && nodes.contains(child_id)) {
-                if (nodes[parent_id] && nodes[child_id]) {
-                    PLOGD << "Linking " << parent_id << " -> " << child_id;
-                    nodes[parent_id]->addChild(std::move(nodes[child_id]));
+                if (info_map[parent_id].node && info_map[child_id].node) {
+                    PLOGD << "Linking consumer " << parent_id << " (" << info_map[parent_id].name << ") to producer " << child_id << " (" << info_map[child_id].name << ")";
+                    info_map[parent_id].node->addChild(std::move(info_map[child_id].node));
                 }
             }
+        };
+
+        // Identify the best root candidate among those that are marked as is_root
+        std::string root_id = "";
+        for (const auto& [id, info] : info_map) {
+            if (info.is_root) {
+                // Prefer stages that sound like output/result
+                if (info.tag.find("RESULT") != std::string::npos || info.tag.find("SINK") != std::string::npos) {
+                    root_id = id;
+                    break;
+                }
+                if (root_id.empty()) root_id = id;
+            }
         }
 
-        if (root_id.empty() || !nodes.contains(root_id) || !nodes[root_id]) {
+        if (!root_id.empty()) {
+            linkRecursively(root_id);
+        }
+
+        if (root_id.empty() || !info_map.contains(root_id) || !info_map[root_id].node) {
             throw std::runtime_error("Could not identify root node of the Databricks plan");
         }
 
-        auto root = std::move(nodes[root_id]);
+        PLOGD << "Identified root candidate: " << root_id << " (" << info_map[root_id].name << ")";
+
+        auto root = std::move(info_map[root_id].node);
         return std::make_unique<Plan>(std::move(root));
     }
 

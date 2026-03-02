@@ -75,7 +75,8 @@ sql::Credential parseCredentials(
 }
 
 generator::GeneratorState configureDataGeneration() {
-  return generator::GeneratorState("./table_data", CloudProvider::GCS, "gs://sql-arena-data");
+  const auto tableDataPath = common::make_directory("table_data");
+  return generator::GeneratorState(tableDataPath, CloudProvider::GCS, "gs://sql-arena-data");
 }
 
 int main(int argc, char** argv) {

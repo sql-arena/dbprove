@@ -15,26 +15,34 @@ The scraped JSON is a complex object representing the query execution history. T
 -   `nodes`: An array of operator nodes. Each node has:
     -   `id`: Unique identifier (string).
     -   `nodeName`: The Spark operator name (e.g., `Scan parquet`, `Filter`, `Sort`, `Project`).
-    -   `nodeDescription`: Detailed description (often containing schema, expressions, and metadata).
+    -   `tag`: Internal Spark execution tag (e.g., `PHOTON_PROJECT_EXEC`).
     -   `metrics`: Actual execution metrics (if the query has run), such as `number of output rows`.
--   `edges`: Defines the producer-to-consumer relationship between nodes.
-    -   **Important Note**: In the Databricks execution graph JSON, edges actually go from **CONSUMER to PRODUCER**. 
-    -   `fromId`: Consumer node ID (closer to the result).
-    -   `toId`: Producer node ID (closer to the data source).
+-   `edges`: Defines the relationship between nodes.
+    -   **Important Note**: In the Databricks execution graph JSON, edges go from **CONSUMER to PRODUCER**. 
+    -   `fromId`: Consumer node ID (closer to the result, acts as the parent in our tree).
+    -   `toId`: Producer node ID (closer to the data source, acts as the child in our tree).
+
+### Disjoint Components and Roots
+
+Spark query plans often contain multiple disjoint graph components in the JSON (e.g., Result stages vs. Codegen stages). 
+-   **Root Identification**: We identify "islands" in the graph by finding nodes that appear as `fromId` but never as `toId`.
+-   **Prioritization**: Among root candidates, we prioritize those with tags containing `RESULT` or `SINK`.
+-   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
 
 ## Mapping to Canonical Plan (dbprove)
 
-We map Spark operators to the canonical `sql::explain::Node` types:
+We map Spark operators to the canonical `sql::explain::Node` types using both the `nodeName` and `tag` fields:
 
-| Spark Operator | `dbprove` Node Type | Notes |
+| Spark Operator / Tag | `dbprove` Node Type | Notes |
 | :--- | :--- | :--- |
-| `Scan` / `Relation` | `SCAN` | Base table access. Actual rows in `metrics` as `Number of output rows`. |
+| `Scan` / `Relation` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. |
 | `Filter` | `FILTER` | Predicate application. |
 | `Project` | `PROJECT` | Column selection/transformation. |
-| `Sort` | `PHOTON_SORT_EXEC` | Ordering. Map to `SORT`. |
-| `Aggregate` / `GroupingAggregate` | `AGGREGATE` | Grouping and aggregation. |
-| `HashJoin` / `BroadcastHashJoin` | `JOIN` | Join operations. |
-| `Shuffle` / `Exchange` | `EXCHANGE` | Data movement between nodes. |
+| `Sort` | `SORT` | Ordering. Map to `SORT`. |
+| `Aggregate` | `AGGREGATE` | Grouping and aggregation. |
+| `Join` | `JOIN` | Join operations. Supports Inner, Outer, etc. |
+| `Exchange` / `Shuffle` | `EXCHANGE` | Data movement. Map to `PROJECT` for canonical view. |
+| `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 
 ## JSON Node Observation: Scan
 

@@ -6,6 +6,6 @@
 
 
 TEST_CASE("Connectivity Works", "[Connection]") {
-  sql::utopia::Connection connection;
+  sql::utopia::Connection connection(sql::CredentialNone(), sql::Engine("utopia"));
   CHECK_NOTHROW(connection.execute(";"));
 }

@@ -7,7 +7,7 @@ namespace sql::yellowbrick
     class Connection final : public postgresql::Connection
     {
     public:
-        Connection(const CredentialPassword& credential, const Engine& engine);
+        Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
         std::string version() override;
         std::string translateDialectDdl(const std::string_view ddl) const override;
         std::unique_ptr<explain::Plan> explain(std::string_view statement) override;

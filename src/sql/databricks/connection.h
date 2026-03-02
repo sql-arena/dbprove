@@ -10,7 +10,7 @@ class Connection : public ConnectionBase {
   const CredentialAccessToken token_;
 
 public:
-  explicit Connection(const CredentialAccessToken& credential, const Engine& engine);
+  explicit Connection(const CredentialAccessToken& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
   ~Connection() override;
   void execute(std::string_view statement) override;
   std::string execute(std::string_view statement, const std::map<std::string, std::string>& tags);
@@ -19,6 +19,7 @@ public:
   nlohmann::json queryHistory(const std::string& statement_id) const;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   const TypeMap& typeMap() const override;
+  std::optional<RowCount> tableRowCount(const std::string_view table) override;
   void analyse(std::string_view table_name) override;
 
 private:

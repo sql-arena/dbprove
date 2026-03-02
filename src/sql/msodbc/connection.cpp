@@ -33,8 +33,8 @@ std::string makeConnectionString(const Credential& credential) {
   return r;
 }
 
-Connection::Connection(const Credential& credential, const Engine& engine)
-  : odbc::Connection(credential, engine, makeConnectionString(credential)) {
+Connection::Connection(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+  : odbc::Connection(credential, engine, makeConnectionString(credential), std::move(artifacts_path)) {
 }
 
 

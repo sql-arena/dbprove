@@ -19,8 +19,8 @@ class GroupBy;
 }
 
 namespace sql::yellowbrick {
-Connection::Connection(const CredentialPassword& credential, const Engine& engine)
-  : postgresql::Connection(credential, engine) {
+Connection::Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+  : postgresql::Connection(credential, engine, std::move(artifacts_path)) {
 }
 
 std::string Connection::version() {

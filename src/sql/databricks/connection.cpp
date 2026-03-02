@@ -34,32 +34,64 @@ namespace sql::databricks
      */
     static void handleDatabricksResponse(const CredentialAccessToken& credential, json& response)
     {
-        if (!response.contains("error_code")) {
-            return;
-        }
-        const auto error_code = response["error_code"].get<std::string>();
-        const auto message = response["message"].get<std::string>();
+        PLOGD << "Handling Databricks response: " << response.dump();
+        if (response.contains("status")) {
+            const auto& status = response["status"];
+            if (status.contains("state")) {
+                const auto state = status["state"].get<std::string>();
+                if (state == "FAILED") {
+                    const auto& error = status["error"];
+                    const auto error_code = error["error_code"].get<std::string>();
+                    const auto message = error["message"].get<std::string>();
 
-        if (error_code == "PERMISSION_DENIED") {
-            throw ConnectionException(credential, "Permission denied " + message);
+                    if (message.find("ALREADY_EXISTS") != std::string::npos || error_code == "SCHEMA_ALREADY_EXISTS" || error_code == "TABLE_OR_VIEW_ALREADY_EXISTS") {
+                        // These are expected during idempotent operations
+                        PLOGD << "Idempotent error ignored: " << error_code;
+                        return;
+                    }
+
+                    if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || message.find("TABLE_OR_VIEW_NOT_FOUND") != std::string::npos) {
+                        throw InvalidObjectException(message);
+                    }
+                    if (error_code == "SCHEMA_NOT_FOUND" || message.find("SCHEMA_NOT_FOUND") != std::string::npos) {
+                        throw InvalidObjectException(message);
+                    }
+                    throw std::runtime_error("Databricks Query FAILED: " + message);
+                }
+            }
         }
-        if (error_code == "INVALID_TOKEN") {
-            throw PermissionDeniedException("Invalid token " + message);
+
+        if (response.contains("error_code")) {
+            const auto error_code = response["error_code"].get<std::string>();
+            const auto message = response["message"].get<std::string>();
+
+            if (error_code == "SCHEMA_ALREADY_EXISTS" || error_code == "TABLE_OR_VIEW_ALREADY_EXISTS") {
+                // These are expected during idempotent operations
+                PLOGD << "Idempotent API error ignored: " << error_code;
+                return;
+            }
+
+            if (error_code == "PERMISSION_DENIED") {
+                throw ConnectionException(credential, "Permission denied " + message);
+            }
+            if (error_code == "INVALID_TOKEN") {
+                throw PermissionDeniedException("Invalid token " + message);
+            }
+            if (error_code == "ENDPOINT_NOT_FOUND") {
+                throw ConnectionException(credential, "Could not find host at: " + credential.endpoint_url + " the error was: " + message);
+            }
+            if (error_code == "INVALID_PARAMETER_VALUE") {
+                throw ConnectionException(
+                    credential,
+                    "An invalid parameter was passed while connecting to: " + credential.endpoint_url + " the error was: " +
+                    message);
+            }
+            if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || error_code == "RESOURCE_DOES_NOT_EXIST") {
+                throw InvalidObjectException(message);
+            }
+            // No idea, we should probably have handled differently
+            throw std::runtime_error("Databricks error: " + message);
         }
-        if (error_code == "ENDPOINT_NOT_FOUND") {
-            throw ConnectionException(credential, "Could not find host at: " + credential.endpoint_url + " the error was: " + message);
-        }
-        if (error_code == "INVALID_PARAMETER_VALUE") {
-            throw ConnectionException(
-                credential,
-                "An invalid parameter was passed while connecting to: " + credential.endpoint_url + " the error was: " +
-                message);
-        }
-        if (error_code == "TABLE_OR_VIEW_NOT_FOUND" || error_code == "RESOURCE_DOES_NOT_EXIST") {
-            throw InvalidObjectException(message);
-        }
-        // No idea, we should probably have handled differently
-        throw std::runtime_error("Databricks error: " + message);
     }
 
 
@@ -195,8 +227,8 @@ namespace sql::databricks
         }
     };
 
-    Connection::Connection(const CredentialAccessToken& credential, const Engine& engine)
-        : ConnectionBase(credential, engine)
+    Connection::Connection(const CredentialAccessToken& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+        : ConnectionBase(credential, engine, std::move(artifacts_path))
         , impl_(std::make_unique<Pimpl>(*this, credential))
         , token_(credential)
     {
@@ -253,6 +285,21 @@ namespace sql::databricks
     {
         static const TypeMap map = {{"INT", "BIGINT"}};
         return map;
+    }
+
+    std::optional<RowCount> Connection::tableRowCount(const std::string_view table)
+    {
+        try {
+            auto result = ConnectionBase::tableRowCount(table);
+            PLOGD << "Table row count for " << table << ": " << (result ? std::to_string(*result) : "nullopt");
+            return result;
+        } catch (const InvalidObjectException& e) {
+            PLOGD << "Table " << table << " not found (InvalidObjectException): " << e.what();
+            return std::nullopt;
+        } catch (const std::exception& e) {
+            PLOGD << "Table row count for " << table << " failed with exception: " << e.what();
+            throw;
+        }
     }
 
     void Connection::analyse(const std::string_view table_name)

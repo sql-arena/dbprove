@@ -70,8 +70,8 @@ std::vector<std::string> Connection::tableColumns(const std::string_view table) 
   return ret;
 }
 
-Connection::Connection(const CredentialPassword& credential, const Engine& engine)
-  : ConnectionBase(credential, engine)
+Connection::Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+  : ConnectionBase(credential, engine, std::move(artifacts_path))
   , impl_(std::make_unique<Pimpl>(credential)) {
 }
 

@@ -9,7 +9,7 @@ class Connection : public ConnectionBase {
   std::unique_ptr<Pimpl> impl_;
 
 public:
-  explicit Connection(const Credential& credential, const Engine& engine, std::string connection_string);
+  explicit Connection(const Credential& credential, const Engine& engine, std::string connection_string, std::optional<std::string> artifacts_path = std::nullopt);
   ~Connection() override;
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;

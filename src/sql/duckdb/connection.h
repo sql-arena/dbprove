@@ -7,7 +7,7 @@ class Connection final : public ConnectionBase {
   std::unique_ptr<Pimpl> impl_;
 
 public:
-  explicit Connection(const CredentialFile& credential, const Engine& engine);
+  explicit Connection(const CredentialFile& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
 
   const TypeMap& typeMap() const override;
   ~Connection() override;

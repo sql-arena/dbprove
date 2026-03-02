@@ -28,6 +28,7 @@ enum class Category {
   PLAN = 3,
   EE = 4,
   SE = 5,
+  TEST = 6,
   UNKNOWN = 0
 };
 
@@ -184,6 +185,7 @@ public:
   }
 
   void addTag(const Tag& tag);
+  bool hasTag(const Tag& tag) const;
   void addCategory(Category category);
 
   std::string tags_to_string() const {
@@ -212,13 +214,13 @@ public:
   const sql::Engine& engine;
   const sql::Credential& credentials;
   generator::GeneratorState& generator;
-  sql::ConnectionFactory factory{engine, credentials};
+  sql::ConnectionFactory factory;
   std::ostream& console;
   std::ostream& csv;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(const std::vector<std::string_view>& values) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-         std::ostream& console, std::ostream& csv);
+         std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt);
 
   ~RunCtx();
 };

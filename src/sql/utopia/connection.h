@@ -5,7 +5,7 @@
 namespace sql::utopia {
 class Connection final : public sql::ConnectionBase {
 public:
-  explicit Connection();
+  explicit Connection(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
   void execute(std::string_view statement) override;
   std::unique_ptr<sql::ResultBase> fetchAll(std::string_view statement) override;
   std::unique_ptr<sql::RowBase> fetchRow(std::string_view statement) override;

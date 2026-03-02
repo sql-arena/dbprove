@@ -45,8 +45,8 @@ const utopia::UtopiaConfig& getConfig(std::string_view statement) {
 }
 
 
-utopia::Connection::Connection()
-  : ConnectionBase(CredentialNone("UTOPIA"), Engine(Engine::Type::Utopia)) {
+utopia::Connection::Connection(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+  : ConnectionBase(credential, engine, std::move(artifacts_path)) {
 }
 
 void utopia::Connection::execute(std::string_view statement) {

@@ -1,3 +1,4 @@
+#include <plog/Log.h>
 #include "theorem.h"
 #include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
@@ -17,8 +18,8 @@ Proof& Proof::ensure(const std::string& table) {
 Proof& Proof::ensureSchema(const std::string& schema) {
   try {
     state.factory.create()->createSchema(schema);
-  } catch (sql::Exception&) {
-    // NOOP
+  } catch (sql::Exception& e) {
+    PLOGD << "Schema creation failed (might already exist): " << e.what();
   }
   return *this;
 }
@@ -69,6 +70,10 @@ std::string sorted_join(const Iterable& items, const std::string& delimiter = ",
 void Theorem::addTag(const Tag& tag) {
   tags_.insert(tag);
   tags_string_ = sorted_join(tags_);
+}
+
+bool Theorem::hasTag(const Tag& tag) const {
+  return tags_.contains(tag);
 }
 
 void Theorem::addCategory(const Category category) {

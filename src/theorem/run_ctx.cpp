@@ -19,11 +19,12 @@ void RunCtx::writeCsv(const std::vector<std::string_view>& values) const {
 }
 
 RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-               std::ostream& console, std::ostream& csv)
+               std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path)
   : writer(std::make_unique<CsvWriter>(csv))
   , engine(engine)
   , credentials(credentials)
   , generator(generator)
+  , factory(engine, credentials, artifacts_path)
   , console(console)
   , csv(csv) {
   writer->writer << std::vector<std::string_view>{"ENGINE",

@@ -12,7 +12,7 @@ class Connection final : public ConnectionBase {
   std::vector<std::string> tableColumns(std::string_view table);
 
 public:
-  explicit Connection(const CredentialPassword& credential, const Engine& engine);
+  explicit Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
   ~Connection() override;
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;

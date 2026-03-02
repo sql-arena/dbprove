@@ -54,6 +54,25 @@ std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {
         parsed_theorems.insert(all_theorems_in_type.begin(), all_theorems_in_type.end());
         continue;
       }
+      
+      bool found_by_tag = false;
+      try {
+        const Tag tag(t);
+        for (const auto& theorem_ptr : std::views::values(allTheorems())) {
+          if (theorem_ptr->hasTag(tag)) {
+            parsed_theorems.insert(theorem_ptr.get());
+            found_by_tag = true;
+          }
+        }
+      } catch (...) {
+        // Tag construction might fail if it's not uppercase or has invalid chars,
+        // which is fine, we'll try it as a theorem name next.
+      }
+
+      if (found_by_tag) {
+        continue;
+      }
+
       if (!allTheorems().contains(t)) {
         /* Specific theorem*/
         throw std::runtime_error("Unknown theorem: " + t);

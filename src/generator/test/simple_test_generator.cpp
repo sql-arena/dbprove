@@ -13,6 +13,9 @@ void pk_gen(GeneratorState& state, sql::ConnectionBase* conn) {
     
     // Create the schema if it doesn't exist (assuming the DDL handled the table)
     // The DDL in REGISTER_GENERATOR will be executed by GeneratorState::load if the table is missing.
+    try {
+        conn->execute("DELETE FROM test.pk");
+    } catch (...) {}
     
     for (int i = 1; i <= 5; ++i) {
         std::string stmt = "INSERT INTO test.pk (id, val) VALUES (" + std::to_string(i) + ", 'val_" + std::to_string(i) + "')";

@@ -18,6 +18,7 @@
 #include <nlohmann/json.hpp>
 #include <plog/Log.h>
 #include <regex>
+#include <fstream>
 
 #include "explain_context.h"
 
@@ -251,6 +252,35 @@ namespace sql::databricks
 
     std::unique_ptr<Plan> Connection::explain(const std::string_view statement)
     {
+        std::string stmt_str(statement);
+        size_t stmt_hash = std::hash<std::string>{}(stmt_str);
+        std::string base_name = "databricks_" + std::to_string(stmt_hash);
+        
+        std::optional<std::filesystem::path> json_path;
+        std::optional<std::filesystem::path> explain_path;
+        
+        if (artifacts_path_) {
+            json_path = std::filesystem::path(*artifacts_path_) / (base_name + "_json");
+            explain_path = std::filesystem::path(*artifacts_path_) / (base_name + "_raw_explain");
+            
+            if (std::filesystem::exists(*json_path) && std::filesystem::exists(*explain_path)) {
+                PLOGI << "Loading artifacts from " << *artifacts_path_;
+                ExplainContext context;
+                
+                std::ifstream jf(*json_path);
+                std::string scraped_json_str((std::istreambuf_iterator<char>(jf)), std::istreambuf_iterator<char>());
+                context.scraped_plan = json::parse(scraped_json_str);
+                
+                std::ifstream ef(*explain_path);
+                context.raw_explain = std::string((std::istreambuf_iterator<char>(ef)), std::istreambuf_iterator<char>());
+                
+                parseExplainCost(context.raw_explain, context);
+                context.dump();
+                walkPlanJson(context.scraped_plan);
+                return buildExplainPlan(context);
+            }
+        }
+
         std::map<std::string, std::string> tags = {{"dbprove", "DBPROVE"}};
         // NOTE: We must disable caching, if not, we end up with a query_id that is not the actual one that has the plan
         std::string statement_id = execute(statement, tags);
@@ -264,14 +294,14 @@ namespace sql::databricks
 
         // find the actual execution using the ugly, undocumented API
         std::string actual_statement_id = (info.cache_query_id.empty() ? info.query_id : info.cache_query_id);
-        std::string scraped_json = runNodeDumpPlan(actual_statement_id, start_time_ms);
+        std::string scraped_json_str = runNodeDumpPlan(actual_statement_id, start_time_ms);
         
         ExplainContext context;
         try {
-            context.scraped_plan = json::parse(scraped_json);
+            context.scraped_plan = json::parse(scraped_json_str);
         } catch (const std::exception& e) {
             PLOGE << "Failed to parse scraped JSON: " << e.what();
-            PLOGE << "Raw JSON snippet: " << scraped_json.substr(0, 1000);
+            PLOGE << "Raw JSON snippet: " << scraped_json_str.substr(0, 1000);
             throw;
         }
 
@@ -279,16 +309,29 @@ namespace sql::databricks
         PLOGI << "Running Estimation EXPLAIN";
         const std::string explain_stmt = std::string("EXPLAIN COST ") + std::string(statement);
 
-        auto r =  fetchAll(explain_stmt);
         std::string estimate_data;
-        for (auto& row : r->rows()) {
-            estimate_data += row[0].asString();
-            // EXPLAIN COST typically returns a single row with the whole plan,
-            // but let's be safe and collect all if it's multiple rows.
-            estimate_data += "\n";
+        try {
+            auto r = fetchAll(explain_stmt);
+            for (auto& row : r->rows()) {
+                estimate_data += row[0].asString();
+                estimate_data += "\n";
+            }
+        } catch (const std::exception& e) {
+            PLOGE << "EXPLAIN COST failed: " << e.what();
+            // We might still be able to build a plan without estimates
         }
 
         context.raw_explain = estimate_data;
+        
+        if (artifacts_path_) {
+            PLOGI << "Saving artifacts to " << *artifacts_path_;
+            std::filesystem::create_directories(*artifacts_path_);
+            std::ofstream jf(*json_path);
+            jf << context.scraped_plan.dump();
+            std::ofstream ef(*explain_path);
+            ef << context.raw_explain;
+        }
+
         parseExplainCost(context.raw_explain, context);
         context.dump();
 

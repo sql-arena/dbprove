@@ -106,8 +106,8 @@ public:
   }
 };
 
-sql::postgresql::Connection::Connection(const CredentialPassword& credential, const Engine& engine)
-  : ConnectionBase(credential, engine)
+sql::postgresql::Connection::Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path)
+  : ConnectionBase(credential, engine, std::move(artifacts_path))
   , impl_(std::make_unique<Pimpl>(*this, credential)) {
 }
 

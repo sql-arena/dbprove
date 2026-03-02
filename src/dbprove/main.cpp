@@ -89,6 +89,7 @@ int main(int argc, char** argv) {
   std::optional<std::string> password = std::nullopt;
   std::optional<std::string> host = std::nullopt;
   std::optional<std::string> token = std::nullopt;
+  std::optional<std::string> artifacts_path = std::nullopt;
   std::vector<std::string> all_theorems;
   std::string engine_arg;
   uint32_t port;
@@ -113,6 +114,8 @@ int main(int argc, char** argv) {
                  password, "Password. If omitted, will prompt");
   app.add_option("-t,--access-token",
                  token, "Access Token");
+  app.add_option("-a,--artifacts",
+                 artifacts_path, "Path to store/load explain artifacts");
   app.add_option("-T,--theorem",
                  all_theorems, "Which theorems to prove")->delimiter(',');
 
@@ -167,7 +170,7 @@ int main(int argc, char** argv) {
   }
 
   auto input_state = theorem::RunCtx{engine, credentials, generator_state,
-                                     std::cout, proof_output_stream};
+                                     std::cout, proof_output_stream, artifacts_path};
 
   theorem::prove(theorems, input_state);
 }

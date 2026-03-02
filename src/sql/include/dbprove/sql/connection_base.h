@@ -26,9 +26,10 @@ public:
   using TypeMap = std::map<std::string_view, std::string_view>;
   virtual ~ConnectionBase() = default;
 
-  explicit ConnectionBase(const Credential& credential, const Engine& engine)
+  explicit ConnectionBase(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt)
     : engine_(engine)
-    , credential(credential) {
+    , credential(credential)
+    , artifacts_path_(std::move(artifacts_path)) {
   };
 
   /// @brief Used to map type names specific to the engine before executing DDL/SQL
@@ -125,6 +126,7 @@ public:
   std::string mapTypes(std::string_view statement) const;
 
 protected:
+  const std::optional<std::string> artifacts_path_;
   static void validateSourcePaths(const std::vector<std::filesystem::path>& source_paths);
 };
 }

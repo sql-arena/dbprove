@@ -152,8 +152,8 @@ namespace generator
                 continue;
             }
             std::unique_ptr<sql::ConnectionBase> cn = conn.create();
-            generate(table_name, cn.get());
             load(table_name, *cn);
+            generate(table_name, cn.get());
 
             declareKeys(table_name, *cn);
         }
@@ -190,15 +190,22 @@ namespace generator
     sql::RowCount GeneratorState::load(const std::string_view table_name, sql::ConnectionBase& conn)
     {
         sql::checkTableName(table_name);
+        PLOGD << "Ensuring table: " << table_name;
         auto existing_rows = conn.tableRowCount(table_name);
         if (!existing_rows) {
             PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
             const auto table_ddl = table(table_name).ddl;
+            PLOGD << "Executing DDL: " << table_ddl;
             conn.executeDdl(table_ddl);
             existing_rows = conn.tableRowCount(table_name);
+            if (!existing_rows) {
+                PLOGE << "Table: " << table_name << " still does not exist after DDL!";
+            }
+        } else {
+            PLOGD << "Table: " << table_name << " already exists with " << *existing_rows << " rows";
         }
         const auto expected_rows = table(table_name).row_count;
-        if (existing_rows.value_or(0) == 0) {
+        if (existing_rows.value_or(0) == 0 || (existing_rows.value() != expected_rows && !table(table_name).is_generated)) {
             if (table(table_name).is_generated && exists(table(table_name).path)) {
                 PLOGI << "Table: " << table_name << " exists but has no rows. Loading it from file: " << table(table_name).
     path.string() << "...";

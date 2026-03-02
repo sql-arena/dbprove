@@ -131,8 +131,8 @@ public:
   }
 };
 
-Connection::Connection(const Credential& credential, const Engine& engine, const std::string connection_string)
-  : ConnectionBase(credential, engine)
+Connection::Connection(const Credential& credential, const Engine& engine, const std::string connection_string, std::optional<std::string> artifacts_path)
+  : ConnectionBase(credential, engine, std::move(artifacts_path))
   , impl_(std::make_unique<Pimpl>(engine, std::get<CredentialPassword>(credential), connection_string)) {
 }
 

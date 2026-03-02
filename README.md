@@ -34,10 +34,18 @@ exists - dynamic og runtime loading  is acceptable. It is important that `dbprov
 can always run with drivers that it has statically linked and that newly added drivers
 do not cause it to fail on startup.
 
-# Databricks Support
+### Databricks Support
 Databricks connectivity relies on a browser-based authentication flow for some features (like plan dumping). 
 
-## Authentication
+#### Plan Artifacts
+To make analysis and debugging easier, you can cache Databricks plan artifacts (the scraped JSON and raw EXPLAIN output) using the `-a/--artifacts <path>` flag. 
+
+```bash
+dbprove -e Databricks ... -a ./my_artifacts
+```
+When this flag is used, `dbprove` will first check the specified directory for cached files (named `databricks_<hash>_json` and `databricks_<hash>_raw_explain`). If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
+
+#### Authentication
 Before running Databricks-related commands that require a browser session, run the authentication script:
 ```bash
 ./authenticate_databricks.sh

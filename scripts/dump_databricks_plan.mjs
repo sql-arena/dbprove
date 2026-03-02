@@ -119,7 +119,17 @@ function looksLikeLogin(title, url) {
 
   log("Chromium launched in", headless ? "headless" : "headful", "mode");
 
+  let contextClosed = false;
+  context.on("close", () => {
+    contextClosed = true;
+  });
+
   const page = await context.newPage();
+
+  page.on("close", () => {
+    log("Primary page closed.");
+    contextClosed = true;
+  });
 
   let captured = null;
 
@@ -186,12 +196,12 @@ function looksLikeLogin(title, url) {
     } else {
       console.error("Login required. Complete login in the opened browser window.");
       if (isAuthOnly) {
-        console.error("The browser will stay open until you close it or login is detected.");
-        // Wait for URL to change away from login or browser to close
-        while (!context.isClosed() && looksLikeLogin(await page.title().catch(() => ""), page.url())) {
-          await page.waitForTimeout(2000);
+        console.error("The browser will stay open until you close it.");
+        // Wait strictly for browser to close
+        while (!contextClosed) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
-        log("Login detected or browser closed.");
+        log("Browser closed.");
       } else {
         console.error("Press Enter in this terminal when you are back on the query page.");
         await new Promise((resolve) => process.stdin.once("data", resolve));

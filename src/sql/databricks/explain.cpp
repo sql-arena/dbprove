@@ -8,6 +8,7 @@
 #include "join.h"
 #include "scan.h"
 #include "sort.h"
+#include "union.h"
 #include "explain/node.h"
 #include "explain/plan.h"
 #include "distribution.h"
@@ -79,7 +80,29 @@ namespace sql::databricks
             node = std::make_unique<Scan>(table);
             node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
         } else if (name.find("Aggregate") != std::string::npos || tag.find("AGGREGATE") != std::string::npos) {
-            node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, std::vector<Column>{}, std::vector<Column>{});
+            std::vector<Column> group_keys;
+            std::vector<Column> aggregate_exprs;
+            if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+                for (const auto& meta : node_json["metaData"]) {
+                    std::string key = meta.value("key", "");
+                    if (key == "GROUPING_EXPRESSIONS") {
+                        if (meta.contains("values") && meta["values"].is_array()) {
+                            for (const auto& val : meta["values"]) {
+                                std::string col_name = val.get<std::string>();
+                                group_keys.push_back(Column(col_name));
+                            }
+                        }
+                    } else if (key == "AGGREGATE_EXPRESSIONS") {
+                        if (meta.contains("values") && meta["values"].is_array()) {
+                            for (const auto& val : meta["values"]) {
+                                std::string agg_name = val.get<std::string>();
+                                aggregate_exprs.push_back(Column(agg_name));
+                            }
+                        }
+                    }
+                }
+            }
+            node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, group_keys, aggregate_exprs);
             node->rows_estimated = ctx.row_estimates.contains("Aggregate") ? ctx.row_estimates.at("Aggregate") : NAN;
         } else if (name == "Sort" || tag.find("SORT") != std::string::npos) {
             node = std::make_unique<Sort>(std::vector<Column>{});
@@ -122,10 +145,38 @@ namespace sql::databricks
             node->rows_estimated = ctx.row_estimates.contains("Join") ? ctx.row_estimates.at("Join") : NAN;
         } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
             Distribute::Strategy strategy = Distribute::Strategy::HASH;
+            std::vector<Column> dist_cols;
+
             if (name.find("Broadcast") != std::string::npos || tag.find("BROADCAST") != std::string::npos) {
                 strategy = Distribute::Strategy::BROADCAST;
             }
-            node = std::make_unique<Distribute>(strategy, std::vector<Column>{});
+
+            if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+                for (const auto& meta : node_json["metaData"]) {
+                    std::string key = meta.value("key", "");
+                    if (key == "PARTITIONING_TYPE") {
+                        std::string val = meta.value("value", "");
+                        if (val == "BroadcastPartitioning" || val == "BROADCAST") {
+                            strategy = Distribute::Strategy::BROADCAST;
+                        } else if (val == "RoundRobinPartitioning" || val == "RoundRobin") {
+                            strategy = Distribute::Strategy::ROUND_ROBIN;
+                        } else if (val == "Single") {
+                            strategy = Distribute::Strategy::GATHER;
+                        }
+                    } else if (key == "PARTITIONING_EXPRESSIONS") {
+                        if (meta.contains("values") && meta["values"].is_array()) {
+                            for (const auto& val_json : meta["values"]) {
+                                dist_cols.push_back(Column(val_json.get<std::string>()));
+                            }
+                        }
+                    }
+                }
+            }
+
+            node = std::make_unique<Distribute>(strategy, dist_cols);
+        } else if (name.find("Union") != std::string::npos || tag.find("UNION") != std::string::npos) {
+            node = std::make_unique<Union>(Union::Type::ALL);
+            node->rows_estimated = ctx.row_estimates.contains("Union") ? ctx.row_estimates.at("Union") : NAN;
         }
 
         if (!node) {

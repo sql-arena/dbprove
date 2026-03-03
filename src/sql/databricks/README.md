@@ -39,9 +39,9 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Filter` | `FILTER` | Predicate application. |
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Map to `SORT`. |
-| `Aggregate` | `AGGREGATE` | Grouping and aggregation. |
+| `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. |
 | `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti. |
-| `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. |
+| `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE` and `PARTITIONING_EXPRESSIONS` metadata. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 | `Photon Result Stage` | `PROJECT` | Result collection stage. |
 

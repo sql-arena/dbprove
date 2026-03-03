@@ -23,10 +23,10 @@ namespace sql::explain
         [[nodiscard]] std::string compactSymbolic() const override;
         [[nodiscard]] std::string renderMuggle(size_t max_width) const override {
             switch (strategy) {
-                case Strategy::HASH: return "HASH DISTRIBUTE";
-                case Strategy::BROADCAST: return "BROADCAST";
-                case Strategy::ROUND_ROBIN: return "ROUND ROBIN";
-                case Strategy::GATHER: return "GATHER";
+                case Strategy::HASH: return "DISTRIBUTE HASH";
+                case Strategy::BROADCAST: return "DISTRIBUTE BROADCAST";
+                case Strategy::ROUND_ROBIN: return "DISTRIBUTE ROUND ROBIN";
+                case Strategy::GATHER: return "DISTRIBUTE GATHER";
             }
             return "DISTRIBUTION";
         }

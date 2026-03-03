@@ -3,6 +3,7 @@ env.sh
 .output.txt
 *.d
 node_modules/
+dbprove/
 
 # Compiled Object files
 *.slo

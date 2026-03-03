@@ -57,6 +57,61 @@ struct TreeDepthIterable {
 };
 
 template <typename T>
+struct TreeBottomUpIterable {
+  struct Iterator {
+    std::vector<T*> nodes;
+    size_t index = 0;
+
+    explicit Iterator(T& root) {
+      // For bottom-up, we can just use depth-first and reverse it
+      std::stack<T*> stack;
+      stack.push(&root);
+      std::vector<T*> visit_order;
+      
+      while (!stack.empty()) {
+        T* current = stack.top();
+        stack.pop();
+        visit_order.push_back(current);
+        for (auto child : current->children()) {
+          stack.push(child);
+        }
+      }
+      
+      nodes = std::move(visit_order);
+      std::reverse(nodes.begin(), nodes.end());
+    }
+
+    Iterator() : index(static_cast<size_t>(-1)) {}
+
+    T& operator*() const {
+      return *nodes[index];
+    }
+
+    Iterator& operator++() {
+      if (index == nodes.size() - 1) {
+        index = static_cast<size_t>(-1);
+      } else if (index != static_cast<size_t>(-1)) {
+        index++;
+      }
+      return *this;
+    }
+
+    bool operator!=(const Iterator& other) const {
+      return index != other.index;
+    }
+  };
+
+  T& root;
+
+  explicit TreeBottomUpIterable(T& r)
+    : root(r) {
+  }
+
+  [[nodiscard]] Iterator begin() const { return Iterator{root}; }
+  [[nodiscard]] Iterator end() const { return Iterator{}; };
+};
+
+template <typename T>
 struct TreeBreathIterable {
   struct Iterator {
     std::queue<T*> queue;
@@ -179,6 +234,8 @@ public:
 
   /// @brief Iterate depth first over the tree
   TreeDepthIterable<T> depth_first() { return TreeDepthIterable{static_cast<T&>(*this)}; }
+  /// @brief Iterate bottom up over the tree
+  TreeBottomUpIterable<T> bottom_up() { return TreeBottomUpIterable{static_cast<T&>(*this)}; }
   /// @brief Iterate breath first over the tree
   TreeBreathIterable<T> breadth_first() { return TreeBreathIterable{static_cast<T&>(*this)}; }
 

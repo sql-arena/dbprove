@@ -104,6 +104,24 @@ namespace sql::databricks
         PLOGD << "Finished parseExplainCost, parsed " << context.logical_plan.size() << " logical operators";
     }
 
+    double extractActualRows(const json& node_json)
+    {
+        if (node_json.contains("metrics") && node_json["metrics"].is_array()) {
+            for (const auto& metric : node_json["metrics"]) {
+                if (!metric.is_object()) continue;
+                std::string key = safeGetString(metric, "key");
+                if (key == "NUMBER_OUTPUT_ROWS") {
+                    try {
+                        std::string val_str = safeGetString(metric, "value", "0");
+                        val_str.erase(std::remove(val_str.begin(), val_str.end(), ','), val_str.end());
+                        return std::stod(val_str);
+                    } catch (...) {}
+                }
+            }
+        }
+        return NAN;
+    }
+
     std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleScan for " << name;
@@ -117,6 +135,7 @@ namespace sql::databricks
             }
         }
         auto node = std::make_unique<Scan>(table);
+        node->rows_actual = extractActualRows(node_json);
 
         std::string filter;
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
@@ -159,8 +178,8 @@ namespace sql::databricks
                     }
 
                     for (const auto& attr : outputs) {
-                        PLOGD << "Mapping attribute " << attr << " to scan " << table;
-                        ctx.attribute_to_scan[attr] = {table, filter, node->rows_estimated};
+                        PLOGD << "Mapping attribute " << attr << " to scan " << table << " (actual: " << node->rows_actual << ")";
+                        ctx.attribute_to_scan[attr] = {table, filter, node->rows_estimated, node->rows_actual};
                     }
                 }
             }
@@ -450,6 +469,7 @@ namespace sql::databricks
                                 node->setFilter(info.filter);
                             }
                             node->rows_estimated = info.rows_estimated;
+                            node->rows_actual = info.rows_actual;
                             return node;
                         }
                     }
@@ -515,25 +535,10 @@ namespace sql::databricks
         }
 
         PLOGD << "Checking metrics for node: " << name;
-        if (node && node_json.contains("metrics") && node_json["metrics"].is_array()) {
-            PLOGD << "Processing " << node_json["metrics"].size() << " metrics";
-            for (const auto& metric : node_json["metrics"]) {
-                if (!metric.is_object()) {
-                    PLOGW << "Skipping non-object metric";
-                    continue;
-                }
-                std::string key = safeGetString(metric, "key");
-                if (key == "NUMBER_OUTPUT_ROWS") {
-                    try {
-                        std::string val_str = safeGetString(metric, "value", "0");
-                        PLOGD << "Metric value string: " << val_str;
-                        val_str.erase(std::remove(val_str.begin(), val_str.end(), ','), val_str.end());
-                        node->rows_actual = std::stod(val_str);
-                        PLOGD << "Extracted actual rows for " << name << ": " << node->rows_actual;
-                    } catch (const std::exception& e) {
-                        PLOGW << "Error parsing actual rows metric: " << e.what();
-                    }
-                }
+        if (node && std::isnan(node->rows_actual)) {
+            node->rows_actual = extractActualRows(node_json);
+            if (!std::isnan(node->rows_actual)) {
+                PLOGD << "Extracted actual rows for " << name << ": " << node->rows_actual;
             }
         }
 
@@ -547,8 +552,8 @@ namespace sql::databricks
 
         std::vector<Node*> to_collapse;
 
-        // Pass 1: Identify nodes to collapse
-        for (auto& node : root->depth_first()) {
+        // Identify nodes to collapse using bottom-up traversal
+        for (auto& node : root->bottom_up()) {
             // We only collapse SELECT or PROJECTION nodes
             if (node.type != NodeType::SELECT && node.type != NodeType::PROJECTION) {
                 continue;
@@ -588,11 +593,8 @@ namespace sql::databricks
             }
         }
 
-        // Pass 2: Perform the collapse
-        // We iterate in reverse to handle nested nodes more safely if needed, 
-        // though TreeNode::remove() handles grandchildren.
-        for (auto it = to_collapse.rbegin(); it != to_collapse.rend(); ++it) {
-            Node* node = *it;
+        // Perform the collapse
+        for (Node* node : to_collapse) {
             if (node->isRoot()) {
                 PLOGD << "Collapsing root " << to_string(node->type) << " node";
                 auto final_child = node->takeChild(0);
@@ -787,25 +789,15 @@ namespace sql::databricks
     {
         PLOGD << "Starting bottom-up estimate propagation";
         
-        // We do a single bottom-up pass.
-        // For each node, if its estimate/actual is NaN, it takes the value from its last observed child.
-        // Since we iterate bottom-up, children will already have their values propagated from their own children.
-        
-        std::vector<Node*> nodes;
-        for (auto& n : root->depth_first()) {
-            nodes.push_back(&n);
-        }
-        std::reverse(nodes.begin(), nodes.end());
-
-        for (auto node : nodes) {
-            if (std::isnan(node->rows_estimated) || std::isnan(node->rows_actual)) {
+        for (auto& node : root->bottom_up()) {
+            if (std::isnan(node.rows_estimated) || std::isnan(node.rows_actual)) {
                 // Try to find valid values from children
-                for (auto child : node->children()) {
-                    if (std::isnan(node->rows_estimated) && !std::isnan(child->rows_estimated)) {
-                        node->rows_estimated = child->rows_estimated;
+                for (auto child : node.children()) {
+                    if (std::isnan(node.rows_estimated) && !std::isnan(child->rows_estimated)) {
+                        node.rows_estimated = child->rows_estimated;
                     }
-                    if (std::isnan(node->rows_actual) && !std::isnan(child->rows_actual)) {
-                        node->rows_actual = child->rows_actual;
+                    if (std::isnan(node.rows_actual) && !std::isnan(child->rows_actual)) {
+                        node.rows_actual = child->rows_actual;
                     }
                 }
             }

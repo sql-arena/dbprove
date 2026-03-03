@@ -21,6 +21,7 @@ struct ExplainContext {
         std::string table_name;
         std::string filter;
         double rows_estimated;
+        double rows_actual;
     };
 
     /**

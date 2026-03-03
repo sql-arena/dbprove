@@ -316,7 +316,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
 }
 
 
-std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
+std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
   const std::string explain_query = "PRAGMA enable_profiling = 'json';\n" "PRAGMA profiling_mode = 'detailed';\n"
                                     "EXPLAIN (ANALYSE, FORMAT JSON)\n" + std::string(statement);
   const auto result = fetchRow(explain_query);

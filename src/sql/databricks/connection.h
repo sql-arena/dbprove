@@ -15,7 +15,7 @@ public:
   void execute(std::string_view statement) override;
   std::string execute(std::string_view statement, const std::map<std::string, std::string>& tags);
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
-  std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   std::string version() override;
   nlohmann::json queryHistory(const std::string& statement_id) const;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
@@ -24,6 +24,8 @@ public:
   void analyse(std::string_view table_name) override;
 
 private:
+  nlohmann::json getLiveScrapedPlan(std::string_view statement);
+  std::string getLiveExplainCost(std::string_view statement);
   std::string getOrgId() const;
   struct QueryHistoryInfo {
     std::string query_id;

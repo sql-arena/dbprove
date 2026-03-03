@@ -277,8 +277,8 @@ namespace sql::databricks
         const std::string statement = "COPY INTO " + std::string(table) + " " + "FROM 's3://sql-arena-data/tpc-h/sf1' "
             + "FILEFORMAT = PARQUET " + "FILES = ('" + table_name + ".parquet')";
 
-        auto response = impl_->sendQuery(statement);
-        handleDatabricksResponse(token_, response);
+        PLOGI << "Executing COPY INTO for table " << table;
+        execute(statement);
     }
 
     const ConnectionBase::TypeMap& Connection::typeMap() const

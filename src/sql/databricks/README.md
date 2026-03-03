@@ -29,13 +29,21 @@ Spark query plans often contain multiple disjoint graph components in the JSON (
 -   **Prioritization**: Among root candidates, we prioritize those with tags containing `RESULT` or `SINK`.
 -   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
 
+### Descriptive Artifact Naming and Storage
+
+The Databricks parser supports descriptive artifact naming and storage via centralized methods in `ConnectionBase`. When explaining a query:
+- `getArtefact(name, extension)`: Automatically looks for `artifacts_path/<engine>_<name>_<extension>` (e.g., `databricks_TPCH-Q01_json`).
+- `storeArtefact(name, extension, content)`: Automatically stores artifacts using the same `<engine>_<name>_<extension>` pattern.
+
+This centralized logic ensures consistency across different database engines and simplifies the implementation of the `explain` method.
+
 ## Mapping to Canonical Plan (dbprove)
 
 We map Spark operators to the canonical `sql::explain::Node` types using both the `nodeName` and `tag` fields:
 
 | Spark Operator / Tag | `dbprove` Node Type | Notes |
 | :--- | :--- | :--- |
-| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. Databricks does not need local files (`needsLocalFile() == false`) as it loads directly from S3. In this case, `prepareFileInput` just registers the table as ready without downloading anything. |
+| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. Handles `LocalTableScan` by mapping to `LocalTable` and using `LocalRelation` estimates. |
 | `Filter` | `FILTER` | Predicate application. Conditions extracted from `CONDITION` metadata. |
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Keys extracted from `SORT_ORDER` metadata. |

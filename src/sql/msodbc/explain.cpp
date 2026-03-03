@@ -410,7 +410,7 @@ std::unique_ptr<Plan> buildExplainPlan(const std::string& explain_output) {
 }
 
 
-std::unique_ptr<explain::Plan> Connection::explain(const std::string_view statement) {
+std::unique_ptr<explain::Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
   /* NOTE: We have to do multiple roundtrips here due to a limitation in SQL Servers handling of batches wiuth SET statements*/
   execute("SET STATISTICS XML ON");
   const auto result = fetchAll(statement);

@@ -182,10 +182,8 @@ namespace generator
             // 4. Load if empty or significantly off
             const auto actual_rows = existing_rows.value_or(0);
             if (actual_rows == 0 || (table(table_name).is_generated && (actual_rows < 0.9 * expected_rows || actual_rows > 1.1 * expected_rows))) {
-                if (exists(table(table_name).path)) {
-                    PLOGI << "Loading table: " << table_name << " (current rows: " << actual_rows << ", expected: " << expected_rows << ")";
-                    load(table_name, *cn);
-                }
+                PLOGI << "Loading table: " << table_name << " (current rows: " << actual_rows << ", expected: " << expected_rows << ")";
+                load(table_name, *cn);
             } else if (actual_rows != expected_rows) {
                 PLOGW << "Table: " << table_name << " has " << actual_rows << " rows, but we expected " << expected_rows;
             }
@@ -239,13 +237,9 @@ namespace generator
     {
         sql::checkTableName(table_name);
         const auto& t = table(table_name);
-        if (exists(t.path)) {
-            PLOGI << "Loading table: " << table_name << " from file: " << t.path.string() << "...";
-            conn.bulkLoad(table_name, {t.path});
-        } else {
-            PLOGE << "Cannot load table: " << table_name << ". Local file does not exist: " << t.path.string();
-            return 0;
-        }
+        
+        PLOGI << "Loading table: " << table_name << "...";
+        conn.bulkLoad(table_name, {t.path});
 
         auto actual_rows = conn.tableRowCount(table_name).value_or(0);
         PLOGI << "Table: " << table_name << " loaded. Now has " << actual_rows << " rows";

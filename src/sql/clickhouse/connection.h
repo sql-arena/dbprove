@@ -21,7 +21,7 @@ public:
   void createSchema(std::string_view schema_name) override;
   [[nodiscard]] std::string translateDialectDdl(const std::string_view ddl) const override;
   void analyse(std::string_view table_name) override;
-  std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   void declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns, std::string_view pk_table,
                          std::span<std::string_view> pk_columns) override;
 };

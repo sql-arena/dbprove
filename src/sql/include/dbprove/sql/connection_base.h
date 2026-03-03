@@ -54,7 +54,7 @@ public:
   /**
    * @brief Run the query, discarding results and returning the query plan
    */
-  virtual std::unique_ptr<explain::Plan> explain(std::string_view statement);
+  virtual std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt);
 
   /** @brief If bulk load API is available, use that to load file.
    * @note If no bulk load API is available, the implementation must fall back to INSERT
@@ -124,6 +124,22 @@ public:
   virtual void close() { closed_ = true; };
 
   std::string mapTypes(std::string_view statement) const;
+
+  /**
+   * @brief Get the artefact from the file system.
+   * @param name Base name of the artefact
+   * @param extension Extension to look for (without the dot)
+   * @return The contents of the artefact if it exists, nullopt otherwise.
+   */
+  std::optional<std::string> getArtefact(std::string_view name, std::string_view extension) const;
+
+  /**
+   * @brief Store the artefact on the file system.
+   * @param name Base name of the artefact
+   * @param extension Extension to use (without the dot)
+   * @param content The content of the artefact to store.
+   */
+  void storeArtefact(std::string_view name, std::string_view extension, std::string_view content) const;
 
 protected:
   const std::optional<std::string> artifacts_path_;

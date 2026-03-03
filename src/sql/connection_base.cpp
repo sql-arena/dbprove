@@ -6,6 +6,7 @@
 #include "sql_exceptions.h"
 #include "explain/plan.h"
 #include "embedded_sql.h"
+#include <fstream>
 #include "plog/Log.h"
 
 namespace sql {
@@ -38,7 +39,7 @@ SqlVariant ConnectionBase::fetchScalar(const std::string_view statement) {
   return row->asVariant(0);
 }
 
-std::unique_ptr<explain::Plan> ConnectionBase::explain(std::string_view statement) {
+std::unique_ptr<explain::Plan> ConnectionBase::explain(const std::string_view statement, std::optional<std::string_view> name) {
   return nullptr;
 }
 
@@ -141,5 +142,42 @@ void ConnectionBase::validateSourcePaths(const std::vector<std::filesystem::path
       throw std::runtime_error("CSV File does not exist: " + path.string());
     }
   }
+}
+
+std::optional<std::string> ConnectionBase::getArtefact(const std::string_view name, const std::string_view extension) const {
+  if (!artifacts_path_) {
+    return std::nullopt;
+  }
+
+  const std::string base_name = to_lower(engine().name()) + "_" + std::string(name);
+  const auto path = std::filesystem::path(*artifacts_path_) / (base_name + "_" + std::string(extension));
+  if (!std::filesystem::exists(path)) {
+    return std::nullopt;
+  }
+
+  std::ifstream f(path);
+  if (!f.is_open()) {
+    return std::nullopt;
+  }
+
+  return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+void ConnectionBase::storeArtefact(const std::string_view name, const std::string_view extension, const std::string_view content) const {
+  if (!artifacts_path_) {
+    return;
+  }
+
+  std::filesystem::create_directories(*artifacts_path_);
+  const std::string base_name = to_lower(engine().name()) + "_" + std::string(name);
+  const auto path = std::filesystem::path(*artifacts_path_) / (base_name + "_" + std::string(extension));
+
+  PLOGD << "Storing artefact to " << path.string();
+  std::ofstream f(path);
+  if (!f.is_open()) {
+    PLOGE << "Failed to open artefact file for writing: " << path.string();
+    return;
+  }
+  f << content;
 }
 }

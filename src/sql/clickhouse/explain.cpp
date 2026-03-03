@@ -599,7 +599,7 @@ void guessSets(const std::string_view statement, ExplainCtx& ctx) {
   }
 }
 
-std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
+std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
   const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, description = 1, projections = 1\n"
                                    + std::string(statement) + "\nFORMAT TSVRaw";
   ExplainCtx ctx;

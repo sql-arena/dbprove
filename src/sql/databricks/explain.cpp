@@ -75,12 +75,19 @@ namespace sql::databricks
     std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, const ExplainContext& ctx)
     {
         std::string table = name;
-        size_t last_space = name.find_last_of(' ');
-        if (last_space != std::string::npos) {
-            table = name.substr(last_space + 1);
+        if (name == "Local Table Scan" || name == "LocalTableScan") {
+            table = "LocalTable";
+        } else {
+            size_t last_space = name.find_last_of(' ');
+            if (last_space != std::string::npos) {
+                table = name.substr(last_space + 1);
+            }
         }
         auto node = std::make_unique<Scan>(table);
         node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
+        if (std::isnan(node->rows_estimated) && ctx.row_estimates.contains("LocalRelation")) {
+            node->rows_estimated = ctx.row_estimates.at("LocalRelation");
+        }
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
@@ -595,40 +602,48 @@ namespace sql::databricks
     }
 
 
-    std::unique_ptr<Plan> Connection::explain(const std::string_view statement)
+    std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name)
     {
-        std::string stmt_str(statement);
-        size_t stmt_hash = std::hash<std::string>{}(stmt_str);
-        std::string base_name = "databricks_" + std::to_string(stmt_hash);
-
-        std::optional<std::filesystem::path> json_path;
-        std::optional<std::filesystem::path> explain_path;
-
-        if (artifacts_path_) {
-            json_path = std::filesystem::path(*artifacts_path_) / (base_name + "_json");
-            explain_path = std::filesystem::path(*artifacts_path_) / (base_name + "_raw_explain");
-
-            if (std::filesystem::exists(*json_path) && std::filesystem::exists(*explain_path)) {
-                PLOGI << "Loading artifacts from " << *artifacts_path_;
-                ExplainContext context;
-
-                std::ifstream jf(*json_path);
-                std::string scraped_json_str((std::istreambuf_iterator<char>(jf)), std::istreambuf_iterator<char>());
-                context.scraped_plan = json::parse(scraped_json_str);
-
-                std::ifstream ef(*explain_path);
-                context.raw_explain = std::string((std::istreambuf_iterator<char>(ef)),
-                                                  std::istreambuf_iterator<char>());
-
-                parseExplainCost(context.raw_explain, context);
-                context.dump();
-                walkPlanJson(context.scraped_plan);
-                return buildExplainPlan(context);
-            } else {
-                PLOGI << "Artifacts not found in " << *artifacts_path_ << " for " << base_name << ", proceeding with live query";
-            }
+        std::string name_str;
+        if (name) {
+            name_str = std::string(*name);
+        } else {
+            std::string stmt_str(statement);
+            size_t stmt_hash = std::hash<std::string>{}(stmt_str);
+            name_str = std::to_string(stmt_hash);
         }
 
+        ExplainContext context;
+
+        auto json_artefact = getArtefact(name_str, "json");
+        if (json_artefact) {
+            PLOGI << "Loading scraped plan artifact for " << name_str;
+            context.scraped_plan = json::parse(*json_artefact);
+        } else {
+            context.scraped_plan = getLiveScrapedPlan(statement);
+            storeArtefact(name_str, "json", context.scraped_plan.dump());
+        }
+
+        auto explain_artefact = getArtefact(name_str, "raw_explain");
+        if (explain_artefact) {
+            PLOGI << "Loading EXPLAIN COST artifact for " << name_str;
+            context.raw_explain = *explain_artefact;
+        } else {
+            context.raw_explain = getLiveExplainCost(statement);
+            storeArtefact(name_str, "raw_explain", context.raw_explain);
+        }
+
+        parseExplainCost(context.raw_explain, context);
+        context.dump();
+
+        PLOGI << "Walking Scraped JSON Plan Tree";
+        walkPlanJson(context.scraped_plan);
+
+        return buildExplainPlan(context);
+    }
+
+    nlohmann::json Connection::getLiveScrapedPlan(std::string_view statement)
+    {
         std::map<std::string, std::string> tags = {{"dbprove", "DBPROVE"}};
         // NOTE: We must disable caching, if not, we end up with a query_id that is not the actual one that has the plan
         std::string statement_id = execute(statement, tags);
@@ -638,21 +653,21 @@ namespace sql::databricks
         std::string start_time_ms = std::to_string(info.start_time_ms);
 
         PLOGI << "Finding Org ID: " << statement_id;
-        std::string org_id = getOrgId();
-
         // find the actual execution using the ugly, undocumented API
         std::string actual_statement_id = (info.cache_query_id.empty() ? info.query_id : info.cache_query_id);
         std::string scraped_json_str = runNodeDumpPlan(actual_statement_id, start_time_ms);
 
-        ExplainContext context;
         try {
-            context.scraped_plan = json::parse(scraped_json_str);
+            return json::parse(scraped_json_str);
         } catch (const std::exception& e) {
             PLOGE << "Failed to parse scraped JSON: " << e.what();
             PLOGE << "Raw JSON snippet: " << scraped_json_str.substr(0, 1000);
             throw;
         }
+    }
 
+    std::string Connection::getLiveExplainCost(std::string_view statement)
+    {
         // Find the estimated query plan to get row estimates
         PLOGI << "Running Estimation EXPLAIN";
         const std::string explain_stmt = std::string("EXPLAIN COST ") + std::string(statement);
@@ -669,24 +684,7 @@ namespace sql::databricks
             // We might still be able to build a plan without estimates
         }
 
-        context.raw_explain = estimate_data;
-
-        if (artifacts_path_) {
-            PLOGI << "Saving artifacts to " << *artifacts_path_;
-            std::filesystem::create_directories(*artifacts_path_);
-            std::ofstream jf(*json_path);
-            jf << context.scraped_plan.dump();
-            std::ofstream ef(*explain_path);
-            ef << context.raw_explain;
-        }
-
-        parseExplainCost(context.raw_explain, context);
-        context.dump();
-
-        PLOGI << "Walking Scraped JSON Plan Tree";
-        walkPlanJson(context.scraped_plan);
-
-        return buildExplainPlan(context);
+        return estimate_data;
     }
 
 

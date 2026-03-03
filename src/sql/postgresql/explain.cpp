@@ -365,7 +365,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& explain_json) {
   return plan;
 }
 
-std::unique_ptr<Plan> Connection::explain(const std::string_view statement) {
+std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
   const std::string explain_modded = "EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON)\n" + std::string(statement);
 
   const auto result = fetchScalar(explain_modded);

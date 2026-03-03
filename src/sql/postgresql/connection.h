@@ -19,7 +19,7 @@ public:
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
-  std::unique_ptr<explain::Plan> explain(std::string_view statement) override;
+  std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   std::string version() override;
   void close() override;
 };

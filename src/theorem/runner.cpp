@@ -75,7 +75,7 @@ void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   for (auto& query : queries) {
     proof.data.push_back(std::make_unique<DataQuery>(query));
     auto qs = query.start();
-    auto explain = connection->explain(query.textTagged());
+    auto explain = connection->explain(query.textTagged(), proof.theorem.name);
     query.stop(qs);
     proof.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
   }

@@ -31,6 +31,14 @@ namespace sql::databricks
     using namespace sql::explain;
     using nlohmann::json;
 
+    std::string safeGetString(const json& j, const std::string& key, const std::string& default_val = "")
+    {
+        if (j.contains(key) && j[key].is_string()) {
+            return j[key].get<std::string>();
+        }
+        return default_val;
+    }
+
     void parseExplainCost(const std::string& estimate_data, ExplainContext& context)
     {
         // Databricks EXPLAIN COST output typically contains lines like:
@@ -44,6 +52,7 @@ namespace sql::databricks
         std::regex line_regex(R"(([A-Z][A-Za-z]+).*Statistics\(.*rowCount=([0-9.E\+\-]+))");
         std::smatch match;
 
+        PLOGD << "Starting parseExplainCost";
         std::istringstream stream(estimate_data);
         std::string line;
         while (std::getline(stream, line)) {
@@ -70,10 +79,12 @@ namespace sql::databricks
                 }
             }
         }
+        PLOGD << "Finished parseExplainCost";
     }
 
     std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleScan for " << name;
         std::string table = name;
         if (name == "Local Table Scan" || name == "LocalTableScan") {
             table = "LocalTable";
@@ -91,11 +102,14 @@ namespace sql::databricks
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "PUSHED_FILTERS" || key == "PARTITION_FILTERS" || key == "DATA_FILTERS") {
                     if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        node->setFilter(meta["values"][0].get<std::string>());
-                    } else if (meta.contains("value")) {
+                        if (meta["values"][0].is_string()) {
+                            node->setFilter(meta["values"][0].get<std::string>());
+                        }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
                         node->setFilter(meta["value"].get<std::string>());
                     }
                 }
@@ -107,23 +121,29 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleAggregate(const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleAggregate";
         std::vector<Column> group_keys;
         std::vector<Column> aggregate_exprs;
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "GROUPING_EXPRESSIONS") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
-                            std::string col_name = val.get<std::string>();
-                            group_keys.push_back(Column(col_name));
+                            if (val.is_string()) {
+                                std::string col_name = val.get<std::string>();
+                                group_keys.push_back(Column(col_name));
+                            }
                         }
                     }
                 } else if (key == "AGGREGATE_EXPRESSIONS") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
-                            std::string agg_name = val.get<std::string>();
-                            aggregate_exprs.push_back(Column(agg_name));
+                            if (val.is_string()) {
+                                std::string agg_name = val.get<std::string>();
+                                aggregate_exprs.push_back(Column(agg_name));
+                            }
                         }
                     }
                 }
@@ -137,14 +157,18 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleSort(const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleSort";
         std::vector<Column> sort_keys;
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "SORT_ORDER") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
-                            sort_keys.push_back(Column(val.get<std::string>()));
+                            if (val.is_string()) {
+                                sort_keys.push_back(Column(val.get<std::string>()));
+                            }
                         }
                     }
                 }
@@ -157,6 +181,7 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleProject(const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleProject";
         auto node = std::make_unique<Select>();
         node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
         return node;
@@ -164,17 +189,21 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleFilter(const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleFilter";
         auto node = std::make_unique<Select>();
         node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "CONDITION") {
-                    if (meta.contains("value")) {
+                    if (meta.contains("value") && meta["value"].is_string()) {
                         node->setFilter(meta["value"].get<std::string>());
                     } else if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        node->setFilter(meta["values"][0].get<std::string>());
+                        if (meta["values"][0].is_string()) {
+                            node->setFilter(meta["values"][0].get<std::string>());
+                        }
                     }
                 }
             }
@@ -185,6 +214,7 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleJoin(const std::string& name, const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleJoin for " << name;
         Join::Type type = Join::Type::INNER;
         if (name.find("Left Outer") != std::string::npos || name.find("LeftOuter") != std::string::npos)
             type = Join::Type::LEFT_OUTER;
@@ -205,14 +235,19 @@ namespace sql::databricks
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             std::string left_keys, right_keys;
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "LEFT_KEYS") {
                     if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        left_keys = meta["values"][0].get<std::string>();
+                        if (meta["values"][0].is_string()) {
+                            left_keys = meta["values"][0].get<std::string>();
+                        }
                     }
                 } else if (key == "RIGHT_KEYS") {
                     if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        right_keys = meta["values"][0].get<std::string>();
+                        if (meta["values"][0].is_string()) {
+                            right_keys = meta["values"][0].get<std::string>();
+                        }
                     }
                 }
             }
@@ -228,9 +263,10 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleExchange(const std::string& name, const json& node_json)
     {
+        PLOGD << "Entering handleExchange for " << name;
         Distribute::Strategy strategy = Distribute::Strategy::HASH;
         std::vector<Column> dist_cols;
-        std::string tag = node_json.value("tag", "");
+        std::string tag = safeGetString(node_json, "tag");
 
         if (name.find("Broadcast") != std::string::npos || tag.find("BROADCAST") != std::string::npos) {
             strategy = Distribute::Strategy::BROADCAST;
@@ -238,9 +274,10 @@ namespace sql::databricks
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "PARTITIONING_TYPE") {
-                    std::string val = meta.value("value", "");
+                    std::string val = safeGetString(meta, "value");
                     if (val == "BroadcastPartitioning" || val == "BROADCAST") {
                         strategy = Distribute::Strategy::BROADCAST;
                     } else if (val == "RoundRobinPartitioning" || val == "RoundRobin") {
@@ -251,9 +288,11 @@ namespace sql::databricks
                 } else if (key == "PARTITIONING_EXPRESSIONS" || key == "SHUFFLE_ATTRIBUTES") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val_json : meta["values"]) {
-                            dist_cols.push_back(Column(val_json.get<std::string>()));
+                            if (val_json.is_string()) {
+                                dist_cols.push_back(Column(val_json.get<std::string>()));
+                            }
                         }
-                    } else if (meta.contains("value")) {
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
                         dist_cols.push_back(Column(meta["value"].get<std::string>()));
                     }
                 }
@@ -265,22 +304,26 @@ namespace sql::databricks
 
     std::unique_ptr<Node> handleLimit(const std::string& name, const json& node_json, const ExplainContext& ctx)
     {
+        PLOGD << "Entering handleLimit for " << name;
         uint64_t limit_val = 0;
         std::vector<Column> sort_keys;
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
-                std::string key = meta.value("key", "");
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
                 if (key == "LIMIT" || key == "limit") {
                     try {
-                        std::string val_str = meta.value("value", "0");
+                        std::string val_str = safeGetString(meta, "value", "0");
                         limit_val = std::stoull(val_str);
                     } catch (...) {
                     }
                 } else if (key == "SORT_ORDER") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
-                            sort_keys.push_back(Column(val.get<std::string>()));
+                            if (val.is_string()) {
+                                sort_keys.push_back(Column(val.get<std::string>()));
+                            }
                         }
                     }
                 }
@@ -322,8 +365,10 @@ namespace sql::databricks
     std::unique_ptr<Node> createNodeFromSparkType(const std::string& name, const json& node_json,
                                                   const ExplainContext& ctx)
     {
+        PLOGD << "Entering createNodeFromSparkType for node: " << name;
         std::unique_ptr<Node> node;
-        std::string tag = node_json.value("tag", "");
+        std::string tag = safeGetString(node_json, "tag");
+        PLOGD << "Node tag: " << tag;
 
         if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
             node = handleScan(name, node_json, ctx);
@@ -359,16 +404,24 @@ namespace sql::databricks
             }
         }
 
+        PLOGD << "Checking metrics for node: " << name;
         if (node && node_json.contains("metrics") && node_json["metrics"].is_array()) {
+            PLOGD << "Processing " << node_json["metrics"].size() << " metrics";
             for (const auto& metric : node_json["metrics"]) {
-                std::string key = metric.value("key", "");
+                if (!metric.is_object()) {
+                    PLOGW << "Skipping non-object metric";
+                    continue;
+                }
+                std::string key = safeGetString(metric, "key");
                 if (key == "NUMBER_OUTPUT_ROWS") {
                     try {
-                        std::string val_str = metric.value("value", "0");
+                        std::string val_str = safeGetString(metric, "value", "0");
+                        PLOGD << "Metric value string: " << val_str;
                         val_str.erase(std::remove(val_str.begin(), val_str.end(), ','), val_str.end());
                         node->rows_actual = std::stod(val_str);
                         PLOGD << "Extracted actual rows for " << name << ": " << node->rows_actual;
-                    } catch (...) {
+                    } catch (const std::exception& e) {
+                        PLOGW << "Error parsing actual rows metric: " << e.what();
                     }
                 }
             }
@@ -453,19 +506,40 @@ namespace sql::databricks
         std::map<std::string, NodeInfo> info_map;
         // First pass: create all nodes and map them by ID
         for (const auto& node_json : (*graph_json)["nodes"]) {
-            std::string id = node_json.value("id", "unknown");
+            if (!node_json.is_object()) {
+                continue;
+            }
+            
+            std::string id = "unknown";
+            if (node_json.contains("id") && !node_json["id"].is_null()) {
+                if (node_json["id"].is_string()) {
+                    id = node_json["id"].get<std::string>();
+                } else if (node_json["id"].is_number()) {
+                    id = std::to_string(node_json["id"].get<int64_t>());
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+            
             if (id.starts_with("\"") && id.ends_with("\"")) id = id.substr(1, id.size() - 2);
 
-            std::string name = node_json.value("name", "unknown");
-            std::string tag = node_json.value("tag", "");
+            std::string name = safeGetString(node_json, "name", "unknown");
+            std::string tag = safeGetString(node_json, "tag", "");
 
-            auto node = createNodeFromSparkType(name, node_json, ctx);
-            if (node) {
-                PLOGD << "Created node " << id << " (" << name << ") with tag " << tag;
-                info_map[id] = {id, name, tag, std::move(node), true};
-            } else {
-                PLOGD << "Skipped node " << id << " (" << name << ") with tag " << tag;
-                // If we skipped a node, we still need to record it so edges can pass through it
+            try {
+                auto node = createNodeFromSparkType(name, node_json, ctx);
+                if (node) {
+                    PLOGD << "Created node " << id << " (" << name << ") with tag " << tag;
+                    info_map[id] = {id, name, tag, std::move(node), true};
+                } else {
+                    PLOGD << "Skipped node " << id << " (" << name << ") with tag " << tag;
+                    // If we skipped a node, we still need to record it so edges can pass through it
+                    info_map[id] = {id, name, tag, nullptr, true};
+                }
+            } catch (const std::exception& e) {
+                PLOGE << "EXCEPTION parsing node " << id << " (" << name << "): " << e.what();
                 info_map[id] = {id, name, tag, nullptr, true};
             }
         }
@@ -473,13 +547,34 @@ namespace sql::databricks
         // Second pass: Identify all parent-child relationships
         std::map<std::string, std::vector<std::string>> parent_to_children;
         for (const auto& edge : (*graph_json)["edges"]) {
-            std::string fromId = edge.value("fromId", "");
-            std::string toId = edge.value("toId", "");
+            std::string fromId = "";
+            if (edge.contains("fromId") && !edge["fromId"].is_null()) {
+                if (edge["fromId"].is_string()) {
+                    fromId = edge["fromId"].get<std::string>();
+                } else if (edge["fromId"].is_number()) {
+                    fromId = std::to_string(edge["fromId"].get<int64_t>());
+                }
+            }
+            
+            std::string toId = "";
+            if (edge.contains("toId") && !edge["toId"].is_null()) {
+                if (edge["toId"].is_string()) {
+                    toId = edge["toId"].get<std::string>();
+                } else if (edge["toId"].is_number()) {
+                    toId = std::to_string(edge["toId"].get<int64_t>());
+                }
+            }
+
+            if (fromId.empty() || toId.empty()) {
+                PLOGW << "Found edge with missing fromId or toId";
+                continue;
+            }
+
             if (fromId.starts_with("\"") && fromId.ends_with("\"")) fromId = fromId.substr(1, fromId.size() - 2);
             if (toId.starts_with("\"") && toId.ends_with("\"")) toId = toId.substr(1, toId.size() - 2);
 
+            PLOGD << "Found edge: " << fromId << " -> " << toId;
             if (info_map.contains(fromId) && info_map.contains(toId)) {
-                PLOGD << "Found edge: " << fromId << " -> " << toId;
                 parent_to_children[fromId].push_back(toId);
                 info_map[toId].is_root = false;
             }
@@ -620,7 +715,9 @@ namespace sql::databricks
             PLOGI << "Loading scraped plan artifact for " << name_str;
             context.scraped_plan = json::parse(*json_artefact);
         } else {
+            PLOGD << "Calling getLiveScrapedPlan";
             context.scraped_plan = getLiveScrapedPlan(statement);
+            PLOGD << "Storing scraped plan artifact";
             storeArtefact(name_str, "json", context.scraped_plan.dump());
         }
 
@@ -629,16 +726,20 @@ namespace sql::databricks
             PLOGI << "Loading EXPLAIN COST artifact for " << name_str;
             context.raw_explain = *explain_artefact;
         } else {
+            PLOGD << "Calling getLiveExplainCost";
             context.raw_explain = getLiveExplainCost(statement);
+            PLOGD << "Storing EXPLAIN COST artifact";
             storeArtefact(name_str, "raw_explain", context.raw_explain);
         }
 
+        PLOGD << "Calling parseExplainCost";
         parseExplainCost(context.raw_explain, context);
         context.dump();
 
         PLOGI << "Walking Scraped JSON Plan Tree";
         walkPlanJson(context.scraped_plan);
 
+        PLOGD << "Calling buildExplainPlan";
         return buildExplainPlan(context);
     }
 
@@ -656,6 +757,13 @@ namespace sql::databricks
         // find the actual execution using the ugly, undocumented API
         std::string actual_statement_id = (info.cache_query_id.empty() ? info.query_id : info.cache_query_id);
         std::string scraped_json_str = runNodeDumpPlan(actual_statement_id, start_time_ms);
+
+        // Debug: Dump raw JSON to a file for investigation
+        {
+            std::filesystem::create_directories("run/scratchpad");
+            std::ofstream debug_out("run/scratchpad/raw_scraped_plan.json");
+            debug_out << scraped_json_str;
+        }
 
         try {
             return json::parse(scraped_json_str);
@@ -792,7 +900,7 @@ namespace sql::databricks
         for (const auto& q : response["res"]) {
             // In the History API, 'query_id' corresponds to the 'statement_id' from the execution API
 
-            if (!q.contains("query_id")) {
+            if (!q.contains("query_id") || q["query_id"].is_null()) {
                 continue;
             }
 
@@ -801,15 +909,11 @@ namespace sql::databricks
             if (query_id != statement_id) {
                 continue;
             }
-            if (q.contains("cache_query_id")) {
+            if (q.contains("cache_query_id") && !q["cache_query_id"].is_null()) {
                 cache_query_id = q["cache_query_id"].get<std::string>();
             }
 
-            if (q.contains("query_start_time_ms")) {
-                start_time_ms = q["query_start_time_ms"].get<int64_t>();
-            }
-
-            if (q.contains("query_start_time_ms")) {
+            if (q.contains("query_start_time_ms") && !q["query_start_time_ms"].is_null()) {
                 start_time_ms = q["query_start_time_ms"].get<int64_t>();
             }
         }

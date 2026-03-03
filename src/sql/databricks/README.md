@@ -29,6 +29,13 @@ Spark query plans often contain multiple disjoint graph components in the JSON (
 -   **Prioritization**: Among root candidates, we prioritize those with tags containing `RESULT` or `SINK`.
 -   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
 
+### Data Type Safety and ID Handling
+
+The Databricks parser is designed to be robust against variations in the Spark execution graph JSON:
+-   **Node IDs**: Node IDs (`id`, `fromId`, `toId`) can appear as both strings and numbers in the JSON. The parser handles both by converting them to a canonical string representation.
+-   **Null Safety**: Spark's JSON often contains `null` for fields that are typically strings (like `name`, `tag`, or metadata `value`). All string extractions use a `safeGetString` helper to prevent type errors.
+-   **Graceful Node Parsing**: Individual node parsing is wrapped in `try-catch` blocks. If a specific node fails to parse, it is treated as a "skipped" node (transparently passing children up), ensuring the overall plan tree can still be constructed.
+
 ### Descriptive Artifact Naming and Storage
 
 The Databricks parser supports descriptive artifact naming and storage via centralized methods in `ConnectionBase`. When explaining a query:

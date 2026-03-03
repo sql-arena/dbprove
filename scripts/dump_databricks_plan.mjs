@@ -164,6 +164,9 @@ function looksLikeLogin(title, url) {
         rurl.includes("/graphql/HistoryStatementPlanMetadata")
       ) {
         log(`Response arrived from ${rurl}`)
+        if (verbose) {
+           log(`Body snippet: ${JSON.stringify(body).slice(0, 500)}`);
+        }
         if (looksLikePlanPayload(body)) {
           log(`Plan payload CAPTURED from ${rurl}`);
           captured = body;

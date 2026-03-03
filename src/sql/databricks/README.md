@@ -84,7 +84,12 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 The parser applies three post-processing steps to the plan tree before returning it:
 
 1.  **Estimate Propagation**: If a node is missing `rows_estimated` or `rows_actual` (value is `NAN`), it attempts to propagate these values from its children.
-2.  **Relational No-Op Collapsing**: Intermediate `SELECT` or `PROJECTION` nodes that have exactly one child and an identical actual row count to their child are collapsed. This removes technical Spark wrappers that don't perform relational filtering.
+2.  **Relational No-Op Collapsing**: Intermediate `SELECT` or `PROJECTION` nodes that have exactly one child are aggressively collapsed if they don't perform relational filtering. For Databricks, this includes:
+    - Nodes with empty output columns.
+    - Nodes where the row count matches the child (within rounding).
+    - Nodes where either count is `NaN`.
+    - Technical `SELECT` nodes that merely wrap `JOIN`, `SCAN`, or `DISTRIBUTE` operators.
+    - This process is applied iteratively to remove deep chains of technical wrappers.
 3.  **Top-Level Project Removal**: If the root node is a `PROJECT` or `SELECT` node with a single child, it is removed. This typically represents moving data to the client.
 
 ## Join Keys Extraction

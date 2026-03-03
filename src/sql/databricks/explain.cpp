@@ -565,7 +565,6 @@ namespace sql::databricks
         // Conditions for collapsing:
         // 1. It is a SELECT, PROJECTION or DISTRIBUTE node
         // 2. It has exactly one child
-        // 3. Its actual row count is identical to its child's actual row count (meaning no filtering happened)
         if ((node->type == NodeType::SELECT || node->type == NodeType::PROJECTION || node->type == NodeType::DISTRIBUTE) &&
             node->childCount() == 1) {
             Node* child = node->firstChild();
@@ -578,10 +577,32 @@ namespace sql::databricks
                     PLOGD << "Collapsing back-to-back distributions of same strategy";
                     should_collapse = true;
                 }
-            } else if (node->type != NodeType::DISTRIBUTE) {
-                if (!std::isnan(node->rows_actual) && !std::isnan(child->rows_actual) &&
-                    node->rows_actual == child->rows_actual) {
+            } else if (node->type == NodeType::SELECT || node->type == NodeType::PROJECTION) {
+                const auto select_node = reinterpret_cast<Select*>(node.get());
+                
+                // Collapse if:
+                // - It has exactly one child
+                // - AND (no output columns OR technical pass-through)
+                // - AND (row counts match OR rounding OR NaN involved)
+                
+                if (select_node->columns_output.empty()) {
                     should_collapse = true;
+                } else if (std::isnan(node->rows_actual) || std::isnan(child->rows_actual) ||
+                           node->rows_actual == child->rows_actual) {
+                    should_collapse = true;
+                } else if (!std::isinf(node->rows_actual) && !std::isinf(child->rows_actual) && 
+                           std::abs(node->rows_actual - child->rows_actual) < 1.0) {
+                    should_collapse = true;
+                } else if (node->rows_estimated == child->rows_estimated || std::isnan(node->rows_estimated)) {
+                    should_collapse = true;
+                }
+                
+                // Extra aggressive: if it's a SELECT wrapping another relational op and it's not the root result, collapse it
+                if (!should_collapse && !node->isRoot()) {
+                    if (child->type == NodeType::JOIN || child->type == NodeType::DISTRIBUTE || child->type == NodeType::SCAN) {
+                        PLOGD << "Aggressively collapsing SELECT node wrapping " << to_string(child->type);
+                        should_collapse = true;
+                    }
                 }
             }
 
@@ -705,7 +726,7 @@ namespace sql::databricks
             }
         }
 
-        // Second pass: Identify all parent-child relationships
+        // Pass 3: Identify all parent-child relationships
         std::map<std::string, std::vector<std::string>> parent_to_children;
         for (const auto& edge : (*graph_json)["edges"]) {
             std::string fromId = "";
@@ -781,6 +802,8 @@ namespace sql::databricks
                         PLOGW << "Scan node " << current_id << " has unexpected children, ignoring them to keep SCAN a leaf";
                     }
                 }
+                
+                // Post-process the node subtree before returning it
                 current_nodes.push_back(std::move(info_map[current_id].node));
             } else {
                 // If this node was skipped, just pass the children up
@@ -828,7 +851,16 @@ namespace sql::databricks
 
         // Post-processing
         propagateEstimates(root.get());
-        root = collapseRelationalNoOps(std::move(root));
+        
+        // Iterative collapsing to handle chains of no-ops
+        size_t last_child_count = 0;
+        size_t current_child_count = root->childCount();
+        do {
+            last_child_count = current_child_count;
+            root = collapseRelationalNoOps(std::move(root));
+            current_child_count = root->childCount();
+        } while (current_child_count != last_child_count);
+
         root = removeTopLevelProject(std::move(root));
 
         return std::make_unique<Plan>(std::move(root));

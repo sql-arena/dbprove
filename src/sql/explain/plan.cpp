@@ -22,7 +22,9 @@ RowCount countRowsByNode(Node& node, const NodeType type) {
   double result = 0;
   for (const auto& n : node.depth_first()) {
     if (n.type == type) {
-      result += n.rows_actual;
+      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
+          result += n.rows_actual;
+      }
     }
   }
   return cutoff(result);
@@ -64,7 +66,10 @@ RowCount Plan::rowsAggregated() const {
     if (n.type == NodeType::GROUP_BY) {
       // The input of an aggregate is the amount of rows added to the aggregate.
       if (n.childCount() > 0) {
-        result += n.firstChild()->rows_actual;
+        double rows = n.firstChild()->rows_actual;
+        if (!std::isnan(rows) && !std::isinf(rows)) {
+            result += rows;
+        }
       }
     }
   }
@@ -79,7 +84,13 @@ RowCount Plan::rowsJoined() const {
         throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
       }
       // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
-      result += std::max(n.lastChild()->rows_actual, n.rows_actual);
+      double probe_rows = n.lastChild()->rows_actual;
+      double actual_rows = n.rows_actual;
+      double joined = std::max(std::isnan(probe_rows) ? 0.0 : probe_rows, 
+                               std::isnan(actual_rows) ? 0.0 : actual_rows);
+      if (!std::isinf(joined)) {
+          result += joined;
+      }
     }
   }
   return cutoff(result);
@@ -93,7 +104,13 @@ RowCount Plan::rowsHashBuild() const {
         throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
       }
       // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
-      result += std::max(n.firstChild()->rows_actual, n.rows_actual);
+      double build_rows = n.firstChild()->rows_actual;
+      double actual_rows = n.rows_actual;
+      double hash_rows = std::max(std::isnan(build_rows) ? 0.0 : build_rows,
+                                  std::isnan(actual_rows) ? 0.0 : actual_rows);
+      if (!std::isinf(hash_rows)) {
+          result += hash_rows;
+      }
     }
   }
   return cutoff(result);
@@ -124,7 +141,9 @@ RowCount Plan::rowsFiltered() const {
     }
     const auto output_rows = node.rows_actual;
     const auto input_rows = node.firstChild()->rows_actual;
-    result += input_rows - output_rows;
+    if (!std::isnan(output_rows) && !std::isnan(input_rows) && !std::isinf(output_rows) && !std::isinf(input_rows)) {
+        result += std::max(0.0, input_rows - output_rows);
+    }
   }
   return cutoff(result);
 }

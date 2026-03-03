@@ -26,9 +26,10 @@ The scraped JSON is a complex object representing the query execution history. T
 
 Spark query plans often contain multiple disjoint graph components in the JSON (e.g., Result stages vs. Codegen stages). 
 -   **Root Identification**: We identify "islands" in the graph by finding nodes that appear as `fromId` but never as `toId`.
--   **Subqueries**: Nodes representing subqueries (name `Subquery` or tag `SUBQUERY`) are identified during edge processing. Their children are collected as separate relational roots and excluded from main root identification.
+-   **Subqueries**: Nodes representing subqueries (name contains `Subquery` or tag `SUBQUERY`) are identified during edge processing. Their children are collected as separate relational roots and excluded from main root identification.
 -   **Sequence Assembly**: If subqueries are present, the main root and all subquery roots are grouped under a top-level `SEQUENCE` node. This reflects the execution of subqueries as separate stages before or during the main query.
--   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
+-   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers). 
+-   **Subquery Isolation**: To prevent subquery fragments from being incorrectly embedded in the main query's relational tree, the `linkRecursively` function explicitly stops traversing at subquery boundaries. This ensures that subqueries (like those used in `HAVING` or scalar filters) appear only as separate stages in the `SEQUENCE`.
 -   **Terminal Node Identification**: When linking children to a node that represents a canonical technical wrapper (like a Photon Stage), we attach graph-level children to the *leaf* of that technical subtree. However, we ensure that actual relational operators (like `JOIN`, `FILTER`, `AGGREGATE`, `SORT`, `SCAN`, etc.) are treated as **terminal nodes** in this search. This prevents unrelated subtrees (like scalar subqueries used in a `FILTER`) from being incorrectly "pushed down" into the children of another relational operator.
 
 ### Reused Exchange and Scan Replication

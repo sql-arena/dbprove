@@ -771,7 +771,10 @@ namespace sql::databricks
                 parent_to_children[fromId].push_back(toId);
                 
                 // If the consumer is a Subquery stage, collect its children as subquery roots
-                if (info_map[fromId].name == "Subquery" || info_map[fromId].tag.find("SUBQUERY") != std::string::npos) {
+                if (info_map[fromId].name == "Subquery" || 
+                    info_map[fromId].name.find("Subquery") != std::string::npos ||
+                    info_map[fromId].tag.find("SUBQUERY") != std::string::npos) {
+                    PLOGD << "Identified subquery root: " << toId << " (child of " << fromId << ")";
                     subquery_ids.push_back(toId);
                     info_map[toId].is_subquery_root = true;
                 } else {
@@ -781,15 +784,21 @@ namespace sql::databricks
         }
 
         // Recursive helper to link nodes bottom-up
-        std::function<std::vector<std::unique_ptr<Node>>(const std::string&)> linkRecursively =
-            [&](const std::string& current_id) -> std::vector<std::unique_ptr<Node>> {
+        std::function<std::vector<std::unique_ptr<Node>>(const std::string&, bool)> linkRecursively =
+            [&](const std::string& current_id, bool is_top_level_subquery) -> std::vector<std::unique_ptr<Node>> {
+            
+            if (!is_top_level_subquery && info_map[current_id].is_subquery_root) {
+                PLOGD << "Stopping recursive link at subquery boundary: " << current_id;
+                return {};
+            }
+
             std::vector<std::unique_ptr<Node>> current_nodes;
 
             // Get all linked nodes from children first
             std::vector<std::unique_ptr<Node>> children_nodes;
             if (parent_to_children.contains(current_id)) {
                 for (const auto& child_id : parent_to_children[current_id]) {
-                    auto linked_children = linkRecursively(child_id);
+                    auto linked_children = linkRecursively(child_id, false);
                     for (auto& child_node : linked_children) {
                         children_nodes.push_back(std::move(child_node));
                     }
@@ -839,7 +848,7 @@ namespace sql::databricks
 
         // Pass 4: Build subquery roots
         for (const auto& sq_id : subquery_ids) {
-            auto sq_roots = linkRecursively(sq_id);
+            auto sq_roots = linkRecursively(sq_id, true);
             for (auto& root : sq_roots) {
                 ctx.subquery_roots.push_back(std::move(root));
             }
@@ -869,7 +878,7 @@ namespace sql::databricks
 
         std::unique_ptr<Node> root;
         if (!root_id.empty()) {
-            auto linked_roots = linkRecursively(root_id);
+            auto linked_roots = linkRecursively(root_id, false);
             if (!linked_roots.empty()) {
                 root = std::move(linked_roots[0]);
             }

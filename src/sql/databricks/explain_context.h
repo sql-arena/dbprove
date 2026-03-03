@@ -3,6 +3,8 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
+namespace sql::explain { class Node; }
+
 namespace sql::databricks {
 
 struct ExplainContext {
@@ -34,6 +36,11 @@ struct ExplainContext {
      * @brief The captured plan payload JSON from the scraper.
      */
     nlohmann::json scraped_plan;
+
+    /**
+     * @brief Roots of subqueries identified during plan building.
+     */
+    std::vector<std::unique_ptr<sql::explain::Node>> subquery_roots;
 
     /**
      * @brief Dump the context information to PLOGD.

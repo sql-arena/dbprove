@@ -25,6 +25,7 @@
 #include <fstream>
 
 #include "explain_context.h"
+#include "sequence.h"
 #include "projection.h"
 
 namespace sql::databricks
@@ -473,6 +474,11 @@ namespace sql::databricks
             return nullptr;
         }
 
+        if (name == "Subquery" || tag.find("SUBQUERY") != std::string::npos) {
+            PLOGD << "Subquery stage identified: " << name << " with tag " << tag;
+            return nullptr;
+        }
+
         if (name == "Reused Exchange") {
             return handleReusedExchange(node_json, ctx);
         }
@@ -685,6 +691,7 @@ namespace sql::databricks
             std::string tag;
             std::unique_ptr<Node> node;
             bool is_root = true;
+            bool is_subquery_root = false;
         };
 
         std::map<std::string, NodeInfo> info_map;
@@ -729,8 +736,9 @@ namespace sql::databricks
             }
         }
 
-        // Pass 3: Identify all parent-child relationships
+        // Pass 3: Identify all parent-child relationships and collect subquery roots
         std::map<std::string, std::vector<std::string>> parent_to_children;
+        std::vector<std::string> subquery_ids;
         for (const auto& edge : (*graph_json)["edges"]) {
             std::string fromId = "";
             if (edge.contains("fromId") && !edge["fromId"].is_null()) {
@@ -761,7 +769,14 @@ namespace sql::databricks
             PLOGD << "Found edge: " << fromId << " -> " << toId;
             if (info_map.contains(fromId) && info_map.contains(toId)) {
                 parent_to_children[fromId].push_back(toId);
-                info_map[toId].is_root = false;
+                
+                // If the consumer is a Subquery stage, collect its children as subquery roots
+                if (info_map[fromId].name == "Subquery" || info_map[fromId].tag.find("SUBQUERY") != std::string::npos) {
+                    subquery_ids.push_back(toId);
+                    info_map[toId].is_subquery_root = true;
+                } else {
+                    info_map[toId].is_root = false;
+                }
             }
         }
 
@@ -795,7 +810,13 @@ namespace sql::databricks
                                target->type != NodeType::JOIN && 
                                target->type != NodeType::UNION && 
                                target->type != NodeType::SEQUENCE &&
-                               target->type != NodeType::DISTRIBUTE) {
+                               target->type != NodeType::DISTRIBUTE &&
+                               target->type != NodeType::FILTER &&
+                               target->type != NodeType::GROUP_BY &&
+                               target->type != NodeType::SORT &&
+                               target->type != NodeType::LIMIT &&
+                               target->type != NodeType::SELECT &&
+                               target->type != NodeType::PROJECTION) {
                             target = target->firstChild();
                         }
                         target->addChild(std::move(child_node));
@@ -816,10 +837,18 @@ namespace sql::databricks
             return current_nodes;
         };
 
+        // Pass 4: Build subquery roots
+        for (const auto& sq_id : subquery_ids) {
+            auto sq_roots = linkRecursively(sq_id);
+            for (auto& root : sq_roots) {
+                ctx.subquery_roots.push_back(std::move(root));
+            }
+        }
+
         // Identify the best root candidate among those that are marked as is_root
         std::string root_id = "";
         for (const auto& [id, info] : info_map) {
-            if (info.is_root) {
+            if (info.is_root && !info.is_subquery_root) {
                 PLOGD << "Root candidate: " << id << " (" << info.name << ") tag: " << info.tag;
                 // Prefer stages that sound like output/result AND have children (to avoid empty result islands)
                 if ((info.tag.find("RESULT") != std::string::npos || 
@@ -851,6 +880,17 @@ namespace sql::databricks
         }
 
         PLOGD << "Identified root candidate: " << root_id << " (" << info_map[root_id].name << ")";
+
+        // Final tree assembly: if there are subqueries, wrap everything in a SEQUENCE node
+        if (!ctx.subquery_roots.empty()) {
+            PLOGD << "Assembling plan with " << ctx.subquery_roots.size() << " subqueries into SEQUENCE";
+            auto sequence = std::make_unique<Sequence>();
+            for (auto& sq_root : ctx.subquery_roots) {
+                sequence->addChild(std::move(sq_root));
+            }
+            sequence->addChild(std::move(root));
+            root = std::move(sequence);
+        }
 
         // Post-processing
         propagateEstimates(root.get());

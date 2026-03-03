@@ -10,7 +10,7 @@ REGISTER_GENERATOR("tpch.part", resource::part_sql, part_download, TPCH_SF * 200
 REGISTER_GENERATOR("tpch.partsupp", resource::partsupp_sql, partsupp_download, TPCH_SF * 200000 * 4);
 REGISTER_GENERATOR("tpch.customer", resource::customer_sql, customer_download, TPCH_SF * 150000);
 REGISTER_GENERATOR("tpch.orders", resource::orders_sql, orders_download, TPCH_SF * 150000 * 10);
-REGISTER_GENERATOR("tpch.lineitem", resource::lineitem_sql, lineitem_download, TPCH_SF * 150000 * 10 * 4);
+REGISTER_GENERATOR("tpch.lineitem", resource::lineitem_sql, lineitem_download, 6001215);
 REGISTER_GENERATOR("tpch.nation", resource::nation_sql, nation_download, std::size(tpch_nations));
 REGISTER_GENERATOR("tpch.region", resource::region_sql, region_download, std::size(tpch_regions));
 

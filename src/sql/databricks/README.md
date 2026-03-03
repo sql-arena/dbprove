@@ -22,12 +22,14 @@ The scraped JSON is a complex object representing the query execution history. T
     -   `fromId`: Consumer node ID (closer to the result, acts as the parent in our tree).
     -   `toId`: Producer node ID (closer to the data source, acts as the child in our tree).
 
-### Disjoint Components and Roots
+### Disjoint Components and roots
 
 Spark query plans often contain multiple disjoint graph components in the JSON (e.g., Result stages vs. Codegen stages). 
 -   **Root Identification**: We identify "islands" in the graph by finding nodes that appear as `fromId` but never as `toId`.
--   **Prioritization**: Among root candidates, we prioritize those with tags containing `RESULT` or `SINK`.
+-   **Subqueries**: Nodes representing subqueries (name `Subquery` or tag `SUBQUERY`) are identified during edge processing. Their children are collected as separate relational roots and excluded from main root identification.
+-   **Sequence Assembly**: If subqueries are present, the main root and all subquery roots are grouped under a top-level `SEQUENCE` node. This reflects the execution of subqueries as separate stages before or during the main query.
 -   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
+-   **Terminal Node Identification**: When linking children to a node that represents a canonical technical wrapper (like a Photon Stage), we attach graph-level children to the *leaf* of that technical subtree. However, we ensure that actual relational operators (like `JOIN`, `FILTER`, `AGGREGATE`, `SORT`, `SCAN`, etc.) are treated as **terminal nodes** in this search. This prevents unrelated subtrees (like scalar subqueries used in a `FILTER`) from being incorrectly "pushed down" into the children of another relational operator.
 
 ### Reused Exchange and Scan Replication
 
@@ -69,7 +71,7 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE`, `PARTITIONING_EXPRESSIONS`, or `SHUFFLE_ATTRIBUTES` metadata. |
 | `Union` | `UNION` | Map to `sql::explain::Union(Union::Type::ALL)`. Row estimates from `ctx.row_estimates`. |
 | `Limit` / `TopK` | `LIMIT` | Limit clause. Count extracted from `LIMIT` metadata or `GlobalLimit` / `LocalLimit` estimates. `PhotonTopK` is mapped to `SORT` + `LIMIT` if sort order is present. |
-| `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
+| `Adaptive Plan` / `Stage` / `Subquery` | `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 | `Photon Result Stage` | `PROJECT` | Result collection stage. |
 | `Arrow Conversion` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
 | `Arrow Result Stage` | (ignored) | Ignored during parsing. Technical node for result delivery. |

@@ -274,10 +274,12 @@ namespace sql::databricks
 
         const auto [schema_name, table_name] = splitTable(table);
 
-        const std::string statement = "COPY INTO " + std::string(table) + " " + "FROM 's3://sql-arena-data/tpc-h/sf1' "
-            + "FILEFORMAT = PARQUET " + "FILES = ('" + table_name + ".parquet')";
+        const std::string statement =
+                 "INSERT INTO " + std::string(table) + "\n" +
+                 "SELECT * \n"
+                 "FROM parquet.`s3://sql-arena-data/tpc-h/sf1/" + table_name + ".parquet`";
 
-        PLOGI << "Executing COPY INTO for table " << table;
+        PLOGI << "Executing INSERT INTO for table " << table;
         execute(statement);
     }
 

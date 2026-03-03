@@ -89,7 +89,7 @@ The parser applies three post-processing steps to the plan tree before returning
     - Nodes where the row count matches the child (within rounding).
     - Nodes where either count is `NaN`.
     - Technical `SELECT` nodes that merely wrap `JOIN`, `SCAN`, or `DISTRIBUTE` operators.
-    - This process is applied iteratively to remove deep chains of technical wrappers.
+    - This process is implemented as a two-pass tree traversal and applied iteratively to remove deep chains of technical wrappers. `DISTRIBUTE` nodes are explicitly preserved to show data movement.
 3.  **Top-Level Project Removal**: If the root node is a `PROJECT` or `SELECT` node with a single child, it is removed. This typically represents moving data to the client.
 
 ## Join Keys Extraction

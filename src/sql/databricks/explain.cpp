@@ -107,12 +107,16 @@ namespace sql::databricks
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
                 if (key == "PUSHED_FILTERS" || key == "PARTITION_FILTERS" || key == "DATA_FILTERS" || key == "FILTERS") {
-                    if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        if (meta["values"][0].is_string()) {
-                            filter = meta["values"][0].get<std::string>();
+                    if (meta.contains("values") && meta["values"].is_array()) {
+                        for (const auto& v : meta["values"]) {
+                            if (v.is_string()) {
+                                if (!filter.empty()) filter += " AND ";
+                                filter += v.get<std::string>();
+                            }
                         }
                     } else if (meta.contains("value") && meta["value"].is_string()) {
-                        filter = meta["value"].get<std::string>();
+                        if (!filter.empty()) filter += " AND ";
+                        filter += meta["value"].get<std::string>();
                     }
                 }
             }
@@ -548,75 +552,74 @@ namespace sql::databricks
         }
     }
 
-    std::unique_ptr<Node> collapseRelationalNoOps(std::unique_ptr<Node> node)
+    std::unique_ptr<Node> collapseRelationalNoOps(std::unique_ptr<Node> root)
     {
-        if (!node) return nullptr;
+        if (!root) return nullptr;
 
-        // Recursively process children first
-        std::vector<std::unique_ptr<Node>> processed_children;
-        for (size_t i = 0; i < node->childCount(); ++i) {
-            processed_children.push_back(collapseRelationalNoOps(node->takeChild(i)));
-        }
-        for (auto& child : processed_children) {
-            node->addChild(std::move(child));
-        }
+        std::vector<Node*> to_collapse;
 
-        // Now check if this node itself can be collapsed
-        // Conditions for collapsing:
-        // 1. It is a SELECT, PROJECTION or DISTRIBUTE node
-        // 2. It has exactly one child
-        if ((node->type == NodeType::SELECT || node->type == NodeType::PROJECTION || node->type == NodeType::DISTRIBUTE) &&
-            node->childCount() == 1) {
-            Node* child = node->firstChild();
-            bool should_collapse = false;
-
-            if (node->type == NodeType::DISTRIBUTE && child->type == NodeType::DISTRIBUTE) {
-                const auto d1 = reinterpret_cast<Distribute*>(node.get());
-                const auto d2 = reinterpret_cast<Distribute*>(child);
-                if (d1->strategy == d2->strategy) {
-                    PLOGD << "Collapsing back-to-back distributions of same strategy";
-                    should_collapse = true;
-                }
-            } else if (node->type == NodeType::SELECT || node->type == NodeType::PROJECTION) {
-                const auto select_node = reinterpret_cast<Select*>(node.get());
-                
-                // Collapse if:
-                // - It has exactly one child
-                // - AND (no output columns OR technical pass-through)
-                // - AND (row counts match OR rounding OR NaN involved)
-                
-                if (select_node->columns_output.empty()) {
-                    should_collapse = true;
-                } else if (std::isnan(node->rows_actual) || std::isnan(child->rows_actual) ||
-                           node->rows_actual == child->rows_actual) {
-                    should_collapse = true;
-                } else if (!std::isinf(node->rows_actual) && !std::isinf(child->rows_actual) && 
-                           std::abs(node->rows_actual - child->rows_actual) < 1.0) {
-                    should_collapse = true;
-                } else if (node->rows_estimated == child->rows_estimated || std::isnan(node->rows_estimated)) {
-                    should_collapse = true;
-                }
-                
-                // Extra aggressive: if it's a SELECT wrapping another relational op and it's not the root result, collapse it
-                if (!should_collapse && !node->isRoot()) {
-                    if (child->type == NodeType::JOIN || child->type == NodeType::DISTRIBUTE || child->type == NodeType::SCAN) {
-                        PLOGD << "Aggressively collapsing SELECT node wrapping " << to_string(child->type);
-                        should_collapse = true;
-                    }
-                }
+        // Pass 1: Identify nodes to collapse
+        for (auto& node : root->depth_first()) {
+            // We only collapse SELECT or PROJECTION nodes
+            if (node.type != NodeType::SELECT && node.type != NodeType::PROJECTION) {
+                continue;
             }
 
-            if (should_collapse) {
-                PLOGD << "Collapsing relational no-op: " << to_string(node->type) << " node (rows: " << node->rows_actual << ")";
+            // Must have exactly one child
+            if (node.childCount() != 1) {
+                continue;
+            }
+
+            Node* child = node.firstChild();
+            const auto select_node = reinterpret_cast<Select*>(&node);
+
+            // Collapse if:
+            // - No output columns (technical pass-through)
+            if (select_node->columns_output.empty()) {
+                to_collapse.push_back(&node);
+                continue;
+            }
+
+            // - Row counts match (including rounding or NaN)
+            if (std::isnan(node.rows_actual) || std::isnan(child->rows_actual) ||
+                node.rows_actual == child->rows_actual) {
+                to_collapse.push_back(&node);
+                continue;
+            }
+
+            if (!std::isinf(node.rows_actual) && !std::isinf(child->rows_actual) &&
+                std::abs(node.rows_actual - child->rows_actual) < 1.0) {
+                to_collapse.push_back(&node);
+                continue;
+            }
+
+            if (node.rows_estimated == child->rows_estimated || std::isnan(node.rows_estimated)) {
+                to_collapse.push_back(&node);
+                continue;
+            }
+        }
+
+        // Pass 2: Perform the collapse
+        // We iterate in reverse to handle nested nodes more safely if needed, 
+        // though TreeNode::remove() handles grandchildren.
+        for (auto it = to_collapse.rbegin(); it != to_collapse.rend(); ++it) {
+            Node* node = *it;
+            if (node->isRoot()) {
+                PLOGD << "Collapsing root " << to_string(node->type) << " node";
                 auto final_child = node->takeChild(0);
-                if (node->isRoot()) {
-                    final_child->setParentToSelf();
+                final_child->setParentToSelf();
+                root = std::move(final_child);
+            } else {
+                PLOGD << "Collapsing relational no-op: " << to_string(node->type) << " node (rows: " << node->rows_actual << ")";
+                try {
+                    node->remove();
+                } catch (const std::exception& e) {
+                    PLOGE << "Failed to remove node: " << e.what();
                 }
-                return final_child;
             }
         }
 
-        return node;
+        return root;
     }
 
     std::unique_ptr<Node> removeTopLevelProject(std::unique_ptr<Node> root)
@@ -853,13 +856,14 @@ namespace sql::databricks
         propagateEstimates(root.get());
         
         // Iterative collapsing to handle chains of no-ops
-        size_t last_child_count = 0;
-        size_t current_child_count = root->childCount();
+        size_t last_node_count = 0;
+        size_t current_node_count = 0;
         do {
-            last_child_count = current_child_count;
+            last_node_count = current_node_count;
             root = collapseRelationalNoOps(std::move(root));
-            current_child_count = root->childCount();
-        } while (current_child_count != last_child_count);
+            current_node_count = 0;
+            for (auto& n : root->depth_first()) (void)n, current_node_count++;
+        } while (current_node_count != last_node_count);
 
         root = removeTopLevelProject(std::move(root));
 

@@ -29,6 +29,16 @@ Spark query plans often contain multiple disjoint graph components in the JSON (
 -   **Prioritization**: Among root candidates, we prioritize those with tags containing `RESULT` or `SINK`.
 -   **Recursive Linking**: To correctly handle move semantics during tree building, we recursively link nodes from the bottom up (producers to consumers).
 
+### Reused Exchange and Scan Replication
+
+Databricks/Spark plans often use `Reused Exchange` nodes to avoid redundant scans of the same data (common in star schemas with small dimension tables). In the execution graph JSON, these reused exchanges are often disconnected from the original source stage, appearing as dangling leaves in the relational tree.
+
+To resolve this, the parser implements **Attribute-Based Scan Replication**:
+1.  **Two-Pass Architecture**:
+    -   **Pass 1 (Pre-scan)**: The parser scans all nodes in the JSON to identify `SCAN` operators. It builds a global mapping of **Output Attributes** (e.g., column names like `r_regionkey`) to the source table and filters.
+    -   **Pass 2 (Build)**: During the main plan construction, when a `Reused Exchange` is encountered, the parser looks up its output attributes in the global map.
+2.  **Node Cloning**: If a match is found, the parser creates a new `SCAN` node reflecting the original source table and attaches it to the consumer join. This eliminates dangling technical nodes and correctly represents the data flow.
+
 ### Data Type Safety and ID Handling
 
 The Databricks parser is designed to be robust against variations in the Spark execution graph JSON:
@@ -50,9 +60,9 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 
 | Spark Operator / Tag | `dbprove` Node Type | Notes |
 | :--- | :--- | :--- |
-| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. Handles `LocalTableScan` by mapping to `LocalTable` and using `LocalRelation` estimates. |
-| `Filter` | `FILTER` | Predicate application. Conditions extracted from `CONDITION` metadata. |
-| `Project` | `PROJECT` | Column selection/transformation. |
+| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, `DATA_FILTERS`, or `FILTERS` metadata. Handles `LocalTableScan` by mapping to `LocalTable` and using `LocalRelation` estimates. |
+| `Filter` | `FILTER` | Predicate application. Conditions extracted from `CONDITION` metadata. Mapped to `Selection` node. |
+| `Project` | `PROJECT` | Column selection/transformation. Projected columns extracted from `PROJECTION` metadata. Mapped to `Select` node. |
 | `Sort` | `SORT` | Ordering. Keys extracted from `SORT_ORDER` metadata. |
 | `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. Strategy is `SIMPLE` if group keys are empty, otherwise `HASH`. |
 | `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti (Left/Right variants). |
@@ -66,14 +76,16 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Columnar to Row` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
 | `Columnar To Row` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
 | `Result Query Stage` | (ignored) | Ignored during parsing. Technical node for final result delivery. |
-| `Whole Stage Codegen` | (ignored) | Ignored during parsing. Technical node for code generation. |
+| `Reused Exchange` | (ignored) | Ignored. Spark AQE optimization for reusing shuffle results. |
+| `Shuffle Map Stage` | (ignored) | Ignored. Technical Spark stage for shuffle writes. |
 
 ## Post-Processing
 
-The parser applies two post-processing steps to the plan tree before returning it:
+The parser applies three post-processing steps to the plan tree before returning it:
 
-1.  **Top-Level Project Removal**: If the root node is a `PROJECT` or `SELECT` node with a single child, it is removed. This typically represents moving data to the client and is not interesting for theorem proving.
-2.  **Estimate Propagation**: If a node is missing `rows_estimated` or `rows_actual` (value is `NAN`), it attempts to propagate these values from its children.
+1.  **Estimate Propagation**: If a node is missing `rows_estimated` or `rows_actual` (value is `NAN`), it attempts to propagate these values from its children.
+2.  **Relational No-Op Collapsing**: Intermediate `SELECT` or `PROJECTION` nodes that have exactly one child and an identical actual row count to their child are collapsed. This removes technical Spark wrappers that don't perform relational filtering.
+3.  **Top-Level Project Removal**: If the root node is a `PROJECT` or `SELECT` node with a single child, it is removed. This typically represents moving data to the client.
 
 ## Join Keys Extraction
 

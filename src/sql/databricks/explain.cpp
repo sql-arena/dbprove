@@ -12,6 +12,7 @@
 #include "explain/node.h"
 #include "explain/plan.h"
 #include "distribution.h"
+#include "selection.h"
 #include <unordered_set>
 #include "select.h"
 #include <dbprove/common/config.h>
@@ -82,7 +83,7 @@ namespace sql::databricks
         PLOGD << "Finished parseExplainCost";
     }
 
-    std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, const ExplainContext& ctx)
+    std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleScan for " << name;
         std::string table = name;
@@ -100,17 +101,45 @@ namespace sql::databricks
             node->rows_estimated = ctx.row_estimates.at("LocalRelation");
         }
 
+        std::string filter;
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "PUSHED_FILTERS" || key == "PARTITION_FILTERS" || key == "DATA_FILTERS") {
+                if (key == "PUSHED_FILTERS" || key == "PARTITION_FILTERS" || key == "DATA_FILTERS" || key == "FILTERS") {
                     if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
                         if (meta["values"][0].is_string()) {
-                            node->setFilter(meta["values"][0].get<std::string>());
+                            filter = meta["values"][0].get<std::string>();
                         }
                     } else if (meta.contains("value") && meta["value"].is_string()) {
-                        node->setFilter(meta["value"].get<std::string>());
+                        filter = meta["value"].get<std::string>();
+                    }
+                }
+            }
+        }
+
+        if (!filter.empty()) {
+            node->setFilter(filter);
+        }
+
+        // Populate attribute map for scan replication (Reused Exchange)
+        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+            for (const auto& meta : node_json["metaData"]) {
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
+                if (key == "OUTPUT" || key == "Output attributes") {
+                    std::vector<std::string> outputs;
+                    if (meta.contains("values") && meta["values"].is_array()) {
+                        for (const auto& v : meta["values"]) {
+                            if (v.is_string()) outputs.push_back(v.get<std::string>());
+                        }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
+                        outputs.push_back(meta["value"].get<std::string>());
+                    }
+
+                    for (const auto& attr : outputs) {
+                        PLOGD << "Mapping attribute " << attr << " to scan " << table;
+                        ctx.attribute_to_scan[attr] = {table, filter, node->rows_estimated};
                     }
                 }
             }
@@ -119,7 +148,7 @@ namespace sql::databricks
         return node;
     }
 
-    std::unique_ptr<Node> handleAggregate(const json& node_json, const ExplainContext& ctx)
+    std::unique_ptr<Node> handleAggregate(const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleAggregate";
         std::vector<Column> group_keys;
@@ -155,7 +184,7 @@ namespace sql::databricks
         return node;
     }
 
-    std::unique_ptr<Node> handleSort(const json& node_json, const ExplainContext& ctx)
+    std::unique_ptr<Node> handleSort(const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleSort";
         std::vector<Column> sort_keys;
@@ -179,31 +208,25 @@ namespace sql::databricks
         return node;
     }
 
-    std::unique_ptr<Node> handleProject(const ExplainContext& ctx)
+    std::unique_ptr<Node> handleProject(const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleProject";
         auto node = std::make_unique<Select>();
         node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
-        return node;
-    }
-
-    std::unique_ptr<Node> handleFilter(const json& node_json, const ExplainContext& ctx)
-    {
-        PLOGD << "Entering handleFilter";
-        auto node = std::make_unique<Select>();
-        node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "CONDITION") {
-                    if (meta.contains("value") && meta["value"].is_string()) {
-                        node->setFilter(meta["value"].get<std::string>());
-                    } else if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
-                        if (meta["values"][0].is_string()) {
-                            node->setFilter(meta["values"][0].get<std::string>());
+                if (key == "PROJECTION") {
+                    if (meta.contains("values") && meta["values"].is_array()) {
+                        for (const auto& val : meta["values"]) {
+                            if (val.is_string()) {
+                                node->columns_output.push_back(val.get<std::string>());
+                            }
                         }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
+                        node->columns_output.push_back(meta["value"].get<std::string>());
                     }
                 }
             }
@@ -212,7 +235,33 @@ namespace sql::databricks
         return node;
     }
 
-    std::unique_ptr<Node> handleJoin(const std::string& name, const json& node_json, const ExplainContext& ctx)
+    std::unique_ptr<Node> handleFilter(const json& node_json, ExplainContext& ctx)
+    {
+        PLOGD << "Entering handleFilter";
+        std::string filter_expr;
+
+        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+            for (const auto& meta : node_json["metaData"]) {
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
+                if (key == "CONDITION") {
+                    if (meta.contains("value") && meta["value"].is_string()) {
+                        filter_expr = meta["value"].get<std::string>();
+                    } else if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
+                        if (meta["values"][0].is_string()) {
+                            filter_expr = meta["values"][0].get<std::string>();
+                        }
+                    }
+                }
+            }
+        }
+
+        auto node = std::make_unique<Selection>(filter_expr);
+        node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
+        return node;
+    }
+
+    std::unique_ptr<Node> handleJoin(const std::string& name, const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleJoin for " << name;
         Join::Type type = Join::Type::INNER;
@@ -299,10 +348,16 @@ namespace sql::databricks
             }
         }
 
-        return std::make_unique<Distribute>(strategy, dist_cols);
+        auto node = std::make_unique<Distribute>(strategy, dist_cols);
+        if (tag.find("SINK") != std::string::npos) {
+            PLOGD << "Exchange is a SINK, marking it to be collapsed if it's a pass-through";
+            // We can't easily mark it here to be collapsed by collapseRelationalNoOps 
+            // because Distribute is not in the list of types it collapses.
+        }
+        return node;
     }
 
-    std::unique_ptr<Node> handleLimit(const std::string& name, const json& node_json, const ExplainContext& ctx)
+    std::unique_ptr<Node> handleLimit(const std::string& name, const json& node_json, ExplainContext& ctx)
     {
         PLOGD << "Entering handleLimit for " << name;
         uint64_t limit_val = 0;
@@ -355,20 +410,68 @@ namespace sql::databricks
         return limit_node;
     }
 
-    std::unique_ptr<Node> handleUnion(const ExplainContext& ctx)
+    std::unique_ptr<Node> handleUnion(ExplainContext& ctx)
     {
         auto node = std::make_unique<Union>(Union::Type::ALL);
         node->rows_estimated = ctx.row_estimates.contains("Union") ? ctx.row_estimates.at("Union") : NAN;
         return node;
     }
 
+    std::unique_ptr<Node> handleReusedExchange(const json& node_json, const ExplainContext& ctx)
+    {
+        PLOGD << "Entering handleReusedExchange";
+        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+            for (const auto& meta : node_json["metaData"]) {
+                if (!meta.is_object()) continue;
+                std::string key = safeGetString(meta, "key");
+                if (key == "OUTPUT" || key == "Output attributes") {
+                    std::vector<std::string> outputs;
+                    if (meta.contains("values") && meta["values"].is_array()) {
+                        for (const auto& v : meta["values"]) {
+                            if (v.is_string()) outputs.push_back(v.get<std::string>());
+                        }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
+                        outputs.push_back(meta["value"].get<std::string>());
+                    }
+
+                    for (const auto& attr : outputs) {
+                        if (ctx.attribute_to_scan.contains(attr)) {
+                            const auto& info = ctx.attribute_to_scan.at(attr);
+                            PLOGD << "Replicating Scan " << info.table_name << " for Reused Exchange via attribute " << attr;
+                            auto node = std::make_unique<Scan>(info.table_name);
+                            if (!info.filter.empty()) {
+                                node->setFilter(info.filter);
+                            }
+                            node->rows_estimated = info.rows_estimated;
+                            return node;
+                        }
+                    }
+                }
+            }
+        }
+        PLOGD << "Could not identify original scan for Reused Exchange, returning nullptr";
+        return nullptr;
+    }
+
     std::unique_ptr<Node> createNodeFromSparkType(const std::string& name, const json& node_json,
-                                                  const ExplainContext& ctx)
+                                                  ExplainContext& ctx)
     {
         PLOGD << "Entering createNodeFromSparkType for node: " << name;
         std::unique_ptr<Node> node;
         std::string tag = safeGetString(node_json, "tag");
         PLOGD << "Node tag: " << tag;
+
+        if (name == "Arrow Conversion" || name == "Columnar to Row" || name == "Columnar To Row" ||
+            name == "Result Query Stage" || name == "Arrow Result Stage" || name == "Whole Stage Codegen" ||
+            name == "Shuffle Map Stage" || name == "Adaptive Plan" ||
+            tag.find("STAGE") != std::string::npos || tag.find("PLAN") != std::string::npos) {
+            PLOGD << "Explicitly ignoring node " << name << " with tag " << tag;
+            return nullptr;
+        }
+
+        if (name == "Reused Exchange") {
+            return handleReusedExchange(node_json, ctx);
+        }
 
         if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
             node = handleScan(name, node_json, ctx);
@@ -377,29 +480,24 @@ namespace sql::databricks
         } else if (name == "Sort" || tag.find("SORT") != std::string::npos) {
             node = handleSort(node_json, ctx);
         } else if (name.find("Project") != std::string::npos || tag.find("PROJECT") != std::string::npos) {
-            node = handleProject(ctx);
+            node = handleProject(node_json, ctx);
         } else if (name.find("Filter") != std::string::npos || tag.find("FILTER") != std::string::npos) {
             node = handleFilter(node_json, ctx);
         } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
             node = handleJoin(name, node_json, ctx);
-        } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
+        } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos || tag.find("BROADCAST") != std::string::npos) {
             node = handleExchange(name, node_json);
         } else if (name.find("Union") != std::string::npos || tag.find("UNION") != std::string::npos) {
             node = handleUnion(ctx);
         } else if (name.find("Limit") != std::string::npos || tag.find("LIMIT") != std::string::npos ||
                    name.find("TopK") != std::string::npos || tag.find("TOPK") != std::string::npos) {
             node = handleLimit(name, node_json, ctx);
-        } else if (name == "Arrow Conversion" || name == "Columnar to Row" || name == "Columnar To Row" ||
-                   name == "Result Query Stage" || name == "Arrow Result Stage" || name == "Whole Stage Codegen") {
-            PLOGD << "Explicitly ignoring node " << name;
-            return nullptr;
         }
 
         if (!node) {
             // Fallback for unknown nodes that might be important (stages, adaptive plan wrappers, etc.)
             PLOGE << "Failed to parse node " << name << " with tag " << tag;
-            if (tag.find("SINK") != std::string::npos || tag.find("RESULT") != std::string::npos ||
-                tag.find("STAGE") != std::string::npos || tag.find("PLAN") != std::string::npos) {
+            if (tag.find("SINK") != std::string::npos || tag.find("RESULT") != std::string::npos) {
                  node = std::make_unique<Projection>(std::vector<Column>{});
             }
         }
@@ -450,6 +548,56 @@ namespace sql::databricks
         }
     }
 
+    std::unique_ptr<Node> collapseRelationalNoOps(std::unique_ptr<Node> node)
+    {
+        if (!node) return nullptr;
+
+        // Recursively process children first
+        std::vector<std::unique_ptr<Node>> processed_children;
+        for (size_t i = 0; i < node->childCount(); ++i) {
+            processed_children.push_back(collapseRelationalNoOps(node->takeChild(i)));
+        }
+        for (auto& child : processed_children) {
+            node->addChild(std::move(child));
+        }
+
+        // Now check if this node itself can be collapsed
+        // Conditions for collapsing:
+        // 1. It is a SELECT, PROJECTION or DISTRIBUTE node
+        // 2. It has exactly one child
+        // 3. Its actual row count is identical to its child's actual row count (meaning no filtering happened)
+        if ((node->type == NodeType::SELECT || node->type == NodeType::PROJECTION || node->type == NodeType::DISTRIBUTE) &&
+            node->childCount() == 1) {
+            Node* child = node->firstChild();
+            bool should_collapse = false;
+
+            if (node->type == NodeType::DISTRIBUTE && child->type == NodeType::DISTRIBUTE) {
+                const auto d1 = reinterpret_cast<Distribute*>(node.get());
+                const auto d2 = reinterpret_cast<Distribute*>(child);
+                if (d1->strategy == d2->strategy) {
+                    PLOGD << "Collapsing back-to-back distributions of same strategy";
+                    should_collapse = true;
+                }
+            } else if (node->type != NodeType::DISTRIBUTE) {
+                if (!std::isnan(node->rows_actual) && !std::isnan(child->rows_actual) &&
+                    node->rows_actual == child->rows_actual) {
+                    should_collapse = true;
+                }
+            }
+
+            if (should_collapse) {
+                PLOGD << "Collapsing relational no-op: " << to_string(node->type) << " node (rows: " << node->rows_actual << ")";
+                auto final_child = node->takeChild(0);
+                if (node->isRoot()) {
+                    final_child->setParentToSelf();
+                }
+                return final_child;
+            }
+        }
+
+        return node;
+    }
+
     std::unique_ptr<Node> removeTopLevelProject(std::unique_ptr<Node> root)
     {
         if (!root) return nullptr;
@@ -467,7 +615,7 @@ namespace sql::databricks
         return root;
     }
 
-    std::unique_ptr<Plan> buildExplainPlan(const ExplainContext& ctx)
+    std::unique_ptr<Plan> buildExplainPlan(ExplainContext& ctx)
     {
         const json* graph_json = nullptr;
         std::function<const json*(const json&)> findGraphContainer = [&](const json& j) -> const json* {
@@ -495,6 +643,18 @@ namespace sql::databricks
 
         PLOGD << "Building plan from graph with " << (*graph_json)["nodes"].size() << " nodes";
 
+        // Pass 1: Pre-scan for all Scan nodes to populate attribute mapping for Reused Exchange
+        for (const auto& node_json : (*graph_json)["nodes"]) {
+            if (!node_json.is_object()) continue;
+            std::string name = safeGetString(node_json, "name", "unknown");
+            std::string tag = safeGetString(node_json, "tag", "");
+            if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
+                // We don't want to create the full Node yet, but we need its ScanInfo
+                // We call handleScan but discard the node (it will populate ctx.attribute_to_scan)
+                handleScan(name, node_json, ctx);
+            }
+        }
+
         struct NodeInfo {
             std::string id;
             std::string name;
@@ -504,7 +664,8 @@ namespace sql::databricks
         };
 
         std::map<std::string, NodeInfo> info_map;
-        // First pass: create all nodes and map them by ID
+
+        // Pass 2: create all nodes and map them by ID
         for (const auto& node_json : (*graph_json)["nodes"]) {
             if (!node_json.is_object()) {
                 continue;
@@ -605,7 +766,12 @@ namespace sql::databricks
                         // We need to be careful if the node already has children (e.g., Sort wrapping Limit for TopK)
                         // We want to attach graph-level children to the leaf of our canonical technical subtree.
                         Node* target = info_map[current_id].node.get();
-                        while (target->childCount() > 0 && target->type != NodeType::SCAN && target->type != NodeType::JOIN && target->type != NodeType::UNION && target->type != NodeType::SEQUENCE) {
+                        while (target->childCount() > 0 && 
+                               target->type != NodeType::SCAN && 
+                               target->type != NodeType::JOIN && 
+                               target->type != NodeType::UNION && 
+                               target->type != NodeType::SEQUENCE &&
+                               target->type != NodeType::DISTRIBUTE) {
                             target = target->firstChild();
                         }
                         target->addChild(std::move(child_node));
@@ -662,6 +828,7 @@ namespace sql::databricks
 
         // Post-processing
         propagateEstimates(root.get());
+        root = collapseRelationalNoOps(std::move(root));
         root = removeTopLevelProject(std::move(root));
 
         return std::make_unique<Plan>(std::move(root));

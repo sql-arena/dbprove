@@ -27,6 +27,7 @@ The following is the author's preference:
 - **Scratchpad**: Use the `scratchpad/` directory for any temporary files or outputs created during the session. This directory is `.gitignored`.
 - **Run Directory**: Always execute commands (building, running tests/theorems) from the `run/` directory. This ensures that generated artifacts like `logs/`, `proof/`, `table_data/`, and `scratchpad/` are contained within the `run/` folder and do not clutter the project root.
 - **Avoid Deep Nesting**: Use early exits (`return`, `continue`, `break`) to keep the "happy path" flat and readable.
+- **TreeNode Iterators**: Always prefer using the `TreeNode` iterators (`depth_first()`, `breadth_first()`) for tree traversal and operations instead of manual recursion or custom traversal logic.
 - **Explicit Logging**: Always log key identifiers (e.g., query IDs, statement IDs, timestamps) using the available logging framework (`PLOGI`) or `std::cout` when appropriate for diagnostics.
 - **Robust Error Handling**: Do not swallow exceptions in low-level API handlers unless recovery is truly possible. Throw descriptive `std::runtime_error` or custom exceptions when expectations are not met.
 - **Playwright Scripts**: When using Playwright for scrapers (e.g., in `scripts/`), be aware that `context.isClosed()` is not a standard method. Use event listeners on `close` events for `page` or `context` objects and track state with flags.

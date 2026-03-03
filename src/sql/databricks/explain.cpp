@@ -540,29 +540,6 @@ namespace sql::databricks
         return node;
     }
 
-    void propagateEstimates(Node* node)
-    {
-        if (!node) return;
-
-        // Bottom-up: process children first
-        for (auto child : node->children()) {
-            propagateEstimates(child);
-        }
-
-        // Only propagate to nodes that are missing estimates or actual row counts
-        if (std::isnan(node->rows_estimated) || std::isnan(node->rows_actual)) {
-            for (auto child : node->children()) {
-                // If this node is missing an estimate, take it from the first child that has one
-                if (std::isnan(node->rows_estimated) && !std::isnan(child->rows_estimated)) {
-                    node->rows_estimated = child->rows_estimated;
-                }
-                // If this node is missing an actual count, take it from the first child that has one
-                if (std::isnan(node->rows_actual) && !std::isnan(child->rows_actual)) {
-                    node->rows_actual = child->rows_actual;
-                }
-            }
-        }
-    }
 
     std::unique_ptr<Node> collapseRelationalNoOps(std::unique_ptr<Node> root)
     {
@@ -808,17 +785,31 @@ namespace sql::databricks
 
     void iterativePropagateEstimates(Node* root)
     {
-        PLOGD << "Starting iterative estimate propagation";
-        size_t last_estimated_count = 0;
-        size_t current_estimated_count = 0;
-        do {
-            last_estimated_count = current_estimated_count;
-            propagateEstimates(root);
-            current_estimated_count = 0;
-            for (auto& n : root->depth_first()) {
-                if (!std::isnan(n.rows_estimated)) current_estimated_count++;
+        PLOGD << "Starting bottom-up estimate propagation";
+        
+        // We do a single bottom-up pass.
+        // For each node, if its estimate/actual is NaN, it takes the value from its last observed child.
+        // Since we iterate bottom-up, children will already have their values propagated from their own children.
+        
+        std::vector<Node*> nodes;
+        for (auto& n : root->depth_first()) {
+            nodes.push_back(&n);
+        }
+        std::reverse(nodes.begin(), nodes.end());
+
+        for (auto node : nodes) {
+            if (std::isnan(node->rows_estimated) || std::isnan(node->rows_actual)) {
+                // Try to find valid values from children
+                for (auto child : node->children()) {
+                    if (std::isnan(node->rows_estimated) && !std::isnan(child->rows_estimated)) {
+                        node->rows_estimated = child->rows_estimated;
+                    }
+                    if (std::isnan(node->rows_actual) && !std::isnan(child->rows_actual)) {
+                        node->rows_actual = child->rows_actual;
+                    }
+                }
             }
-        } while (current_estimated_count != last_estimated_count);
+        }
     }
 
     void iterativeCollapseNoOps(std::unique_ptr<Node>& root)
@@ -832,6 +823,46 @@ namespace sql::databricks
             current_node_count = 0;
             for (auto& n : root->depth_first()) (void)n, current_node_count++;
         } while (current_node_count != last_node_count);
+    }
+
+    void buildSubqueryRoots(const std::vector<std::string>& subquery_ids, 
+                            std::function<std::vector<std::unique_ptr<Node>>(const std::string&, bool)>& linkRecursively,
+                            ExplainContext& ctx)
+    {
+        PLOGD << "Pass 4: Building subquery roots";
+        for (const auto& sq_id : subquery_ids) {
+            auto sq_roots = linkRecursively(sq_id, true);
+            for (auto& root : sq_roots) {
+                ctx.subquery_roots.push_back(std::move(root));
+            }
+        }
+    }
+
+    std::string identifyRootId(const std::map<std::string, NodeInfo>& info_map, 
+                               const std::map<std::string, std::vector<std::string>>& parent_to_children)
+    {
+        PLOGD << "Identifying the best root candidate";
+        std::string root_id = "";
+        for (const auto& [id, info] : info_map) {
+            if (info.is_root && !info.is_subquery_root) {
+                PLOGD << "Root candidate: " << id << " (" << info.name << ") tag: " << info.tag;
+                // Prefer stages that sound like output/result AND have children (to avoid empty result islands)
+                if ((info.tag.find("RESULT") != std::string::npos || 
+                     info.tag.find("SINK") != std::string::npos ||
+                     info.name.find("Result") != std::string::npos) &&
+                    parent_to_children.contains(id)) {
+                    root_id = id;
+                    // Usually there's only one "Result" stage with children
+                }
+                if (root_id.empty() && parent_to_children.contains(id)) root_id = id;
+            }
+        }
+
+        // Fallback: if no roots with children found, just pick the first root
+        if (root_id.empty() && !info_map.empty()) {
+            root_id = info_map.begin()->first;
+        }
+        return root_id;
     }
 
     std::unique_ptr<Plan> buildExplainPlan(ExplainContext& ctx)
@@ -934,35 +965,9 @@ namespace sql::databricks
             return current_nodes;
         };
 
-        // Pass 4: Build subquery roots
-        for (const auto& sq_id : subquery_ids) {
-            auto sq_roots = linkRecursively(sq_id, true);
-            for (auto& root : sq_roots) {
-                ctx.subquery_roots.push_back(std::move(root));
-            }
-        }
+        buildSubqueryRoots(subquery_ids, linkRecursively, ctx);
 
-        // Identify the best root candidate among those that are marked as is_root
-        std::string root_id = "";
-        for (const auto& [id, info] : info_map) {
-            if (info.is_root && !info.is_subquery_root) {
-                PLOGD << "Root candidate: " << id << " (" << info.name << ") tag: " << info.tag;
-                // Prefer stages that sound like output/result AND have children (to avoid empty result islands)
-                if ((info.tag.find("RESULT") != std::string::npos || 
-                     info.tag.find("SINK") != std::string::npos ||
-                     info.name.find("Result") != std::string::npos) &&
-                    parent_to_children.contains(id)) {
-                    root_id = id;
-                    // Usually there's only one "Result" stage with children
-                }
-                if (root_id.empty() && parent_to_children.contains(id)) root_id = id;
-            }
-        }
-
-        // Fallback: if no roots with children found, just pick the first root
-        if (root_id.empty() && !info_map.empty()) {
-            root_id = info_map.begin()->first;
-        }
+        std::string root_id = identifyRootId(info_map, parent_to_children);
 
         std::unique_ptr<Node> root;
         if (!root_id.empty()) {

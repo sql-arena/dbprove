@@ -116,16 +116,14 @@ For a simple scan query (`SELECT val FROM test.pk`), the following was observed 
 
 ## Row Estimates Integration
 
-Spark's logical estimates (from `EXPLAIN COST`) are matched against the physical nodes in the JSON graph. This is currently done by operator type and position where possible.
-The parser currently extracts estimates for:
-- `Relation` (mapped to `SCAN`)
-- `Aggregate`
-- `Sort`
-- `Project`
-- `Filter`
-- `Join`
-- `Union`
-- `Limit`
+Spark's logical estimates (from `EXPLAIN COST`) are matched against the physical nodes in the JSON graph using **Ordered Greedy Matching**.
+
+1.  **Logical Plan Parsing**: The `EXPLAIN COST` output is parsed into a linear vector of logical operators, preserving their appearance order and row estimates.
+2.  **Physical Tree Traversal**: After the physical plan is built from JSON, it is traversed in **Depth-First Search (DFS)** order.
+3.  **Positional Matching**: For each relational node in the physical tree that is expected to change row counts (e.g., `Join`, `Scan`, `Filter`, `Aggregate`, `Limit`), the parser finds the first unmatched operator of the matching type in the logical plan vector and assigns its estimate.
+4.  **Estimate Propagation**: Operators that typically preserve row counts (e.g., `Sort`, `Project`, `Distribute`) inherit their estimates from their nearest child that has a matched estimate. This is performed via an iterative fixed-point propagation pass to ensure estimates reach all levels of deep physical trees.
+
+This strategy ensures that multiple occurrences of the same operator type (e.g., several `Join` or `Scan` nodes) are correctly matched to their specific estimates based on their position in the plan, rather than all receiving the same estimate from a global map. It also improves robustness by not forcing matches for technical nodes that might not appear in the logical plan.
 
 ## Strategy: Incremental Parsing via Theorems
 

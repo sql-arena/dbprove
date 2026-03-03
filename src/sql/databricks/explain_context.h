@@ -7,6 +7,12 @@ namespace sql::explain { class Node; }
 
 namespace sql::databricks {
 
+struct LogicalOperator {
+    std::string name;
+    double rows_estimated;
+    int depth;
+};
+
 struct ExplainContext {
     /**
      * @brief Information needed to replicate a Scan node.
@@ -21,6 +27,16 @@ struct ExplainContext {
      * @brief A map of node identifiers to their row estimates.
      */
     std::map<std::string, double> row_estimates;
+
+    /**
+     * @brief The parsed logical plan from EXPLAIN COST.
+     */
+    std::vector<LogicalOperator> logical_plan;
+
+    /**
+     * @brief Tracks which logical operators have been matched to physical nodes.
+     */
+    std::vector<bool> logical_op_matched;
 
     /**
      * @brief Mapping from output attribute names to the Scan node that produced them.

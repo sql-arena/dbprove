@@ -47,41 +47,61 @@ namespace sql::databricks
         // == Optimized Logical Plan ==
         // +- OperatorName ..., Statistics(sizeInBytes=..., rowCount=5.86E+6, ...)
         //
-        // We want to capture the operator name and the row estimate.
-
-        // Match operator name (skipping prefix characters like +-, |, and spaces)
-        // and then skip everything until "rowCount=" followed by a number (including scientific notation).
-        std::regex line_regex(R"(([A-Z][A-Za-z]+).*Statistics\(.*rowCount=([0-9.E\+\-]+))");
-        std::smatch match;
+        // We want to capture the operator name and the row estimate, preserving order and structure.
 
         PLOGD << "Starting parseExplainCost";
         std::istringstream stream(estimate_data);
         std::string line;
-        while (std::getline(stream, line)) {
-            if (std::regex_search(line, match, line_regex)) {
-                if (match.size() == 3) {
-                    std::string op_name = match[1].str();
-                    // Map Spark logical operator names to our estimate keys if they differ
-                    if (op_name == "GlobalLimit" || op_name == "LocalLimit") {
-                         // We keep the specific names to allow prioritization during node mapping,
-                         // but also keep "Limit" for general mapping if needed.
-                         context.row_estimates["Limit"] = std::stod(match[2].str());
-                    }
-                    try {
-                        double rows = std::stod(match[2].str());
+        bool in_logical_plan = false;
 
-                        // Since multiple operators might have the same name, we might need a more unique key later,
-                        // but for now, we follow the instruction: "populate the context with a map of nodes and their row estimates"
-                        context.row_estimates[op_name] = rows;
-                        PLOGD << "Found estimate: " << op_name << " -> " << rows;
-                    } catch (const std::exception& e) {
-                        PLOGW << "Failed to parse row count '" << match[2].str() << "' for operator " << op_name << ": "
- << e.what();
+        // Matches operator indentation, name, and rowCount
+        // Example: :  +- Join Inner [...], Statistics(rowCount=3.19E+4, ...)
+        std::regex op_regex(R"(^([\s:|+-]*)([A-Z][A-Za-z0-9]+))");
+        std::regex rows_regex(R"(rowCount=([0-9.E\+\-]+))");
+
+        while (std::getline(stream, line)) {
+            if (line.find("== Optimized Logical Plan ==") != std::string::npos) {
+                in_logical_plan = true;
+                continue;
+            }
+            if (in_logical_plan && line.starts_with("==")) {
+                break;
+            }
+            if (!in_logical_plan || line.empty()) {
+                continue;
+            }
+
+            std::smatch op_match;
+            if (std::regex_search(line, op_match, op_regex)) {
+                std::string indent_str = op_match[1].str();
+                std::string op_name = op_match[2].str();
+                int depth = static_cast<int>(indent_str.length() / 3);
+
+                double rows = NAN;
+                std::smatch rows_match;
+                if (std::regex_search(line, rows_match, rows_regex)) {
+                    try {
+                        rows = std::stod(rows_match[1].str());
+                    } catch (...) {}
+                }
+
+                PLOGD << "Found logical operator: " << op_name << " at depth " << depth << " with rows " << rows;
+                context.logical_plan.push_back({op_name, rows, depth});
+                context.logical_op_matched.push_back(false);
+
+                // Backwards compatibility: also populate the map (first occurrence wins)
+                if (!context.row_estimates.contains(op_name)) {
+                    context.row_estimates[op_name] = rows;
+                }
+                // Special handling for Limits
+                if (op_name == "GlobalLimit" || op_name == "LocalLimit") {
+                    if (!context.row_estimates.contains("Limit")) {
+                        context.row_estimates["Limit"] = rows;
                     }
                 }
             }
         }
-        PLOGD << "Finished parseExplainCost";
+        PLOGD << "Finished parseExplainCost, parsed " << context.logical_plan.size() << " logical operators";
     }
 
     std::unique_ptr<Node> handleScan(const std::string& name, const json& node_json, ExplainContext& ctx)
@@ -97,10 +117,6 @@ namespace sql::databricks
             }
         }
         auto node = std::make_unique<Scan>(table);
-        node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
-        if (std::isnan(node->rows_estimated) && ctx.row_estimates.contains("LocalRelation")) {
-            node->rows_estimated = ctx.row_estimates.at("LocalRelation");
-        }
 
         std::string filter;
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
@@ -185,7 +201,6 @@ namespace sql::databricks
         }
         GroupBy::Strategy strategy = group_keys.empty() ? GroupBy::Strategy::SIMPLE : GroupBy::Strategy::HASH;
         auto node = std::make_unique<GroupBy>(strategy, group_keys, aggregate_exprs);
-        node->rows_estimated = ctx.row_estimates.contains("Aggregate") ? ctx.row_estimates.at("Aggregate") : NAN;
         return node;
     }
 
@@ -209,7 +224,6 @@ namespace sql::databricks
             }
         }
         auto node = std::make_unique<Sort>(sort_keys);
-        node->rows_estimated = ctx.row_estimates.contains("Sort") ? ctx.row_estimates.at("Sort") : NAN;
         return node;
     }
 
@@ -217,7 +231,6 @@ namespace sql::databricks
     {
         PLOGD << "Entering handleProject";
         auto node = std::make_unique<Select>();
-        node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
 
         if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
             for (const auto& meta : node_json["metaData"]) {
@@ -262,7 +275,6 @@ namespace sql::databricks
         }
 
         auto node = std::make_unique<Selection>(filter_expr);
-        node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
         return node;
     }
 
@@ -311,7 +323,6 @@ namespace sql::databricks
         }
 
         auto node = std::make_unique<Join>(type, Join::Strategy::HASH, condition);
-        node->rows_estimated = ctx.row_estimates.contains("Join") ? ctx.row_estimates.at("Join") : NAN;
         return node;
     }
 
@@ -397,17 +408,9 @@ namespace sql::databricks
         }
         
         std::unique_ptr<Node> limit_node = std::make_unique<Limit>(static_cast<RowCount>(limit_val));
-        limit_node->rows_estimated = ctx.row_estimates.contains("Limit") ? ctx.row_estimates.at("Limit") : NAN;
-        if (std::isnan(limit_node->rows_estimated)) {
-             limit_node->rows_estimated = ctx.row_estimates.contains("GlobalLimit") ? ctx.row_estimates.at("GlobalLimit") : NAN;
-        }
-        if (std::isnan(limit_node->rows_estimated)) {
-             limit_node->rows_estimated = ctx.row_estimates.contains("LocalLimit") ? ctx.row_estimates.at("LocalLimit") : NAN;
-        }
 
         if (!sort_keys.empty()) {
              auto sort_node = std::make_unique<Sort>(sort_keys);
-             sort_node->rows_estimated = ctx.row_estimates.contains("Sort") ? ctx.row_estimates.at("Sort") : NAN;
              sort_node->addChild(std::move(limit_node));
              return sort_node;
         }
@@ -418,7 +421,6 @@ namespace sql::databricks
     std::unique_ptr<Node> handleUnion(ExplainContext& ctx)
     {
         auto node = std::make_unique<Union>(Union::Type::ALL);
-        node->rows_estimated = ctx.row_estimates.contains("Union") ? ctx.row_estimates.at("Union") : NAN;
         return node;
     }
 
@@ -542,15 +544,19 @@ namespace sql::databricks
     {
         if (!node) return;
 
+        // Bottom-up: process children first
         for (auto child : node->children()) {
             propagateEstimates(child);
         }
 
+        // Only propagate to nodes that are missing estimates or actual row counts
         if (std::isnan(node->rows_estimated) || std::isnan(node->rows_actual)) {
             for (auto child : node->children()) {
+                // If this node is missing an estimate, take it from the first child that has one
                 if (std::isnan(node->rows_estimated) && !std::isnan(child->rows_estimated)) {
                     node->rows_estimated = child->rows_estimated;
                 }
+                // If this node is missing an actual count, take it from the first child that has one
                 if (std::isnan(node->rows_actual) && !std::isnan(child->rows_actual)) {
                     node->rows_actual = child->rows_actual;
                 }
@@ -645,62 +651,77 @@ namespace sql::databricks
         return root;
     }
 
-    std::unique_ptr<Plan> buildExplainPlan(ExplainContext& ctx)
+    void matchEstimates(Node* root, ExplainContext& ctx)
     {
-        const json* graph_json = nullptr;
-        std::function<const json*(const json&)> findGraphContainer = [&](const json& j) -> const json* {
-            if (j.is_object()) {
-                if (j.contains("nodes") && j["nodes"].is_array() && j.contains("edges") && j["edges"].is_array()) {
-                    return &j;
+        if (!root || ctx.logical_plan.empty()) return;
+
+        PLOGD << "Starting estimate matching pass";
+        
+        // Logical operators in Spark EXPLAIN COST:
+        // Join, Project, Filter, Relation, Aggregate, Sort, Limit
+        
+        for (auto& physical_node : root->depth_first()) {
+            std::string type_name = "";
+            switch (physical_node.type) {
+                case NodeType::JOIN: type_name = "Join"; break;
+                case NodeType::SCAN: type_name = "Relation"; break;
+                case NodeType::FILTER: type_name = "Filter"; break;
+                case NodeType::GROUP_BY: type_name = "Aggregate"; break;
+                case NodeType::LIMIT: type_name = "Limit"; break;
+                default: continue;
+            }
+
+            // Greedy matching: find first unmatched logical operator of this type
+            for (size_t i = 0; i < ctx.logical_plan.size(); ++i) {
+                if (ctx.logical_op_matched[i]) continue;
+                
+                bool match = false;
+                if (ctx.logical_plan[i].name.find(type_name) != std::string::npos) {
+                    match = true;
+                } else if (type_name == "Limit" && 
+                          (ctx.logical_plan[i].name == "GlobalLimit" || ctx.logical_plan[i].name == "LocalLimit")) {
+                    match = true;
                 }
-                for (auto it = j.begin(); it != j.end(); ++it) {
-                    const json* res = findGraphContainer(it.value());
-                    if (res) return res;
-                }
-            } else if (j.is_array()) {
-                for (const auto& item : j) {
-                    const json* res = findGraphContainer(item);
-                    if (res) return res;
+
+                if (match) {
+                    physical_node.rows_estimated = ctx.logical_plan[i].rows_estimated;
+                    ctx.logical_op_matched[i] = true;
+                    PLOGD << "Matched physical " << type_name << " to logical " << ctx.logical_plan[i].name 
+                          << " (estimate: " << physical_node.rows_estimated << ")";
+                    break;
                 }
             }
-            return nullptr;
-        };
-
-        graph_json = findGraphContainer(ctx.scraped_plan);
-        if (!graph_json) {
-            throw std::runtime_error("No execution graph found in scraped JSON");
         }
+        PLOGD << "Finished estimate matching pass";
+    }
 
-        PLOGD << "Building plan from graph with " << (*graph_json)["nodes"].size() << " nodes";
+    struct NodeInfo {
+        std::string id;
+        std::string name;
+        std::string tag;
+        std::unique_ptr<Node> node;
+        bool is_root = true;
+        bool is_subquery_root = false;
+    };
 
-        // Pass 1: Pre-scan for all Scan nodes to populate attribute mapping for Reused Exchange
-        for (const auto& node_json : (*graph_json)["nodes"]) {
+    void preScanScansForReusedExchange(const json& graph_json, ExplainContext& ctx)
+    {
+        PLOGD << "Pass 1: Pre-scanning for Scan nodes to populate attribute mapping";
+        for (const auto& node_json : graph_json["nodes"]) {
             if (!node_json.is_object()) continue;
             std::string name = safeGetString(node_json, "name", "unknown");
             std::string tag = safeGetString(node_json, "tag", "");
             if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
-                // We don't want to create the full Node yet, but we need its ScanInfo
-                // We call handleScan but discard the node (it will populate ctx.attribute_to_scan)
                 handleScan(name, node_json, ctx);
             }
         }
+    }
 
-        struct NodeInfo {
-            std::string id;
-            std::string name;
-            std::string tag;
-            std::unique_ptr<Node> node;
-            bool is_root = true;
-            bool is_subquery_root = false;
-        };
-
-        std::map<std::string, NodeInfo> info_map;
-
-        // Pass 2: create all nodes and map them by ID
-        for (const auto& node_json : (*graph_json)["nodes"]) {
-            if (!node_json.is_object()) {
-                continue;
-            }
+    void createNodesAndMap(const json& graph_json, ExplainContext& ctx, std::map<std::string, NodeInfo>& info_map)
+    {
+        PLOGD << "Pass 2: Creating nodes and mapping them by ID";
+        for (const auto& node_json : graph_json["nodes"]) {
+            if (!node_json.is_object()) continue;
             
             std::string id = "unknown";
             if (node_json.contains("id") && !node_json["id"].is_null()) {
@@ -727,7 +748,6 @@ namespace sql::databricks
                     info_map[id] = {id, name, tag, std::move(node), true};
                 } else {
                     PLOGD << "Skipped node " << id << " (" << name << ") with tag " << tag;
-                    // If we skipped a node, we still need to record it so edges can pass through it
                     info_map[id] = {id, name, tag, nullptr, true};
                 }
             } catch (const std::exception& e) {
@@ -735,11 +755,14 @@ namespace sql::databricks
                 info_map[id] = {id, name, tag, nullptr, true};
             }
         }
+    }
 
-        // Pass 3: Identify all parent-child relationships and collect subquery roots
-        std::map<std::string, std::vector<std::string>> parent_to_children;
-        std::vector<std::string> subquery_ids;
-        for (const auto& edge : (*graph_json)["edges"]) {
+    void processRelationships(const json& graph_json, std::map<std::string, NodeInfo>& info_map, 
+                              std::map<std::string, std::vector<std::string>>& parent_to_children,
+                              std::vector<std::string>& subquery_ids)
+    {
+        PLOGD << "Pass 3: Processing parent-child relationships and collecting subquery roots";
+        for (const auto& edge : graph_json["edges"]) {
             std::string fromId = "";
             if (edge.contains("fromId") && !edge["fromId"].is_null()) {
                 if (edge["fromId"].is_string()) {
@@ -770,7 +793,6 @@ namespace sql::databricks
             if (info_map.contains(fromId) && info_map.contains(toId)) {
                 parent_to_children[fromId].push_back(toId);
                 
-                // If the consumer is a Subquery stage, collect its children as subquery roots
                 if (info_map[fromId].name == "Subquery" || 
                     info_map[fromId].name.find("Subquery") != std::string::npos ||
                     info_map[fromId].tag.find("SUBQUERY") != std::string::npos) {
@@ -782,6 +804,72 @@ namespace sql::databricks
                 }
             }
         }
+    }
+
+    void iterativePropagateEstimates(Node* root)
+    {
+        PLOGD << "Starting iterative estimate propagation";
+        size_t last_estimated_count = 0;
+        size_t current_estimated_count = 0;
+        do {
+            last_estimated_count = current_estimated_count;
+            propagateEstimates(root);
+            current_estimated_count = 0;
+            for (auto& n : root->depth_first()) {
+                if (!std::isnan(n.rows_estimated)) current_estimated_count++;
+            }
+        } while (current_estimated_count != last_estimated_count);
+    }
+
+    void iterativeCollapseNoOps(std::unique_ptr<Node>& root)
+    {
+        PLOGD << "Starting iterative relational no-op collapsing";
+        size_t last_node_count = 0;
+        size_t current_node_count = 0;
+        do {
+            last_node_count = current_node_count;
+            root = collapseRelationalNoOps(std::move(root));
+            current_node_count = 0;
+            for (auto& n : root->depth_first()) (void)n, current_node_count++;
+        } while (current_node_count != last_node_count);
+    }
+
+    std::unique_ptr<Plan> buildExplainPlan(ExplainContext& ctx)
+    {
+        const json* graph_json = nullptr;
+        std::function<const json*(const json&)> findGraphContainer = [&](const json& j) -> const json* {
+            if (j.is_object()) {
+                if (j.contains("nodes") && j["nodes"].is_array() && j.contains("edges") && j["edges"].is_array()) {
+                    return &j;
+                }
+                for (auto it = j.begin(); it != j.end(); ++it) {
+                    const json* res = findGraphContainer(it.value());
+                    if (res) return res;
+                }
+            } else if (j.is_array()) {
+                for (const auto& item : j) {
+                    const json* res = findGraphContainer(item);
+                    if (res) return res;
+                }
+            }
+            return nullptr;
+        };
+
+        graph_json = findGraphContainer(ctx.scraped_plan);
+        if (!graph_json) {
+            throw std::runtime_error("No execution graph found in scraped JSON");
+        }
+
+        PLOGD << "Building plan from graph with " << (*graph_json)["nodes"].size() << " nodes";
+
+        preScanScansForReusedExchange(*graph_json, ctx);
+
+        std::map<std::string, NodeInfo> info_map;
+        createNodesAndMap(*graph_json, ctx, info_map);
+
+        std::map<std::string, std::vector<std::string>> parent_to_children;
+        std::vector<std::string> subquery_ids;
+        processRelationships(*graph_json, info_map, parent_to_children, subquery_ids);
 
         // Recursive helper to link nodes bottom-up
         std::function<std::vector<std::unique_ptr<Node>>(const std::string&, bool)> linkRecursively =
@@ -902,17 +990,9 @@ namespace sql::databricks
         }
 
         // Post-processing
-        propagateEstimates(root.get());
-        
-        // Iterative collapsing to handle chains of no-ops
-        size_t last_node_count = 0;
-        size_t current_node_count = 0;
-        do {
-            last_node_count = current_node_count;
-            root = collapseRelationalNoOps(std::move(root));
-            current_node_count = 0;
-            for (auto& n : root->depth_first()) (void)n, current_node_count++;
-        } while (current_node_count != last_node_count);
+        matchEstimates(root.get(), ctx);
+        iterativePropagateEstimates(root.get());
+        iterativeCollapseNoOps(root);
 
         root = removeTopLevelProject(std::move(root));
 

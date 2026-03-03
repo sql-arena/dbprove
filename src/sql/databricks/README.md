@@ -38,13 +38,20 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Scan` / `Relation` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. |
 | `Filter` | `FILTER` | Predicate application. |
 | `Project` | `PROJECT` | Column selection/transformation. |
-| `Sort` | `SORT` | Ordering. Map to `SORT`. |
+| `Sort` | `SORT` | Ordering. Keys extracted from `SORT_ORDER` metadata. |
 | `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. Strategy is `SIMPLE` if group keys are empty, otherwise `HASH`. |
 | `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti (Left/Right variants). |
 | `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE` and `PARTITIONING_EXPRESSIONS` metadata. |
 | `Union` | `UNION` | Map to `sql::explain::Union(Union::Type::ALL)`. Row estimates from `ctx.row_estimates`. |
+| `Limit` / `TopK` | `LIMIT` | Limit clause. Count extracted from `LIMIT` metadata or `GlobalLimit` / `LocalLimit` estimates. `PhotonTopK` is mapped to `SORT` + `LIMIT` if sort order is present. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 | `Photon Result Stage` | `PROJECT` | Result collection stage. |
+| `Arrow Conversion` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
+| `Arrow Result Stage` | (ignored) | Ignored during parsing. Technical node for result delivery. |
+| `Columnar to Row` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
+| `Columnar To Row` | (ignored) | Ignored during parsing. Technical node for data format conversion. |
+| `Result Query Stage` | (ignored) | Ignored during parsing. Technical node for final result delivery. |
+| `Whole Stage Codegen` | (ignored) | Ignored during parsing. Technical node for code generation. |
 
 ## Post-Processing
 
@@ -83,6 +90,7 @@ The parser currently extracts estimates for:
 - `Filter`
 - `Join`
 - `Union`
+- `Limit`
 
 ## Strategy: Incremental Parsing via Theorems
 

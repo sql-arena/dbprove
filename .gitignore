@@ -4,6 +4,7 @@ env.sh
 *.d
 node_modules/
 dbprove/
+run/
 
 # Compiled Object files
 *.slo

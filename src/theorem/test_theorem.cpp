@@ -91,6 +91,27 @@ void run_test_subquery_not_in(Proof& proof) {
     );
 }
 
+void run_test_sort(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk ORDER BY val",
+        {"test.pk"}
+    );
+}
+
+void run_test_limit(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk LIMIT 2",
+        {"test.pk"}
+    );
+}
+
+void run_test_limit_sort(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk ORDER BY val LIMIT 2",
+        {"test.pk"}
+    );
+}
+
 void addTestTheorem(const std::string& name, const std::string& description, const TheoremFunction& fn) {
     auto& test = addTheorem(name, description, fn);
     categoriseTheorem(test, Category::TEST);
@@ -108,6 +129,9 @@ void init() {
     addTestTheorem("test-aggregate", "Simple aggregate test for Databricks implementation", run_test_aggregate);
     addTestTheorem("test-subquery-in", "Subquery IN test for Databricks implementation", run_test_subquery_in);
     addTestTheorem("test-subquery-not-in", "Subquery NOT IN test for Databricks implementation", run_test_subquery_not_in);
+    addTestTheorem("test-sort", "Sort test for Databricks implementation", run_test_sort);
+    addTestTheorem("test-limit", "Limit test for Databricks implementation", run_test_limit);
+    addTestTheorem("test-limit-sort", "Limit with sort test for Databricks implementation", run_test_limit_sort);
 }
 
 } // namespace dbprove::theorem::test

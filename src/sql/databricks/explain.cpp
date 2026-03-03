@@ -241,11 +241,13 @@ namespace sql::databricks
                     } else if (val == "Single") {
                         strategy = Distribute::Strategy::GATHER;
                     }
-                } else if (key == "PARTITIONING_EXPRESSIONS") {
+                } else if (key == "PARTITIONING_EXPRESSIONS" || key == "SHUFFLE_ATTRIBUTES") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val_json : meta["values"]) {
                             dist_cols.push_back(Column(val_json.get<std::string>()));
                         }
+                    } else if (meta.contains("value")) {
+                        dist_cols.push_back(Column(meta["value"].get<std::string>()));
                     }
                 }
             }

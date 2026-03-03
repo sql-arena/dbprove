@@ -35,13 +35,13 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 
 | Spark Operator / Tag | `dbprove` Node Type | Notes |
 | :--- | :--- | :--- |
-| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. |
+| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. Databricks does not need local files (`needsLocalFile() == false`) as it loads directly from S3. In this case, `prepareFileInput` just registers the table as ready without downloading anything. |
 | `Filter` | `FILTER` | Predicate application. Conditions extracted from `CONDITION` metadata. |
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Keys extracted from `SORT_ORDER` metadata. |
 | `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. Strategy is `SIMPLE` if group keys are empty, otherwise `HASH`. |
 | `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti (Left/Right variants). |
-| `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE` and `PARTITIONING_EXPRESSIONS` metadata. |
+| `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE`, `PARTITIONING_EXPRESSIONS`, or `SHUFFLE_ATTRIBUTES` metadata. |
 | `Union` | `UNION` | Map to `sql::explain::Union(Union::Type::ALL)`. Row estimates from `ctx.row_estimates`. |
 | `Limit` / `TopK` | `LIMIT` | Limit clause. Count extracted from `LIMIT` metadata or `GlobalLimit` / `LocalLimit` estimates. `PhotonTopK` is mapped to `SORT` + `LIMIT` if sort order is present. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |

@@ -74,9 +74,9 @@ sql::Credential parseCredentials(
   }
 }
 
-generator::GeneratorState configureDataGeneration() {
+generator::GeneratorState configureDataGeneration(const sql::Engine& engine) {
   const auto tableDataPath = common::make_directory("table_data");
-  return generator::GeneratorState(tableDataPath, CloudProvider::GCS, "gs://sql-arena-data");
+  return generator::GeneratorState(engine, tableDataPath, CloudProvider::GCS, "gs://sql-arena-data");
 }
 
 int main(int argc, char** argv) {
@@ -136,7 +136,7 @@ int main(int argc, char** argv) {
   const sql::Engine engine(engine_arg);
   ux::Terminal::configure();
 
-  auto generator_state = configureDataGeneration();
+  auto generator_state = configureDataGeneration(engine);
 
   PLOGI << "Generating into directory: " << generator_state.basePath();
 

@@ -34,22 +34,21 @@ namespace generator
     }
 
 
-    void GeneratorState::downloadFromCloud(const std::string_view schemaName,
+    void GeneratorState::prepareFileInput(const std::string_view schemaName,
         const std::string_view tableName,
         const std::string_view relativePath)
     {
-        if (cloudProvider() == CloudProvider::AWS) {
-            PLOGI << "Cloud provider is AWS (S3), skipping local download as bulk load can use S3 directly.";
+        if (!engine_.needsLocalFile()) {
             const auto fullTablename = std::format("{}.{}", schemaName, tableName);
-            // We still need to register it as "generated" so the load() logic knows it's ready to be loaded via bulkLoad
-            // But we don't have a local path. Connection::bulkLoad for Databricks currently ignores the source_paths 
-            // and uses a hardcoded S3 path.
-            table(tableName).is_generated = true;
+            PLOGD << "Engine does not need local files. Registering " << fullTablename << " as ready.";
+            // We use an empty path since there is no local file, but the table is "generated" 
+            // (i.e. its prepare stage is done)
+            registerGeneration(fullTablename, ""); 
             return;
         }
 
         if (cloudProvider() != CloudProvider::GCS) {
-            throw std::runtime_error("downloadFromCloud currently supports only Google Cloud Storage (GCS) for local downloads");
+            throw std::runtime_error("prepareFileInput currently supports only Google Cloud Storage (GCS) for local downloads");
         }
 
         dbprove::common::make_directory(basePath_);
@@ -126,9 +125,10 @@ namespace generator
         registerGeneration(fullTablename, final_csv_path);
     }
 
-    GeneratorState::GeneratorState(const std::filesystem::path& basePath, const CloudProvider dataProvider,
+    GeneratorState::GeneratorState(const sql::Engine& engine, const std::filesystem::path& basePath, const CloudProvider dataProvider,
                                    std::string dataPath)
-        : basePath_(basePath)
+        : engine_(engine)
+        , basePath_(basePath)
         , dataProvider_(dataProvider)
         , dataPath_(std::move(dataPath))
     {
@@ -152,16 +152,45 @@ namespace generator
                 continue;
             }
             std::unique_ptr<sql::ConnectionBase> cn = conn.create();
-            load(table_name, *cn);
-            
-            // If load() marked the table as ready, we don't need to generate it
-            if (!ready_tables_.contains(table_name)) {
+            PLOGD << "Ensuring table: " << table_name;
+
+            // 1. Check if the table is generated
+            if (!table(table_name).is_generated) {
+                PLOGD << "Table: " << table_name << " is not marked as generated. Preparing input...";
                 generate(table_name, cn.get());
-                // We mark it ready after generation
-                ready_tables_.insert(std::string(table_name));
             }
 
-            declareKeys(table_name, *cn);
+            auto existing_rows = cn->tableRowCount(table_name);
+            const auto expected_rows = table(table_name).row_count;
+
+            // 2. Check row count and skip if matches
+            if (existing_rows && *existing_rows == expected_rows) {
+                PLOGI << "Table: " << table_name << " already exists with correct " << *existing_rows << " rows";
+                ready_tables_.insert(std::string(table_name));
+                declareKeys(table_name, *cn);
+                continue;
+            }
+
+            // 3. Create schema if missing
+            if (!existing_rows) {
+                PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
+                const auto table_ddl = table(table_name).ddl;
+                cn->executeDdl(table_ddl);
+                existing_rows = cn->tableRowCount(table_name);
+            }
+
+            // 4. Load if empty or significantly off
+            const auto actual_rows = existing_rows.value_or(0);
+            if (actual_rows == 0 || (table(table_name).is_generated && (actual_rows < 0.9 * expected_rows || actual_rows > 1.1 * expected_rows))) {
+                if (exists(table(table_name).path)) {
+                    PLOGI << "Loading table: " << table_name << " (current rows: " << actual_rows << ", expected: " << expected_rows << ")";
+                    load(table_name, *cn);
+                }
+            } else if (actual_rows != expected_rows) {
+                PLOGW << "Table: " << table_name << " has " << actual_rows << " rows, but we expected " << expected_rows;
+            }
+
+            ready_tables_.insert(std::string(table_name));
         }
     }
 
@@ -181,12 +210,25 @@ namespace generator
 
         const auto target_row_count = table(table_name).row_count;
         const auto file_name = csvPath(table_name);
+        
+        // Remove zero-length file if it exists
+        if (exists(file_name) && file_size(file_name) == 0) {
+            PLOGW << "Removing zero-length file: " << file_name;
+            std::filesystem::remove(file_name);
+        }
+
         if (exists(file_name) && file_size(file_name) > 0) {
             // NOTE: even a zero row file will still have a header.
             PLOGI << "Table: " << table_name << " input already exists.";
             table(table_name).path = file_name;
             return target_row_count;
         }
+
+        if (!engine_.needsLocalFile()) {
+            PLOGI << "Engine " << engine_.name() << " does not need local files. Skipping generator.";
+            return target_row_count;
+        }
+
         PLOGI << "Table: " << table_name << " input being generated...";
         table(table_name).generator(*this, conn);
 
@@ -196,55 +238,19 @@ namespace generator
     sql::RowCount GeneratorState::load(const std::string_view table_name, sql::ConnectionBase& conn)
     {
         sql::checkTableName(table_name);
-        PLOGD << "Ensuring table: " << table_name;
-        auto existing_rows = conn.tableRowCount(table_name);
-        if (!existing_rows) {
-            PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
-            const auto table_ddl = table(table_name).ddl;
-            PLOGD << "Executing DDL: " << table_ddl;
-            conn.executeDdl(table_ddl);
-            existing_rows = conn.tableRowCount(table_name);
-            if (!existing_rows) {
-                PLOGE << "Table: " << table_name << " still does not exist after DDL!";
-            }
+        const auto& t = table(table_name);
+        if (exists(t.path)) {
+            PLOGI << "Loading table: " << table_name << " from file: " << t.path.string() << "...";
+            conn.bulkLoad(table_name, {t.path});
         } else {
-            PLOGD << "Table: " << table_name << " already exists with " << *existing_rows << " rows";
-        }
-        const auto expected_rows = table(table_name).row_count;
-
-        // If it's a generated table, it must have EXACTLY the right amount of rows (roughly)
-        if (table(table_name).is_generated) {
-            if (existing_rows.value_or(0) == 0 || existing_rows.value() < 0.9 * expected_rows || existing_rows.value() > 1.1 * expected_rows) {
-                if (exists(table(table_name).path)) {
-                    PLOGI << "Table: " << table_name << " exists but has incorrect row count (" << existing_rows.value_or(0)
-                          << "). Loading it from file: " << table(table_name).path.string() << "...";
-                    conn.bulkLoad(table_name, {table(table_name).path});
-                } else {
-                    PLOGI << "Table: " << table_name << " needs re-generation (count: " << existing_rows.value_or(0) << ")";
-                    return 0; // Trigger generate() in ensure()
-                }
-            }
-        } else {
-            // If it's NOT a generated table (it uses a generator function), we are more lenient if it already has rows.
-            // But if it has 0 rows, we definitely need to run the generator.
-            if (existing_rows.value_or(0) == 0) {
-                PLOGI << "Table: " << table_name << " has no rows and no generator file. Triggering generator function...";
-                return 0; // Trigger generate() in ensure()
-            }
-            
-            // If it has rows, but not exactly what we expected, we still accept it as "ready" for now,
-            // because running the generator function might be expensive or append data if not idempotent.
-            // The user can always manually TRUNCATE if they want a fresh start.
-            if (existing_rows.value() != expected_rows) {
-                PLOGW << "Table: " << table_name << " has " << existing_rows.value() << " rows, but we expected " << expected_rows << ". Continuing anyway.";
-            }
+            PLOGE << "Cannot load table: " << table_name << ". Local file does not exist: " << t.path.string();
+            return 0;
         }
 
-        PLOGI << "Table: " << table_name << " is already in the database with " + std::to_string(
-            existing_rows.value()) + " rows";
+        auto actual_rows = conn.tableRowCount(table_name).value_or(0);
+        PLOGI << "Table: " << table_name << " loaded. Now has " << actual_rows << " rows";
 
-        ready_tables_.insert(std::string(table_name));
-        return existing_rows.value();
+        return actual_rows;
     }
 
     void GeneratorState::registerGeneration(const std::string_view table_name, const std::filesystem::path& path) const

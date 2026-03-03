@@ -251,4 +251,13 @@ std::string Engine::name() const {
   }
   return std::string(canonical_names.at(type()));
 }
+
+bool Engine::needsLocalFile() const {
+  switch (type_) {
+    case Type::Databricks:
+      return false;
+    default:
+      return true;
+  }
+}
 }

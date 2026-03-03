@@ -37,7 +37,8 @@ TEST_CASE("Max and min sized text", "[TPCH]") {
 
 std::unique_ptr<GeneratorState> gen_state() {
   auto tmp = std::filesystem::temp_directory_path();
-  return std::make_unique<GeneratorState>(tmp);
+  sql::Engine engine(sql::Engine::Type::Utopia);
+  return std::make_unique<GeneratorState>(engine, tmp);
 }
 
 TEST_CASE("Generate Tables", "[TPCH]") {

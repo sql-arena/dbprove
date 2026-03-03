@@ -18,6 +18,7 @@ using GeneratorFunc = std::function<void(GeneratorState&, sql::ConnectionBase*)>
 
 class GeneratorState {
   friend struct Registrar;
+  const sql::Engine engine_;
   const std::filesystem::path basePath_;
   const CloudProvider dataProvider_;
   const std::string dataPath_;
@@ -36,11 +37,12 @@ class GeneratorState {
   std::set<std::string, TransparentLess> ready_tables_ = {};
 
 public:
-  explicit GeneratorState(const std::filesystem::path& basePath, CloudProvider dataProvider = CloudProvider::NONE, std::string dataPath = "");
+  explicit GeneratorState(const sql::Engine& engine, const std::filesystem::path& basePath, CloudProvider dataProvider = CloudProvider::NONE, std::string dataPath = "");
   ~GeneratorState();
 
-  void downloadFromCloud(std::string_view schemaName, std::string_view tableName, std::string_view relativePath);
+  void prepareFileInput(std::string_view schemaName, std::string_view tableName, std::string_view relativePath);
 
+  [[nodiscard]] const sql::Engine& engine() const { return engine_; }
   [[nodiscard]] CloudProvider cloudProvider() const { return dataProvider_; }
   [[nodiscard]] const std::string& dataPath() const { return dataPath_; }
 

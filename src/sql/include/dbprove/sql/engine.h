@@ -74,6 +74,12 @@ public:
 
   [[nodiscard]] Type type() const { return type_; }
 
+  /**
+   * @brief Does this engine need a local file to be downloaded and loaded?
+   * @return True if a local file is needed.
+   */
+  [[nodiscard]] bool needsLocalFile() const;
+
   Credential parseCredentials(
       const std::string& host,
       uint16_t port,

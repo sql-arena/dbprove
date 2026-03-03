@@ -22,13 +22,21 @@ namespace sql::explain
 
         [[nodiscard]] std::string compactSymbolic() const override;
         [[nodiscard]] std::string renderMuggle(size_t max_width) const override {
+            std::string result;
             switch (strategy) {
-                case Strategy::HASH: return "DISTRIBUTE HASH";
-                case Strategy::BROADCAST: return "DISTRIBUTE BROADCAST";
-                case Strategy::ROUND_ROBIN: return "DISTRIBUTE ROUND ROBIN";
-                case Strategy::GATHER: return "DISTRIBUTE GATHER";
+                case Strategy::HASH: result = "DISTRIBUTE HASH"; break;
+                case Strategy::BROADCAST: result = "DISTRIBUTE BROADCAST"; break;
+                case Strategy::ROUND_ROBIN: result = "DISTRIBUTE ROUND ROBIN"; break;
+                case Strategy::GATHER: result = "DISTRIBUTE GATHER"; break;
             }
-            return "DISTRIBUTION";
+            if (!columns_distribute.empty()) {
+                result += " ON ";
+                for (size_t i = 0; i < columns_distribute.size(); ++i) {
+                    result += columns_distribute[i].name;
+                    if (i + 1 < columns_distribute.size()) result += ", ";
+                }
+            }
+            return result;
         }
 
         std::vector<Column> columns_distribute;

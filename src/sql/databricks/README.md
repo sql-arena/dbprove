@@ -39,11 +39,19 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 | `Filter` | `FILTER` | Predicate application. |
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Map to `SORT`. |
-| `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. |
-| `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti. |
+| `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. Strategy is `SIMPLE` if group keys are empty, otherwise `HASH`. |
+| `Join` | `JOIN` | Join operations. Supports Inner, Outer (Left/Right/Full), Semi, and Anti (Left/Right variants). |
 | `Exchange` / `Shuffle` | `DISTRIBUTION` | Data movement. Map to `DISTRIBUTE`. Strategy and keys extracted from `PARTITIONING_TYPE` and `PARTITIONING_EXPRESSIONS` metadata. |
+| `Union` | `UNION` | Map to `sql::explain::Union(Union::Type::ALL)`. Row estimates from `ctx.row_estimates`. |
 | `Adaptive Plan` / `Stage`| `PROJECT` | Structural wrappers. Included to preserve hierarchy. |
 | `Photon Result Stage` | `PROJECT` | Result collection stage. |
+
+## Post-Processing
+
+The parser applies two post-processing steps to the plan tree before returning it:
+
+1.  **Top-Level Project Removal**: If the root node is a `PROJECT` or `SELECT` node with a single child, it is removed. This typically represents moving data to the client and is not interesting for theorem proving.
+2.  **Estimate Propagation**: If a node is missing `rows_estimated` or `rows_actual` (value is `NAN`), it attempts to propagate these values from its children.
 
 ## Join Keys Extraction
 
@@ -67,6 +75,14 @@ For a simple scan query (`SELECT val FROM test.pk`), the following was observed 
 ## Row Estimates Integration
 
 Spark's logical estimates (from `EXPLAIN COST`) are matched against the physical nodes in the JSON graph. This is currently done by operator type and position where possible.
+The parser currently extracts estimates for:
+- `Relation` (mapped to `SCAN`)
+- `Aggregate`
+- `Sort`
+- `Project`
+- `Filter`
+- `Join`
+- `Union`
 
 ## Strategy: Incremental Parsing via Theorems
 

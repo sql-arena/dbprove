@@ -70,34 +70,44 @@ void run_test_union_distinct(Proof& proof) {
     );
 }
 
-void init() {
-    auto& test = addTheorem("test-join-inner", "Simple join test for Databricks implementation", run_test);
+void run_test_aggregate(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT SUM(id), COUNT(*), MIN(val), MAX(val) FROM test.pk",
+        {"test.pk"}
+    );
+}
+
+void run_test_subquery_in(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk WHERE id IN (SELECT pk_id FROM test.fk)",
+        {"test.pk", "test.fk"}
+    );
+}
+
+void run_test_subquery_not_in(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk WHERE id NOT IN (SELECT pk_id FROM test.fk)",
+        {"test.pk", "test.fk"}
+    );
+}
+
+void addTestTheorem(const std::string& name, const std::string& description, const TheoremFunction& fn) {
+    auto& test = addTheorem(name, description, fn);
     categoriseTheorem(test, Category::TEST);
     tagTheorem(test, Tag("TEST"));
+}
 
-    auto& test_left = addTheorem("test-join-left", "Left join test for Databricks implementation", run_test_join_left);
-    categoriseTheorem(test_left, Category::TEST);
-    tagTheorem(test_left, Tag("TEST"));
-
-    auto& test_full = addTheorem("test-join-full", "Full join test for Databricks implementation", run_test_join_full);
-    categoriseTheorem(test_full, Category::TEST);
-    tagTheorem(test_full, Tag("TEST"));
-
-    auto& test_scan = addTheorem("test-scan", "Simple scan test for Databricks implementation", run_test_scan);
-    categoriseTheorem(test_scan, Category::TEST);
-    tagTheorem(test_scan, Tag("TEST"));
-
-    auto& test_groupby = addTheorem("test-groupby", "Simple groupby test for Databricks implementation", run_test_groupby);
-    categoriseTheorem(test_groupby, Category::TEST);
-    tagTheorem(test_groupby, Tag("TEST"));
-
-    auto& test_union = addTheorem("test-union", "Simple union test for Databricks implementation", run_test_union);
-    categoriseTheorem(test_union, Category::TEST);
-    tagTheorem(test_union, Tag("TEST"));
-
-    auto& test_union_distinct = addTheorem("test-union-distinct", "Union distinct test for Databricks implementation", run_test_union_distinct);
-    categoriseTheorem(test_union_distinct, Category::TEST);
-    tagTheorem(test_union_distinct, Tag("TEST"));
+void init() {
+    addTestTheorem("test-join-inner", "Simple join test for Databricks implementation", run_test);
+    addTestTheorem("test-join-left", "Left join test for Databricks implementation", run_test_join_left);
+    addTestTheorem("test-join-full", "Full join test for Databricks implementation", run_test_join_full);
+    addTestTheorem("test-scan", "Simple scan test for Databricks implementation", run_test_scan);
+    addTestTheorem("test-groupby", "Simple groupby test for Databricks implementation", run_test_groupby);
+    addTestTheorem("test-union", "Simple union test for Databricks implementation", run_test_union);
+    addTestTheorem("test-union-distinct", "Union distinct test for Databricks implementation", run_test_union_distinct);
+    addTestTheorem("test-aggregate", "Simple aggregate test for Databricks implementation", run_test_aggregate);
+    addTestTheorem("test-subquery-in", "Subquery IN test for Databricks implementation", run_test_subquery_in);
+    addTestTheorem("test-subquery-not-in", "Subquery NOT IN test for Databricks implementation", run_test_subquery_not_in);
 }
 
 } // namespace dbprove::theorem::test

@@ -246,6 +246,26 @@ public:
     return children_.back().get();
   }
 
+  void setParentToSelf() {
+    parent_ = static_cast<T*>(this);
+  }
+
+  T* takeChildRaw(const size_t index) {
+    if (index >= children_.size()) {
+      throw std::out_of_range("Child index out of range");
+    }
+    return children_[index].get();
+  }
+
+  std::unique_ptr<T> takeChild(const size_t index) {
+    if (index >= children_.size()) {
+      throw std::out_of_range("Child index out of range");
+    }
+    auto child = std::move(children_[index]);
+    children_.erase(children_.begin() + index);
+    return child;
+  }
+
   /// @brief is the child here
   bool hasChild(const T* child) const {
     if (children_.empty()) {

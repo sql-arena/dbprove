@@ -102,24 +102,34 @@ namespace sql::databricks
                     }
                 }
             }
-            node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, group_keys, aggregate_exprs);
+            GroupBy::Strategy strategy = group_keys.empty() ? GroupBy::Strategy::SIMPLE : GroupBy::Strategy::HASH;
+            node = std::make_unique<GroupBy>(strategy, group_keys, aggregate_exprs);
             node->rows_estimated = ctx.row_estimates.contains("Aggregate") ? ctx.row_estimates.at("Aggregate") : NAN;
         } else if (name == "Sort" || tag.find("SORT") != std::string::npos) {
             node = std::make_unique<Sort>(std::vector<Column>{});
             node->rows_estimated = ctx.row_estimates.contains("Sort") ? ctx.row_estimates.at("Sort") : NAN;
-        } else if (name == "Project" || tag.find("PROJECT") != std::string::npos) {
+        } else if (name.find("Project") != std::string::npos || tag.find("PROJECT") != std::string::npos) {
             node = std::make_unique<Select>();
             node->rows_estimated = ctx.row_estimates.contains("Project") ? ctx.row_estimates.at("Project") : NAN;
-        } else if (name == "Filter" || tag.find("FILTER") != std::string::npos) {
+        } else if (name.find("Filter") != std::string::npos || tag.find("FILTER") != std::string::npos) {
             node = std::make_unique<Select>();
             node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
         } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
             Join::Type type = Join::Type::INNER;
-    if (name.find("Left Outer") != std::string::npos || name.find("LeftOuter") != std::string::npos) type = Join::Type::LEFT_OUTER;
-    else if (name.find("Right Outer") != std::string::npos || name.find("RightOuter") != std::string::npos) type = Join::Type::RIGHT_OUTER;
-    else if (name.find("Full Outer") != std::string::npos || name.find("FullOuter") != std::string::npos) type = Join::Type::FULL;
-    else if (name.find("Left Semi") != std::string::npos || name.find("LeftSemi") != std::string::npos) type = Join::Type::LEFT_SEMI_INNER;
-    else if (name.find("Left Anti") != std::string::npos || name.find("LeftAnti") != std::string::npos) type = Join::Type::LEFT_ANTI;
+            if (name.find("Left Outer") != std::string::npos || name.find("LeftOuter") != std::string::npos)
+                type = Join::Type::LEFT_OUTER;
+            else if (name.find("Right Outer") != std::string::npos || name.find("RightOuter") != std::string::npos)
+                type = Join::Type::RIGHT_OUTER;
+            else if (name.find("Full Outer") != std::string::npos || name.find("FullOuter") != std::string::npos)
+                type = Join::Type::FULL;
+            else if (name.find("Left Semi") != std::string::npos || name.find("LeftSemi") != std::string::npos)
+                type = Join::Type::LEFT_SEMI_INNER;
+            else if (name.find("Left Anti") != std::string::npos || name.find("LeftAnti") != std::string::npos)
+                type = Join::Type::LEFT_ANTI;
+            else if (name.find("Right Semi") != std::string::npos || name.find("RightSemi") != std::string::npos)
+                type = Join::Type::RIGHT_SEMI_INNER;
+            else if (name.find("Right Anti") != std::string::npos || name.find("RightAnti") != std::string::npos)
+                type = Join::Type::RIGHT_ANTI;
 
             std::string condition;
             if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
@@ -205,6 +215,43 @@ namespace sql::databricks
         return node;
     }
 
+    void propagateEstimates(Node* node)
+    {
+        if (!node) return;
+
+        for (auto child : node->children()) {
+            propagateEstimates(child);
+        }
+
+        if (std::isnan(node->rows_estimated) || std::isnan(node->rows_actual)) {
+            for (auto child : node->children()) {
+                if (std::isnan(node->rows_estimated) && !std::isnan(child->rows_estimated)) {
+                    node->rows_estimated = child->rows_estimated;
+                }
+                if (std::isnan(node->rows_actual) && !std::isnan(child->rows_actual)) {
+                    node->rows_actual = child->rows_actual;
+                }
+            }
+        }
+    }
+
+    std::unique_ptr<Node> removeTopLevelProject(std::unique_ptr<Node> root)
+    {
+        if (!root) return nullptr;
+
+        while (root->type == sql::explain::NodeType::SELECT || root->type == sql::explain::NodeType::PROJECTION) {
+            if (root->childCount() == 1) {
+                PLOGD << "Removing top-level " << to_string(root->type) << " node";
+                root = root->takeChild(0);
+                root->setParentToSelf();
+            } else {
+                break;
+            }
+        }
+
+        return root;
+    }
+
     std::unique_ptr<Plan> buildExplainPlan(const ExplainContext& ctx)
     {
         const json* graph_json = nullptr;
@@ -252,7 +299,12 @@ namespace sql::databricks
 
             auto node = createNodeFromSparkType(name, node_json, ctx);
             if (node) {
+                PLOGD << "Created node " << id << " (" << name << ") with tag " << tag;
                 info_map[id] = {id, name, tag, std::move(node), true};
+            } else {
+                PLOGD << "Skipped node " << id << " (" << name << ") with tag " << tag;
+                // If we skipped a node, we still need to record it so edges can pass through it
+                info_map[id] = {id, name, tag, nullptr, true};
             }
         }
 
@@ -265,51 +317,89 @@ namespace sql::databricks
             if (toId.starts_with("\"") && toId.ends_with("\"")) toId = toId.substr(1, toId.size() - 2);
 
             if (info_map.contains(fromId) && info_map.contains(toId)) {
+                PLOGD << "Found edge: " << fromId << " -> " << toId;
                 parent_to_children[fromId].push_back(toId);
                 info_map[toId].is_root = false;
             }
         }
 
         // Recursive helper to link nodes bottom-up
-        std::function<void(const std::string&)> linkRecursively = [&](const std::string& parent_id) {
-            if (!parent_to_children.contains(parent_id)) return;
+        std::function<std::vector<std::unique_ptr<Node>>(const std::string&)> linkRecursively =
+            [&](const std::string& current_id) -> std::vector<std::unique_ptr<Node>> {
+            std::vector<std::unique_ptr<Node>> current_nodes;
 
-            auto children_ids = parent_to_children[parent_id];
-            for (const auto& child_id : children_ids) {
-                // Link children of this child first
-                linkRecursively(child_id);
-
-                if (info_map[parent_id].node && info_map[child_id].node) {
-                    PLOGD << "Linking consumer " << parent_id << " (" << info_map[parent_id].name << ") to producer " << child_id << " (" << info_map[child_id].name << ")";
-                    info_map[parent_id].node->addChild(std::move(info_map[child_id].node));
+            // Get all linked nodes from children first
+            std::vector<std::unique_ptr<Node>> children_nodes;
+            if (parent_to_children.contains(current_id)) {
+                for (const auto& child_id : parent_to_children[current_id]) {
+                    auto linked_children = linkRecursively(child_id);
+                    for (auto& child_node : linked_children) {
+                        children_nodes.push_back(std::move(child_node));
+                    }
                 }
             }
+
+            if (info_map[current_id].node) {
+                // If this is a real node, add children to it and return it
+                if (info_map[current_id].node->type != NodeType::SCAN) {
+                    for (auto& child_node : children_nodes) {
+                        PLOGD << "Linking consumer " << current_id << " (" << info_map[current_id].name << ") to producer " << child_node->typeName();
+                        info_map[current_id].node->addChild(std::move(child_node));
+                    }
+                } else {
+                    if (!children_nodes.empty()) {
+                        PLOGW << "Scan node " << current_id << " has unexpected children, ignoring them to keep SCAN a leaf";
+                    }
+                }
+                current_nodes.push_back(std::move(info_map[current_id].node));
+            } else {
+                // If this node was skipped, just pass the children up
+                current_nodes = std::move(children_nodes);
+            }
+
+            return current_nodes;
         };
 
         // Identify the best root candidate among those that are marked as is_root
         std::string root_id = "";
         for (const auto& [id, info] : info_map) {
             if (info.is_root) {
-                // Prefer stages that sound like output/result
-                if (info.tag.find("RESULT") != std::string::npos || info.tag.find("SINK") != std::string::npos) {
+                PLOGD << "Root candidate: " << id << " (" << info.name << ") tag: " << info.tag;
+                // Prefer stages that sound like output/result AND have children (to avoid empty result islands)
+                if ((info.tag.find("RESULT") != std::string::npos || 
+                     info.tag.find("SINK") != std::string::npos ||
+                     info.name.find("Result") != std::string::npos) &&
+                    parent_to_children.contains(id)) {
                     root_id = id;
-                    break;
+                    // Usually there's only one "Result" stage with children
                 }
-                if (root_id.empty()) root_id = id;
+                if (root_id.empty() && parent_to_children.contains(id)) root_id = id;
             }
         }
 
-        if (!root_id.empty()) {
-            linkRecursively(root_id);
+        // Fallback: if no roots with children found, just pick the first root
+        if (root_id.empty() && !info_map.empty()) {
+            root_id = info_map.begin()->first;
         }
 
-        if (root_id.empty() || !info_map.contains(root_id) || !info_map[root_id].node) {
+        std::unique_ptr<Node> root;
+        if (!root_id.empty()) {
+            auto linked_roots = linkRecursively(root_id);
+            if (!linked_roots.empty()) {
+                root = std::move(linked_roots[0]);
+            }
+        }
+
+        if (!root) {
             throw std::runtime_error("Could not identify root node of the Databricks plan");
         }
 
         PLOGD << "Identified root candidate: " << root_id << " (" << info_map[root_id].name << ")";
 
-        auto root = std::move(info_map[root_id].node);
+        // Post-processing
+        propagateEstimates(root.get());
+        root = removeTopLevelProject(std::move(root));
+
         return std::make_unique<Plan>(std::move(root));
     }
 
@@ -372,6 +462,8 @@ namespace sql::databricks
                 context.dump();
                 walkPlanJson(context.scraped_plan);
                 return buildExplainPlan(context);
+            } else {
+                PLOGI << "Artifacts not found in " << *artifacts_path_ << " for " << base_name << ", proceeding with live query";
             }
         }
 

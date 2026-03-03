@@ -31,6 +31,13 @@ void run_test_scan(Proof& proof) {
     );
 }
 
+void run_test_scan_filter(Proof& proof) {
+    run_test_query(proof, 
+        "SELECT val FROM test.pk WHERE val = 'A'",
+        {"test.pk"}
+    );
+}
+
 void run_test_join_left(Proof& proof) {
     run_test_query(proof, 
         "SELECT pk.val, fk.fk_val "
@@ -123,6 +130,7 @@ void init() {
     addTestTheorem("test-join-left", "Left join test for Databricks implementation", run_test_join_left);
     addTestTheorem("test-join-full", "Full join test for Databricks implementation", run_test_join_full);
     addTestTheorem("test-scan", "Simple scan test for Databricks implementation", run_test_scan);
+    addTestTheorem("test-scan-filter", "Scan with filter test for Databricks implementation", run_test_scan_filter);
     addTestTheorem("test-groupby", "Simple groupby test for Databricks implementation", run_test_groupby);
     addTestTheorem("test-union", "Simple union test for Databricks implementation", run_test_union);
     addTestTheorem("test-union-distinct", "Union distinct test for Databricks implementation", run_test_union_distinct);

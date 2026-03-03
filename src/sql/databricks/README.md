@@ -35,8 +35,8 @@ We map Spark operators to the canonical `sql::explain::Node` types using both th
 
 | Spark Operator / Tag | `dbprove` Node Type | Notes |
 | :--- | :--- | :--- |
-| `Scan` / `Relation` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. |
-| `Filter` | `FILTER` | Predicate application. |
+| `Relation` / `Scan` | `SCAN` | Base table access. Actual rows in `metrics` as `NUMBER_OUTPUT_ROWS`. Pushed filters extracted from `PUSHED_FILTERS`, `PARTITION_FILTERS`, or `DATA_FILTERS` metadata. |
+| `Filter` | `FILTER` | Predicate application. Conditions extracted from `CONDITION` metadata. |
 | `Project` | `PROJECT` | Column selection/transformation. |
 | `Sort` | `SORT` | Ordering. Keys extracted from `SORT_ORDER` metadata. |
 | `Aggregate` | `AGGREGATE` | Grouping and aggregation. Keys and functions extracted from `GROUPING_EXPRESSIONS` and `AGGREGATE_EXPRESSIONS` metadata. Strategy is `SIMPLE` if group keys are empty, otherwise `HASH`. |

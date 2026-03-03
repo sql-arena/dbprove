@@ -81,6 +81,20 @@ namespace sql::databricks
         }
         auto node = std::make_unique<Scan>(table);
         node->rows_estimated = ctx.row_estimates.contains("Relation") ? ctx.row_estimates.at("Relation") : NAN;
+
+        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+            for (const auto& meta : node_json["metaData"]) {
+                std::string key = meta.value("key", "");
+                if (key == "PUSHED_FILTERS" || key == "PARTITION_FILTERS" || key == "DATA_FILTERS") {
+                    if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
+                        node->setFilter(meta["values"][0].get<std::string>());
+                    } else if (meta.contains("value")) {
+                        node->setFilter(meta["value"].get<std::string>());
+                    }
+                }
+            }
+        }
+
         return node;
     }
 
@@ -141,10 +155,24 @@ namespace sql::databricks
         return node;
     }
 
-    std::unique_ptr<Node> handleFilter(const ExplainContext& ctx)
+    std::unique_ptr<Node> handleFilter(const json& node_json, const ExplainContext& ctx)
     {
         auto node = std::make_unique<Select>();
         node->rows_estimated = ctx.row_estimates.contains("Filter") ? ctx.row_estimates.at("Filter") : NAN;
+
+        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+            for (const auto& meta : node_json["metaData"]) {
+                std::string key = meta.value("key", "");
+                if (key == "CONDITION") {
+                    if (meta.contains("value")) {
+                        node->setFilter(meta["value"].get<std::string>());
+                    } else if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
+                        node->setFilter(meta["values"][0].get<std::string>());
+                    }
+                }
+            }
+        }
+
         return node;
     }
 
@@ -297,7 +325,7 @@ namespace sql::databricks
         } else if (name.find("Project") != std::string::npos || tag.find("PROJECT") != std::string::npos) {
             node = handleProject(ctx);
         } else if (name.find("Filter") != std::string::npos || tag.find("FILTER") != std::string::npos) {
-            node = handleFilter(ctx);
+            node = handleFilter(node_json, ctx);
         } else if (name.find("Join") != std::string::npos || tag.find("JOIN") != std::string::npos) {
             node = handleJoin(name, node_json, ctx);
         } else if (name.find("Exchange") != std::string::npos || tag.find("EXCHANGE") != std::string::npos || tag.find("SHUFFLE") != std::string::npos) {
@@ -473,7 +501,7 @@ namespace sql::databricks
                         // We need to be careful if the node already has children (e.g., Sort wrapping Limit for TopK)
                         // We want to attach graph-level children to the leaf of our canonical technical subtree.
                         Node* target = info_map[current_id].node.get();
-                        while (target->childCount() > 0 && target->type != NodeType::SCAN && target->type != NodeType::JOIN) {
+                        while (target->childCount() > 0 && target->type != NodeType::SCAN && target->type != NodeType::JOIN && target->type != NodeType::UNION && target->type != NodeType::SEQUENCE) {
                             target = target->firstChild();
                         }
                         target->addChild(std::move(child_node));

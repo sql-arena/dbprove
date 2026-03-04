@@ -5,6 +5,9 @@ env.sh
 node_modules/
 dbprove/
 run/
+scratchpad/
+
+.DS_Store
 
 # Compiled Object files
 *.slo

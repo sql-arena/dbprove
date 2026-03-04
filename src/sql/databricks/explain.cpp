@@ -197,7 +197,7 @@ namespace sql::databricks
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "GROUPING_EXPRESSIONS") {
+                if (key == "GROUPING_EXPRESSIONS" || key == "keys") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
                             if (val.is_string()) {
@@ -205,8 +205,10 @@ namespace sql::databricks
                                 group_keys.push_back(Column(col_name));
                             }
                         }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
+                        group_keys.push_back(Column(meta["value"].get<std::string>()));
                     }
-                } else if (key == "AGGREGATE_EXPRESSIONS") {
+                } else if (key == "AGGREGATE_EXPRESSIONS" || key == "functions") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
                             if (val.is_string()) {
@@ -214,6 +216,8 @@ namespace sql::databricks
                                 aggregate_exprs.push_back(Column(agg_name));
                             }
                         }
+                    } else if (meta.contains("value") && meta["value"].is_string()) {
+                        aggregate_exprs.push_back(Column(meta["value"].get<std::string>()));
                     }
                 }
             }
@@ -231,7 +235,7 @@ namespace sql::databricks
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "SORT_ORDER") {
+                if (key == "SORT_ORDER" || key == "sortOrder") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
                             if (val.is_string()) {
@@ -255,7 +259,7 @@ namespace sql::databricks
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "PROJECTION") {
+                if (key == "PROJECTION" || key == "expressions") {
                     if (meta.contains("values") && meta["values"].is_array()) {
                         for (const auto& val : meta["values"]) {
                             if (val.is_string()) {
@@ -281,7 +285,7 @@ namespace sql::databricks
             for (const auto& meta : node_json["metaData"]) {
                 if (!meta.is_object()) continue;
                 std::string key = safeGetString(meta, "key");
-                if (key == "CONDITION") {
+                if (key == "CONDITION" || key == "condition") {
                     if (meta.contains("value") && meta["value"].is_string()) {
                         filter_expr = meta["value"].get<std::string>();
                     } else if (meta.contains("values") && meta["values"].is_array() && !meta["values"].empty()) {
@@ -430,8 +434,7 @@ namespace sql::databricks
 
         if (!sort_keys.empty()) {
              auto sort_node = std::make_unique<Sort>(sort_keys);
-             sort_node->addChild(std::move(limit_node));
-             return sort_node;
+             limit_node->addChild(std::move(sort_node));
         }
 
         return limit_node;
@@ -507,7 +510,8 @@ namespace sql::databricks
 
         if (name.find("Scan") != std::string::npos || tag.find("SCAN") != std::string::npos) {
             node = handleScan(name, node_json, ctx);
-        } else if (name.find("Aggregate") != std::string::npos || tag.find("AGGREGATE") != std::string::npos) {
+        } else if (name.find("Aggregate") != std::string::npos || tag.find("AGGREGATE") != std::string::npos || 
+                   name.find("GroupingAgg") != std::string::npos || name.find("Agg") != std::string::npos) {
             node = handleAggregate(node_json, ctx);
         } else if (name == "Sort" || tag.find("SORT") != std::string::npos) {
             node = handleSort(node_json, ctx);
@@ -646,7 +650,11 @@ namespace sql::databricks
                 case NodeType::SCAN: type_name = "Relation"; break;
                 case NodeType::FILTER: type_name = "Filter"; break;
                 case NodeType::GROUP_BY: type_name = "Aggregate"; break;
+                case NodeType::DISTRIBUTE: type_name = "Exchange"; break;
+                case NodeType::SORT: type_name = "Sort"; break;
                 case NodeType::LIMIT: type_name = "Limit"; break;
+                case NodeType::PROJECTION:
+                case NodeType::SELECT: type_name = "Project"; break;
                 default: continue;
             }
 
@@ -659,6 +667,12 @@ namespace sql::databricks
                     match = true;
                 } else if (type_name == "Limit" && 
                           (ctx.logical_plan[i].name == "GlobalLimit" || ctx.logical_plan[i].name == "LocalLimit")) {
+                    match = true;
+                } else if (type_name == "Aggregate" && 
+                          (ctx.logical_plan[i].name.find("Agg") != std::string::npos)) {
+                    match = true;
+                } else if (type_name == "Project" && 
+                          (ctx.logical_plan[i].name == "Project")) {
                     match = true;
                 }
 
@@ -787,8 +801,9 @@ namespace sql::databricks
 
     void iterativePropagateEstimates(Node* root)
     {
-        PLOGD << "Starting bottom-up estimate propagation";
+        PLOGD << "Starting estimate propagation";
         
+        // Pass 1: Bottom-up propagation (inherit from children)
         for (auto& node : root->bottom_up()) {
             if (std::isnan(node.rows_estimated) || std::isnan(node.rows_actual)) {
                 // Try to find valid values from children
@@ -800,6 +815,56 @@ namespace sql::databricks
                         node.rows_actual = child->rows_actual;
                     }
                 }
+            }
+        }
+
+        // Pass 2: Top-down propagation (for specific patterns like Distributed Aggregates)
+        for (auto& node : root->depth_first()) {
+            // Special Case: GROUP BY -> DISTRIBUTE -> GROUP BY
+            // In Databricks, this physical pattern often only has the estimate on the top-most GROUP BY
+            // in the logical plan. We need to propagate it down to the lower GROUP BY and the DISTRIBUTE node.
+            if (node.type == NodeType::GROUP_BY && !std::isnan(node.rows_estimated)) {
+                if (node.childCount() == 1 && node.firstChild()->type == NodeType::DISTRIBUTE) {
+                    Node* dist = node.firstChild();
+                    
+                    // Aggressively propagate to DISTRIBUTE if it's part of a distributed aggregation pattern
+                    // and its estimate is significantly different or NaN
+                    if (std::isnan(dist->rows_estimated) || (dist->rows_estimated != node.rows_estimated && dist->childCount() == 1 && dist->firstChild()->type == NodeType::GROUP_BY)) {
+                         PLOGD << "Propagating estimate " << node.rows_estimated 
+                               << " from top GROUP BY to DISTRIBUTE (previous was: " << (std::isnan(dist->rows_estimated) ? "NaN" : std::to_string(dist->rows_estimated)) << ")";
+                         dist->rows_estimated = node.rows_estimated;
+                    }
+
+                    if (dist->childCount() == 1 && dist->firstChild()->type == NodeType::GROUP_BY) {
+                        Node* lower_agg = dist->firstChild();
+                        // Overwrite lower estimate if it's vastly different or NaN (greedy matching might have picked up a wrong logical operator)
+                        // In distributed aggregates, the logical plan usually only has the final aggregate estimate.
+                        if (std::isnan(lower_agg->rows_estimated) || lower_agg->rows_estimated > node.rows_estimated * 1.5) {
+                            PLOGD << "Propagating estimate " << node.rows_estimated 
+                                  << " from top GROUP BY to lower GROUP BY (previous was: " << lower_agg->rows_estimated << ")";
+                            lower_agg->rows_estimated = node.rows_estimated;
+                            
+                            // If we corrected the lower aggregate, also try to correct its children if they are DISTRIBUTE
+                            for (auto child : lower_agg->children()) {
+                                if (child->type == NodeType::DISTRIBUTE && (std::isnan(child->rows_estimated) || child->rows_estimated > lower_agg->rows_estimated * 1.5)) {
+                                     PLOGD << "Further propagating estimate " << lower_agg->rows_estimated << " to child DISTRIBUTE of lower aggregate";
+                                     child->rows_estimated = lower_agg->rows_estimated;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Propagation for other nodes that should inherit from parent if they lack estimate
+            // e.g. INNER JOIN -> DISTRIBUTE (if join matched but distribute didn't)
+            if (node.type == NodeType::JOIN && !std::isnan(node.rows_estimated)) {
+                 for (auto child : node.children()) {
+                     if (child->type == NodeType::DISTRIBUTE && (std::isnan(child->rows_estimated) || child->rows_estimated > node.rows_estimated * 1.5)) {
+                         PLOGD << "Propagating estimate " << node.rows_estimated << " from JOIN to child DISTRIBUTE";
+                         child->rows_estimated = node.rows_estimated;
+                     }
+                 }
             }
         }
     }
@@ -933,8 +998,6 @@ namespace sql::databricks
                                target->type != NodeType::DISTRIBUTE &&
                                target->type != NodeType::FILTER &&
                                target->type != NodeType::GROUP_BY &&
-                               target->type != NodeType::SORT &&
-                               target->type != NodeType::LIMIT &&
                                target->type != NodeType::SELECT &&
                                target->type != NodeType::PROJECTION) {
                             target = target->firstChild();

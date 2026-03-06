@@ -9,45 +9,42 @@
 using namespace dbprove::theorem;
 
 Proof& tpch_ensure_basics(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.part").ensure("tpch.supplier").ensure("tpch.nation").ensure("tpch.region").
-        ensure("tpch.customer").ensure("tpch.lineitem").ensure("tpch.orders");
+  proof.ensureDataset("tpch");
   return proof;
 }
 
 void tpch_q01(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q01_sql), proof);
 }
 
 void tpch_q02(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.part").ensure("tpch.supplier").ensure("tpch.partsupp").ensure("tpch.nation").
-        ensure("tpch.region");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q02_sql), proof);
 }
 
 void tpch_q03(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders").ensure("tpch.customer");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q03_sql), proof);
 }
 
 void tpch_q04(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q04_sql), proof);
 }
 
 void tpch_q05(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders").ensure("tpch.nation").ensure("tpch.region").
-        ensure("tpch.customer").ensure("tpch.supplier");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q05_sql), proof);
 }
 
 void tpch_q06(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem");
+  proof.ensureDataset("tpch");
 
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q06_sql), proof);
@@ -66,109 +63,89 @@ void tpch_q08(Proof& proof) {
 }
 
 void tpch_q09(Proof& proof) {
-  tpch_ensure_basics(proof).ensure("tpch.partsupp");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q09_sql), proof);
 }
 
 void tpch_q10(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders").ensure("tpch.customer").
-        ensure("tpch.nation");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q10_sql), proof);
 }
 
 void tpch_q11(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.partsupp").ensure("tpch.supplier").ensure("tpch.nation");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q11_sql), proof);
 }
 
 void tpch_q12(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q12_sql), proof);
 }
 
 void tpch_q13(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.customer").ensure("tpch.orders");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q13_sql), proof);
 }
 
 void tpch_q14(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.part");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q14_sql), proof);
 }
 
 void tpch_q15(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.supplier").ensure("tpch.lineitem");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q14_sql), proof);
 }
 
 void tpch_q16(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.partsupp").ensure("tpch.part");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q16_sql), proof);
 }
 
 void tpch_q17(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.part");
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
 
-  const bool is_postgres_bad = proof.factory().engine().type() == sql::Engine::Type::Postgres;
-
-  if (is_postgres_bad) {
-    /* Performance for Q17 is so horrible for Postgres that we have to create an assistaing index */
-    try {
-      proof.factory().create()->execute("CREATE INDEX ix_q17 ON tpch.lineitem(l_partkey)");
-    } catch (const std::exception& e) {
-      PLOGW << "Could not create assisting index for TPC-H Q17: " << e.what();
-    }
-  }
   runner.serialExplain(Query(resource::q17_sql), proof);
-  if (is_postgres_bad) {
-    try {
-      proof.factory().create()->execute("DROP INDEX ix_q17");
-    } catch (const std::exception& e) {
-      // NOOP
-    }
-  }
 }
 
 
 void tpch_q18(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.orders").ensure("tpch.lineitem").ensure("tpch.customer");;
+  proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q18_sql), proof);
 }
 
 
 void tpch_q19(Proof& proof) {
-  proof.ensure("tpch.lineitem").ensure("tpch.part");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q19_sql), proof);
 }
 
 
 void tpch_q20(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.supplier").ensure("tpch.nation").ensure("tpch.partsupp").
-        ensure("tpch.lineitem").ensure("tpch.part");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q20_sql), proof);
 }
 
 void tpch_q21(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.lineitem").ensure("tpch.orders").ensure("tpch.supplier").
-        ensure("tpch.nation");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q21_sql), proof);
 }
 
 void tpch_q22(Proof& proof) {
-  proof.ensureSchema("tpch").ensure("tpch.customer").ensure("tpch.orders");
+  proof.ensureDataset("tpch");
   Runner runner(proof.factory());
   runner.serialExplain(Query(resource::q22_sql), proof);
 }

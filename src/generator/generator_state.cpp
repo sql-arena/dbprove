@@ -12,6 +12,8 @@
 #include "dbprove/common/file_utility.h"
 #include "dbprove/generator/test.h"
 
+#include <dbprove/ux/ux.h>
+
 namespace generator
 {
     std::map<std::string_view, GeneratedTable*>&
@@ -21,25 +23,27 @@ namespace generator
         return registry;
     }
 
-    auto& pk_to_fk()
+    std::map<std::string_view, std::vector<std::string_view>>&
+    available_datasets()
     {
-        static std::map<std::string_view, std::vector<sql::ForeignKey>> map;
-        return map;
+        static std::map<std::string_view, std::vector<std::string_view>> registry;
+        return registry;
     }
-
-    auto& fk_to_pk()
-    {
-        static std::map<std::string_view, std::vector<sql::ForeignKey>> map;
-        return map;
-    }
-
 
     void GeneratorState::prepareFileInput(const std::string_view schemaName,
         const std::string_view tableName,
         const std::string_view relativePath)
     {
+        const auto fullTablename = std::format("{}.{}", schemaName, tableName);
+        const auto final_csv_path = csvPath(tableName);
+
+        if (std::filesystem::exists(final_csv_path) && std::filesystem::file_size(final_csv_path) > 0) {
+            PLOGD << "Table: " << fullTablename << " CSV already exists. Skipping download and unzip.";
+            registerGeneration(fullTablename, final_csv_path);
+            return;
+        }
+
         if (!engine_.needsLocalFile()) {
-            const auto fullTablename = std::format("{}.{}", schemaName, tableName);
             PLOGD << "Engine does not need local files. Registering " << fullTablename << " as ready.";
             // We use an empty path since there is no local file, but the table is "generated" 
             // (i.e. its prepare stage is done)
@@ -56,11 +60,22 @@ namespace generator
         const std::string bucket = "sql-arena-data";
         std::string object = std::format("{}/{}{}.csv.zip",
              schemaName, relativePath, tableName);;
-        const auto fullTablename = std::format("{}.{}", schemaName, tableName);
-        const auto final_csv_path = csvPath(tableName);
         const auto base_dir = basePath();
         const auto downloadPath = base_dir / std::format("{}.csv.zip", tableName);
         const auto zipCSVFileName = std::format("{}.csv", tableName);
+
+        // Check if the file exists and is a valid zip archive. 
+        // If not, we should delete it so we can re-download.
+        if (std::filesystem::exists(downloadPath)) {
+            int err = 0;
+            zip_t* za = zip_open(downloadPath.string().c_str(), ZIP_RDONLY, &err);
+            if (za) {
+                zip_close(za);
+            } else {
+                PLOGW << "Existing zip archive " << downloadPath.string() << " is corrupted or invalid. Deleting and re-downloading...";
+                std::filesystem::remove(downloadPath);
+            }
+        }
 
         if (!std::filesystem::exists(downloadPath)) {
             PLOGI << "Downloading GCS object " << object << " to " << downloadPath.string();
@@ -72,14 +87,19 @@ namespace generator
             }
             auto reader = client.ReadObject(bucket, object);
             if (!reader.status().ok()) {
+                // If it fails, remove the empty/partial file so we don't try to unzip it next time
+                ofs.close();
+                std::filesystem::remove(downloadPath);
                 throw std::runtime_error("GCS ReadObject failed: " + reader.status().message());
             }
-            std::vector<char> buffer(1 << 16);
-            while (!reader.eof()) {
-                reader.read(buffer.data(), buffer.size());
-                auto gcount = reader.gcount();
-                if (gcount > 0)
-                    ofs.write(buffer.data(), gcount);
+
+            ofs << reader.rdbuf();
+
+            // Check for errors after the loop
+            if (reader.bad() || !ofs.good()) {
+                ofs.close();
+                std::filesystem::remove(downloadPath);
+                throw std::runtime_error("GCS ReadObject or file write failed during download: " + reader.status().message());
             }
             ofs.close();
         }
@@ -88,7 +108,14 @@ namespace generator
         int err = 0;
         zip_t* za = zip_open(downloadPath.string().c_str(), ZIP_RDONLY, &err);
         if (!za) {
-            throw std::runtime_error("Failed to open zip archive: " + downloadPath.string());
+            zip_error_t zerr;
+            zip_error_init_with_code(&zerr, err);
+            const auto error_msg = std::format("Failed to open zip archive: {} (libzip error: {})", downloadPath.string(), zip_error_strerror(&zerr));
+            PLOGE << error_msg;
+            zip_error_fini(&zerr);
+            // If the zip is corrupted, we should probably delete it so the next run can try again
+            std::filesystem::remove(downloadPath);
+            throw std::runtime_error(error_msg);
         }
 
         zip_stat_t st{};
@@ -144,7 +171,7 @@ namespace generator
         ensure(std::span(table_names), conn);
     }
 
-    void GeneratorState::ensure(const std::span<std::string_view>& table_names, sql::ConnectionFactory& conn)
+    void GeneratorState::ensure(std::span<const std::string_view> table_names, sql::ConnectionFactory& conn)
     {
         for (auto table_name : table_names) {
             sql::checkTableName(table_name);
@@ -167,7 +194,6 @@ namespace generator
             if (existing_rows && *existing_rows == expected_rows) {
                 PLOGI << "Table: " << table_name << " already exists with correct " << *existing_rows << " rows";
                 ready_tables_.insert(std::string(table_name));
-                declareKeys(table_name, *cn);
                 continue;
             }
 
@@ -176,26 +202,68 @@ namespace generator
                 PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
                 const auto table_ddl = table(table_name).ddl;
                 cn->executeDdl(table_ddl);
-                existing_rows = cn->tableRowCount(table_name);
             }
 
-            // 4. Load if empty or significantly off
-            const auto actual_rows = existing_rows.value_or(0);
-            if (actual_rows == 0 || (table(table_name).is_generated && (actual_rows < 0.9 * expected_rows || actual_rows > 1.1 * expected_rows))) {
-                PLOGI << "Loading table: " << table_name << " (current rows: " << actual_rows << ", expected: " << expected_rows << ")";
+            // 4. Handle incorrect row count
+            auto actual_rows = cn->tableRowCount(table_name).value_or(0);
+            if (actual_rows > 0 && actual_rows != expected_rows) {
+                PLOGW << "Table: " << table_name << " has " << actual_rows << " rows, but we expected " << expected_rows << ". Deleting and reloading...";
+                cn->execute("DELETE FROM " + std::string(table_name));
+                actual_rows = 0;
+            }
+
+            // 5. Load if empty
+            if (actual_rows == 0) {
+                PLOGI << "Loading table: " << table_name << " (expected: " << expected_rows << ")";
                 load(table_name, *cn);
-            } else if (actual_rows != expected_rows) {
-                PLOGW << "Table: " << table_name << " has " << actual_rows << " rows, but we expected " << expected_rows;
             }
 
             ready_tables_.insert(std::string(table_name));
         }
     }
 
+    void GeneratorState::ensureDataset(const std::string_view dataset_name, sql::ConnectionFactory& conn)
+    {
+        if (!containsDataset(dataset_name)) {
+            throw std::runtime_error("Dataset not found: " + std::string(dataset_name));
+        }
+
+        const auto& tables = available_datasets().at(dataset_name);
+        if (tables.empty()) {
+            return;
+        }
+
+        std::set<std::string> schemas;
+        for (const auto table_name : tables) {
+            auto [schema_name, _] = sql::splitTable(table_name);
+            if (!schema_name.empty()) {
+                schemas.insert(schema_name);
+            }
+        }
+
+        if (!schemas.empty()) {
+            auto schema_conn = conn.create();
+            for (const auto& schema_name : schemas) {
+                try {
+                    schema_conn->createSchema(schema_name);
+                } catch (std::exception& e) {
+                    PLOGD << "Schema creation failed (might already exist): " << e.what();
+                }
+            }
+        }
+
+        ensure(std::span<const std::string_view>(tables), conn);
+    }
+
     bool GeneratorState::contains(const std::string_view table_name)
     {
         sql::checkTableName(table_name);
         return available_tables().contains(table_name);
+    }
+
+    bool GeneratorState::containsDataset(const std::string_view dataset_name)
+    {
+        return available_datasets().contains(dataset_name);
     }
 
 
@@ -237,12 +305,20 @@ namespace generator
     {
         sql::checkTableName(table_name);
         const auto& t = table(table_name);
+        const auto expected_rows = t.row_count;
         
         PLOGI << "Loading table: " << table_name << "...";
         conn.bulkLoad(table_name, {t.path});
 
         auto actual_rows = conn.tableRowCount(table_name).value_or(0);
         PLOGI << "Table: " << table_name << " loaded. Now has " << actual_rows << " rows";
+
+        if (actual_rows != expected_rows) {
+            const auto error_msg = std::format("Table: {} still has incorrect row count after bulk load. Got {}, expected {}", 
+                                                table_name, actual_rows, expected_rows);
+            PLOGE << error_msg;
+            throw std::runtime_error(error_msg);
+        }
 
         return actual_rows;
     }
@@ -254,25 +330,18 @@ namespace generator
         table(table_name).is_generated = true;
     }
 
-    void GeneratorState::declareKeys(const std::string_view table_name, sql::ConnectionBase& conn) const
+    void GeneratorState::printSummary(std::ostream& out) const
     {
-        // Key up anything I point at that already exists
-        if (fk_to_pk().contains(table_name)) {
-            for (auto& fk : fk_to_pk().at(table_name)) {
-                if (ready_tables_.contains(fk.pk_table_name)) {
-                    conn.declareForeignKey(table_name, fk.fk_columns, fk.pk_table_name, fk.pk_columns);
-                }
-            }
+        if (ready_tables_.empty()) {
+            return;
         }
 
-        // Key up anything existing, which points at me
-        if (pk_to_fk().contains(table_name)) {
-            for (auto& pk : pk_to_fk().at(table_name)) {
-                if (ready_tables_.contains(pk.fk_table_name)) {
-                    conn.declareForeignKey(pk.fk_table_name, pk.fk_columns, table_name, pk.pk_columns);
-                }
-            }
+        dbprove::ux::Header(out, "Tables Loaded");
+        std::vector<dbprove::ux::RowStats> stats;
+        for (const auto& table_name : ready_tables_) {
+            stats.push_back({table_name, table(table_name).row_count});
         }
+        dbprove::ux::RowStatTable(out, stats);
     }
 
     GeneratedTable& GeneratorState::table(const std::string_view table_name) const
@@ -286,21 +355,13 @@ namespace generator
         return *available_tables().at(table_name);
     }
 
-    Registrar::Registrar(const std::string_view table_name, const std::string_view ddl, const GeneratorFunc& f,
+    Registrar::Registrar(const std::string_view table_name, const std::string_view dataset_name,
+                         const std::string_view ddl, const GeneratorFunc& f,
                          const sql::RowCount rows)
     {
         sql::checkTableName(table_name);
-        available_tables().emplace(table_name, new GeneratedTable{table_name, ddl, f, rows});
+        available_tables().emplace(table_name, new GeneratedTable{table_name, dataset_name, ddl, f, rows});
+        available_datasets()[dataset_name].push_back(table_name);
     }
 
-
-    KeyRegistrar::KeyRegistrar(std::string_view fk_table_name, const std::vector<std::string_view>& fk_column_names,
-                               std::string_view pk_table_name, const std::vector<std::string_view>& pk_column_names)
-    {
-        sql::checkTableName(fk_table_name);
-        sql::checkTableName(pk_table_name);
-        const sql::ForeignKey fk{fk_table_name, fk_column_names, pk_table_name, pk_column_names};
-        fk_to_pk()[fk_table_name].push_back(fk);
-        pk_to_fk()[pk_table_name].push_back(fk);
-    }
 }

@@ -93,7 +93,7 @@ SqlVariant parseDecimal(const char* binary_value, const int value_length) {
     size_t fractional_length = result.length();
     // If weight < -1, we need leading zeros in the fractional part
     // e.g., weight = -3 means 0.00XX where XX are actual digits
-    if (weight < -1) {
+    if (weight < static_cast<uint16_t>(-1)) {
       // Add necessary leading zeros
       result.append((-weight - 1) * 4, '0');
     }

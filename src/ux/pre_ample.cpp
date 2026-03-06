@@ -10,14 +10,15 @@ void PreAmple(std::ostream& out, const std::string_view title) {
   Box header;
   header.setText(title);
   header.setBorderStyle(BorderStyle::DOUBLE);
-  header.setTextColour(Colour::BLUE);
+  header.setBorderColour(Colour::BLUE);
+  header.setTextColour(Colour::WHITE);
   header.render(out);
 }
 
 void PreAmpleTheorem(std::ostream& out, std::string_view theorem) {
   Box header;
   header.setText(theorem);
-  header.setBorderColour(Colour::GREY);
+  header.setBorderColour(Colour::BLUE);
   header.setTextColour(Colour::WHITE);
   header.render(out);
 }

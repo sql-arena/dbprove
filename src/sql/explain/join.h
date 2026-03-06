@@ -24,7 +24,7 @@ public:
     CROSS
   };
 
-  explicit Join(const Type type, const Strategy join_strategy, const std::string& condition);
+  explicit Join(const Type type, const Strategy join_strategy, const std::string& condition, const EngineDialect* dialect = nullptr);
 
   [[nodiscard]] std::string compactSymbolic() const override;
 

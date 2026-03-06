@@ -2,6 +2,11 @@
 
 #include <iostream>
 #include <regex>
+#include <nlohmann/json.hpp>
+#include <pugixml.hpp>
+#include <cctype>
+#include <algorithm>
+#include <sstream>
 
 #include "sql_exceptions.h"
 #include "explain/plan.h"
@@ -10,6 +15,68 @@
 #include "plog/Log.h"
 
 namespace sql {
+namespace {
+std::string normaliseExtension(std::string_view extension) {
+  std::string normalised(extension);
+  while (!normalised.empty() && normalised.front() == '.') {
+    normalised.erase(normalised.begin());
+  }
+  return normalised;
+}
+
+std::string toLowerAscii(std::string value) {
+  std::ranges::transform(value, value.begin(), [](const unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+std::filesystem::path artefactPathWithDot(const std::filesystem::path& dir, std::string_view name, std::string_view extension) {
+  const auto ext = normaliseExtension(extension);
+  if (ext.empty()) {
+    return dir / std::string(name);
+  }
+  return dir / (std::string(name) + "." + ext);
+}
+
+std::string prettyJsonIfNeeded(std::string_view extension, std::string_view content) {
+  if (toLowerAscii(normaliseExtension(extension)) != "json") {
+    return std::string(content);
+  }
+  try {
+    return nlohmann::json::parse(content).dump(2);
+  } catch (const std::exception& e) {
+    PLOGW << "Artifact extension is json but payload was not valid JSON. Storing raw content. Error: " << e.what();
+    return std::string(content);
+  }
+}
+
+std::string prettyXmlIfNeeded(std::string_view extension, std::string_view content) {
+  if (toLowerAscii(normaliseExtension(extension)) != "xml") {
+    return std::string(content);
+  }
+
+  pugi::xml_document doc;
+  const auto parse_result = doc.load_string(content.data());
+  if (!parse_result) {
+    PLOGW << "Artifact extension is xml but payload was not valid XML. Storing raw content. Error: " << parse_result.description();
+    return std::string(content);
+  }
+
+  std::ostringstream out;
+  doc.save(out, "  ", pugi::format_default, pugi::encoding_utf8);
+  return out.str();
+}
+
+std::string prettyContentIfNeeded(std::string_view extension, std::string_view content) {
+  const auto pretty_json = prettyJsonIfNeeded(extension, content);
+  if (pretty_json != content) {
+    return pretty_json;
+  }
+  return prettyXmlIfNeeded(extension, content);
+}
+}
+
 const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
   static const TypeMap empty_map = {};
   return empty_map;
@@ -149,8 +216,9 @@ std::optional<std::string> ConnectionBase::getArtefact(const std::string_view na
     return std::nullopt;
   }
 
-  const std::string base_name = to_lower(engine().name()) + "_" + std::string(name);
-  const auto path = std::filesystem::path(*artifacts_path_) / (base_name + "_" + std::string(extension));
+  const std::string engine_name = engine().internalName();
+  const auto engine_dir = std::filesystem::path(*artifacts_path_) / engine_name;
+  const auto path = artefactPathWithDot(engine_dir, name, extension);
   if (!std::filesystem::exists(path)) {
     return std::nullopt;
   }
@@ -168,9 +236,11 @@ void ConnectionBase::storeArtefact(const std::string_view name, const std::strin
     return;
   }
 
-  std::filesystem::create_directories(*artifacts_path_);
-  const std::string base_name = to_lower(engine().name()) + "_" + std::string(name);
-  const auto path = std::filesystem::path(*artifacts_path_) / (base_name + "_" + std::string(extension));
+  const std::string engine_name = engine().internalName();
+  const auto engine_dir = std::filesystem::path(*artifacts_path_) / engine_name;
+  std::filesystem::create_directories(engine_dir);
+  const auto path = artefactPathWithDot(engine_dir, name, extension);
+  const auto formatted_content = prettyContentIfNeeded(extension, content);
 
   PLOGD << "Storing artefact to " << path.string();
   std::ofstream f(path);
@@ -178,6 +248,6 @@ void ConnectionBase::storeArtefact(const std::string_view name, const std::strin
     PLOGE << "Failed to open artefact file for writing: " << path.string();
     return;
   }
-  f << content;
+  f << formatted_content;
 }
 }

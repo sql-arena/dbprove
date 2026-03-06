@@ -128,7 +128,7 @@ public:
   /**
    * @brief Get the artefact from the file system.
    * @param name Base name of the artefact
-   * @param extension Extension to look for (without the dot)
+   * @param extension Extension to look for (with or without the dot)
    * @return The contents of the artefact if it exists, nullopt otherwise.
    */
   std::optional<std::string> getArtefact(std::string_view name, std::string_view extension) const;
@@ -136,7 +136,7 @@ public:
   /**
    * @brief Store the artefact on the file system.
    * @param name Base name of the artefact
-   * @param extension Extension to use (without the dot)
+   * @param extension Extension to use (with or without the dot)
    * @param content The content of the artefact to store.
    */
   void storeArtefact(std::string_view name, std::string_view extension, std::string_view content) const;

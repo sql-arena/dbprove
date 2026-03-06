@@ -5,7 +5,7 @@ target_include_directories(dbprove PUBLIC ${RANG_INCLUDE_DIRS})
 
 target_link_libraries(dbprove
         PRIVATE
-        dbprove::sql
+        dbprove::sql::core
         dbprove::generator
         dbprove::theorem
         dbprove::ux

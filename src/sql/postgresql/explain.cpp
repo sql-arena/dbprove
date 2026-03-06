@@ -12,7 +12,9 @@
 #include "explain/node.h"
 #include "explain/plan.h"
 #include <unordered_set>
+#include <regex>
 #include <nlohmann/json.hpp>
+#include <plog/Log.h>
 
 #include "sequence.h"
 #include "duckdb/common/helper.hpp"
@@ -23,13 +25,120 @@ using namespace nlohmann;
 
 struct ExplainCtx {
   std::vector<std::unique_ptr<Node>> initPlans_;
+  std::unordered_set<Node*> subPlanNodes_;
+  std::unordered_set<std::string> aliases_;
 };
+
+/**
+ * A custom dialect for PostgreSQL expressions that is aware of aliases.
+ */
+struct PgDialect final : EngineDialect {
+  explicit PgDialect(const ExplainCtx& ctx) : ctx_(ctx) {}
+
+  const std::map<std::string_view, std::string_view>& engineFunctions() const override {
+    static const std::map<std::string_view, std::string_view> fn = {
+      {"\"LEFT\"", "LEFT"},
+    };
+    return fn;
+  }
+
+  static bool isIdentifierLike(const std::string& value) {
+    if (value.empty()) {
+      return false;
+    }
+    const unsigned char first = static_cast<unsigned char>(value.front());
+    return std::isalpha(first) || value.front() == '_' || value.front() == '"';
+  }
+
+  void preRender(std::vector<Token>& tokens) override {
+    for (auto& token : tokens) {
+      if (token.type == Token::Type::Literal) {
+        // Handle qualified names: table.column or alias.column
+        const size_t dot_pos = token.value.find('.');
+        if (dot_pos != std::string::npos) {
+          const std::string qualifier = token.value.substr(0, dot_pos);
+          const std::string column = token.value.substr(dot_pos + 1);
+
+          // Decimal literals (e.g. 0.2) also contain dots; only treat identifier-like
+          // tokens as qualified names that can be alias-stripped.
+          if (!isIdentifierLike(qualifier) || !isIdentifierLike(column)) {
+            continue;
+          }
+
+          // If the qualifier is not an alias, we strip it.
+          // Otherwise, we keep it as a two-part name.
+          if (!ctx_.aliases_.contains(qualifier)) {
+            token.value = column;
+          }
+        }
+      }
+    }
+  }
+
+private:
+  const ExplainCtx& ctx_;
+};
+
+/**
+ * Alias-aware expression cleaner for PostgreSQL.
+ */
+std::string cleanPgExpression(std::string expression, const ExplainCtx& ctx) {
+  PgDialect dialect(ctx);
+  return cleanExpression(std::move(expression), &dialect);
+}
+
+static std::string firstOutputColumn(const Node& node) {
+  if (!node.columns_output.empty()) {
+    return node.columns_output.front();
+  }
+  return "";
+}
+
+static std::optional<std::string> extractSubplanJoinCondition(const std::string& raw_filter,
+                                                              const Node& subplan_node,
+                                                              const ExplainCtx& ctx) {
+  const auto subplan_column = firstOutputColumn(subplan_node);
+  if (subplan_column.empty()) {
+    return std::nullopt;
+  }
+
+  // Example:
+  //   (NOT (ANY (partsupp.ps_suppkey = (hashed SubPlan 1).col1)))
+  static const std::regex hashed_any(R"(ANY\s*\(\s*(.*?)\s*=\s*\(hashed\s+SubPlan\s+\d+\)\.col\d+\s*\))",
+                                     std::regex::icase);
+  std::smatch match;
+  if (std::regex_search(raw_filter, match, hashed_any) && match.size() > 1) {
+    const auto lhs = cleanPgExpression(match[1].str(), ctx);
+    const auto rhs = cleanPgExpression(subplan_column, ctx);
+    return lhs + " = " + rhs;
+  }
+
+  // Fallback for non-hashed SubPlan references.
+  static const std::regex plain_subplan(R"(\(\s*(.*?)\s*=\s*\(SubPlan\s+\d+\)\s*\))", std::regex::icase);
+  if (std::regex_search(raw_filter, match, plain_subplan) && match.size() > 1) {
+    const auto lhs = cleanPgExpression(match[1].str(), ctx);
+    const auto rhs = cleanPgExpression(subplan_column, ctx);
+    return lhs + " = " + rhs;
+  }
+
+  return std::nullopt;
+}
+
+static std::optional<double> subplanTotalActualRows(const json& node_json) {
+  if (!node_json.contains("Actual Rows")) {
+    return std::nullopt;
+  }
+
+  const auto actual_rows = node_json["Actual Rows"].get<double>();
+  const auto loops = node_json.contains("Actual Loops") ? node_json["Actual Loops"].get<double>() : 1.0;
+  return std::max(actual_rows * loops, loops);
+}
 
 /**
  * Create the appropriate node type based on PostgreSQL node type
  * Skip past nodes we currently don't care about.
  */
-std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
+std::unique_ptr<Node> createNodeFromPgType(const json& node_json, ExplainCtx& ctx) {
   const auto pg_node_type = node_json["Node Type"].get<std::string>();
   std::unique_ptr<Node> node;
   bool needsLoopCorrection = true; // See later comment
@@ -37,6 +146,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 
   if (pg_node_type == "Seq Scan" || pg_node_type == "Index Scan" || pg_node_type == "Index Only Scan") {
     std::string relation_name;
+    std::string base_relation_name;
 
     if (node_json.contains("Parallel Aware")) {
       const auto parallel_aware = node_json["Parallel Aware"].get<bool>();
@@ -49,31 +159,44 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     const auto strategy = pg_node_type == "Seq Scan" ? Scan::Strategy::SCAN : Scan::Strategy::SEEK;
     if (node_json.contains("Relation Name")) {
       relation_name = node_json["Relation Name"].get<std::string>();
+      base_relation_name = relation_name;
     }
     if (node_json.contains("Schema")) {
       relation_name = node_json["Schema"].get<std::string>() + "." + relation_name;
     }
+    std::string alias;
     if (node_json.contains("Alias")) {
-      relation_name = node_json["Alias"].get<std::string>();
+      alias = node_json["Alias"].get<std::string>();
+      // If alias equals relation name, it is not a meaningful query alias.
+      // Keep qualifier stripping behavior for expressions like supplier.s_comment.
+      if (alias != base_relation_name) {
+        ctx.aliases_.insert(alias);
+      }
     }
-    node = std::make_unique<Scan>(relation_name, strategy);
+    node = std::make_unique<Scan>(relation_name, strategy, alias);
   } else if (pg_node_type == "Bitmap Heap Scan" || pg_node_type == "Bitmap Index Scan") {
     /* PG does a bitmap intersection of indexes using e special operators.
      * They can be chained together and be arbitrarily nested
      * We just care about the top one as that is the actual outcome of the scan.
      */
     std::string relation_name;
+    std::string base_relation_name;
     if (node_json.contains("Relation Name")) {
       relation_name = node_json["Relation Name"].get<std::string>();
+      base_relation_name = relation_name;
     }
+    std::string alias;
     if (node_json.contains("Alias")) {
-      relation_name = node_json["Alias"].get<std::string>();
+      alias = node_json["Alias"].get<std::string>();
+      if (alias != base_relation_name) {
+        ctx.aliases_.insert(alias);
+      }
     }
     if (relation_name.empty()) {
       // One of the lower bitmap operations, we already rendered the scan.
       return nullptr;
     }
-    node = std::make_unique<Scan>(relation_name, Scan::Strategy::SEEK);
+    node = std::make_unique<Scan>(relation_name, Scan::Strategy::SEEK, alias);
   } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
     std::string join_condition;
 
@@ -85,9 +208,11 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
       // Loops may have an index scan as a child. In that case, the join condition is on the scan.
-      auto loop_child = node_json["Plans"][1];
-      if (loop_child["Node Type"] == "Index Scan") {
-        join_condition = loop_child["Index Cond"].get<std::string>();
+      if (node_json.contains("Plans") && node_json["Plans"].size() >= 2) {
+        auto loop_child = node_json["Plans"][1];
+        if (loop_child.contains("Node Type") && loop_child["Node Type"] == "Index Scan") {
+          join_condition = loop_child["Index Cond"].get<std::string>();
+        }
       }
     } else if (pg_node_type == "Merge Join") {
       join_strategy = Join::Strategy::MERGE;
@@ -98,8 +223,10 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     if (node_json.contains("Join Type")) {
       join_type = Join::typeFromString(node_json["Join Type"].get<std::string>());
     }
+
     if (node_json.contains("Join Filter")) {
       auto condition = node_json["Join Filter"].get<std::string>();
+      condition = cleanPgExpression(condition, ctx);
       if (join_condition.empty()) {
         join_condition = condition;
       } else {
@@ -107,11 +234,24 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       }
     }
     if (node_json.contains("Hash Cond")) {
-      join_condition = node_json["Hash Cond"].get<std::string>();
+      join_condition = cleanPgExpression(node_json["Hash Cond"].get<std::string>(), ctx);
     }
     if (!join_condition.empty() && join_condition.front() == '(' && join_condition.back() == ')') {
-      join_condition = join_condition.substr(1, join_condition.length() - 2);
-      join_condition = cleanExpression(join_condition);
+      // Only strip if they are a matching pair
+      int depth = 0;
+      bool matching = true;
+      for (size_t i = 0; i < join_condition.length() - 1; ++i) {
+        if (join_condition[i] == '(') depth++;
+        else if (join_condition[i] == ')') depth--;
+        if (depth == 0) {
+          matching = false;
+          break;
+        }
+      }
+      if (matching && depth == 1) {
+        join_condition = join_condition.substr(1, join_condition.length() - 2);
+        join_condition = cleanPgExpression(join_condition, ctx);
+      }
     }
     if (join_condition.empty()) {
       // PG doesn't use the notion of cross-join, it simply has loop join without conditions conditions.
@@ -122,8 +262,10 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
       join_condition += " AND " + node_json["Join Filter"].get<std::string>();
     }
 
-    node = std::make_unique<Join>(join_type, join_strategy, join_condition);
+    PgDialect dialect(ctx);
+    node = std::make_unique<Join>(join_type, join_strategy, join_condition, &dialect);
   } else if (pg_node_type == "Sort") {
+    PgDialect dialect(ctx);
     std::vector<Column> sort_keys;
     for (const auto& col : node_json["Sort Key"]) {
       const std::string desc_suffix = " DESC";
@@ -134,7 +276,8 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
         name = name.substr(0, name.size() - desc_suffix.size());
         sort_order = Column::Sorting::DESC;
       }
-      sort_keys.emplace_back(Column(name, sort_order));
+      name = cleanPgExpression(name, ctx);
+      sort_keys.emplace_back(Column(name, sort_order, &dialect));
     }
     node = std::make_unique<Sort>(sort_keys);
   } else if (pg_node_type == "Limit") {
@@ -164,15 +307,17 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
     }
 
     if (node_json.contains("Group Key")) {
+      PgDialect dialect(ctx);
       for (const auto& key : node_json["Group Key"]) {
-        group_keys.push_back(Column(key.get<std::string>()));
+        group_keys.push_back(Column(cleanPgExpression(key.get<std::string>(), ctx), &dialect));
       }
     }
     std::vector<Column> aggregates;
     if (node_json.contains("Output")) {
+      PgDialect dialect(ctx);
       std::vector<Column> out;
       for (const auto& key : node_json["Output"]) {
-        out.push_back(Column(key.get<std::string>()));
+        out.push_back(Column(cleanPgExpression(key.get<std::string>(), ctx), &dialect));
       }
       std::unordered_set group_keys_set(group_keys.begin(), group_keys.end());
       for (const auto& column : out) {
@@ -230,13 +375,15 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json) {
 
   // Filter conditions
   if (node_json.contains("Filter")) {
-    node->setFilter(node_json["Filter"].get<std::string>());
+    PgDialect dialect(ctx);
+    node->setFilter(cleanPgExpression(node_json["Filter"].get<std::string>(), ctx), &dialect);
   }
 
   // Output columns
   if (node_json.contains("Output") && node_json["Output"].is_array()) {
+    PgDialect dialect(ctx);
     for (const auto& col : node_json["Output"]) {
-      node->columns_output.push_back(col.get<std::string>());
+      node->columns_output.push_back(cleanPgExpression(col.get<std::string>(), ctx));
     }
   }
 
@@ -250,7 +397,7 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
   }
 
-  auto node = createNodeFromPgType(node_json);
+  auto node = createNodeFromPgType(node_json, ctx);
   const auto node_type = node_json["Node Type"].get<std::string>();
   if (node == nullptr && (node_type == "BitmapAnd" || node_type == "Bitmap Index Scan" || node_type ==
                           "Bitmap Heap Scan")) {
@@ -267,7 +414,7 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
           "EXPLAIN parsing Tried to skip past a node with >1 children. You have to deal with this case");
     }
     node_json = node_json["Plans"][0];
-    node = createNodeFromPgType(node_json);
+    node = createNodeFromPgType(node_json, ctx);
   }
 
   if (node_json.contains("Plans") && node_json["Plans"].is_array()) {
@@ -278,15 +425,51 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
       if (child_node == nullptr) {
         continue;
       }
-      if (child_node->type == NodeType::GROUP_BY && i != plans.size() - 1) {
-        /* Postgres init plans are handled as aggregate of other plans!
-         * Which means: Aggregate can have MORE than only child!
-         * We don't care about these init plans, skip past them if we must and just take the last plan
-         * under the aggregate.
-         */
-        ctx.initPlans_.push_back(std::move(child_node));
+
+      bool is_subplan = false;
+      if (child_json.contains("Parent Relationship")) {
+        auto rel = child_json["Parent Relationship"].get<std::string>();
+        if (rel == "SubPlan" || rel == "InitPlan") {
+          is_subplan = true;
+          ctx.subPlanNodes_.insert(child_node.get());
+          if (const auto total_rows = subplanTotalActualRows(child_json); total_rows.has_value()) {
+            child_node->rows_actual = *total_rows;
+          }
+        }
+      }
+
+      // If the parent has a subplan in its filter, we should
+      // wrap it in a join to represent the dependency correctly.
+      // But we only do this for Scans and other non-Join nodes.
+      // Joins will have the subplan added as a 3rd child and then hoisted.
+      const auto filter = node->filterCondition();
+      if (is_subplan && (filter.find("SubPlan") != std::string::npos) &&
+          (node->type == NodeType::SCAN || node->type == NodeType::SCAN_EMPTY || node->type == NodeType::SCAN_MATERIALISED)) {
+        std::string join_condition;
+        if (node_json.contains("Filter")) {
+          if (const auto extracted = extractSubplanJoinCondition(node_json["Filter"].get<std::string>(), *child_node, ctx);
+              extracted.has_value()) {
+            join_condition = *extracted;
+          }
+        }
+
+        auto join_type = Join::Type::LEFT_SEMI_INNER;
+        if (filter.find("NOT (IN") != std::string::npos || filter.find("NOT EXISTS") != std::string::npos) {
+          join_type = Join::Type::LEFT_ANTI;
+        }
+
+        auto join = std::make_unique<Join>(join_type, Join::Strategy::LOOP, join_condition);
+        join->rows_actual = node->rows_actual;
+        join->rows_estimated = node->rows_estimated;
+        join->addChild(std::move(node));
+        join->addChild(std::move(child_node));
+        node = std::move(join);
         continue;
       }
+
+      // Subplans in PG are sometimes attached as extra children in the JSON.
+      // We add them all as children here, and later hoist them if the node 
+      // has more children than its type expects.
       node->addChild(std::move(child_node));
     }
   }
@@ -294,6 +477,46 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
   return node;
 }
 
+
+/**
+ * PostgreSQL often attaches subqueries (SubPlan) to operators as extra children.
+ * This transformation hoists these extra children to a root Sequence node.
+ */
+void hoistSubPlans(std::unique_ptr<Node>& root, ExplainCtx& ctx) {
+  std::vector<std::unique_ptr<Node>> hoisted;
+
+  // Traverse the tree and find nodes marked as subplans in the context.
+  for (auto& n : root->depth_first()) {
+    for (size_t i = 0; i < n.childCount(); ++i) {
+      Node* child = n.children()[i];
+      if (ctx.subPlanNodes_.contains(child)) {
+        // This is a subplan that should be hoisted.
+        // But we only hoist it if it's NOT part of a join we synthesized earlier for Scans.
+        // Synthesized joins for scans have the subplan as their second child.
+        if (n.type == NodeType::JOIN && n.childCount() == 2 && n.children()[1] == child) {
+            // Check if first child is a SCAN
+            if (n.children()[0]->type == NodeType::SCAN || n.children()[0]->type == NodeType::SCAN_EMPTY || n.children()[0]->type == NodeType::SCAN_MATERIALISED) {
+                // This is a Scan-Join we want to keep, do not hoist.
+                continue;
+            }
+        }
+
+        hoisted.push_back(n.takeChild(i));
+        --i; // Adjust index after removal
+      }
+    }
+  }
+
+  if (!hoisted.empty()) {
+    auto sequence = std::make_unique<Sequence>();
+    for (auto& h : hoisted) {
+      sequence->addChild(std::move(h));
+    }
+    sequence->addChild(std::move(root));
+    root = std::move(sequence);
+    root->setParentToSelf();
+  }
+}
 
 /**
 * Loop joins in PG have the lookup table on the wrong side, flip that
@@ -311,6 +534,21 @@ void flipJoins(Node& root) {
 
   for (const auto node : join_nodes) {
     node->reverseChildren();
+  }
+}
+
+/**
+ * Propagate row counts for Sequence nodes.
+ */
+void fixRowCounts(Node* node) {
+  for (auto& n : node->bottom_up()) {
+    if (n.type == NodeType::SEQUENCE) {
+      if (n.childCount() > 0) {
+        const Node* last_child = n.lastChild();
+        n.rows_actual = last_child->rows_actual;
+        n.rows_estimated = last_child->rows_estimated;
+      }
+    }
   }
 }
 
@@ -357,6 +595,8 @@ std::unique_ptr<Plan> buildExplainPlan(json& explain_json) {
   }
 
   flipJoins(*root_node.get());
+  hoistSubPlans(root_node, ctx);
+  fixRowCounts(root_node.get());
 
   // Create and return the plan object with timing information
   auto plan = std::make_unique<Plan>(std::move(root_node));
@@ -366,12 +606,21 @@ std::unique_ptr<Plan> buildExplainPlan(json& explain_json) {
 }
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
+  const std::string artifact_name = name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
+  const auto cached_json = getArtefact(artifact_name, "json");
+  if (cached_json) {
+    PLOGI << "Using cached execution plan artifact for: " << artifact_name;
+    auto explain_json = json::parse(*cached_json);
+    return buildExplainPlan(explain_json);
+  }
+
   const std::string explain_modded = "EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON)\n" + std::string(statement);
 
   const auto result = fetchScalar(explain_modded);
   assert(result.is<SqlString>());
 
   auto explain_string = result.get<SqlString>().get();
+  storeArtefact(artifact_name, "json", explain_string);
   auto explain_json = json::parse(explain_string);
 
   return buildExplainPlan(explain_json);

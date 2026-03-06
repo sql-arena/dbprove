@@ -184,7 +184,7 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
                    Operation::Filter,
                    Operation::Scan,
                    Operation::Hash}) {
-    mis_estimation.insert({op, {}}).first;
+    (void)mis_estimation.insert({op, {}}).first;
     for (int8_t magnitude = MisEstimation::INFINITE_UNDER; magnitude <= MisEstimation::INFINITE_OVER; magnitude++) {
       mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
     }

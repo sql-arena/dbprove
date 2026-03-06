@@ -18,7 +18,7 @@ target_link_libraries(${_targetName}
         PRIVATE
         duckdb_static
         dbprove::sql::driver
-        dbprove::sql)
+        dbprove::sql::core)
 
 
 print_target_info(duckdb)

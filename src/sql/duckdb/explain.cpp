@@ -113,7 +113,7 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     if (ctx.delimiter_expressions.contains(delim_index)) {
       materialised_expression = ctx.delimiter_expressions[delim_index];
     }
-    node = std::make_unique<ScanMaterialised>(materialised_expression);
+    node = std::make_unique<ScanMaterialised>(-1, materialised_expression);
   } else if (operator_name == "COLUMN_DATA_SCAN") {
     node = std::make_unique<ScanMaterialised>();
   } else if (operator_name.contains("PROJECTION")) {

@@ -8,8 +8,9 @@ namespace sql::explain {
  */
 class ScanMaterialised final : public Node {
 public:
-  explicit ScanMaterialised(const std::string& expression = "")
+  explicit ScanMaterialised(int primary_node_id = -1, const std::string& expression = "")
     : Node(NodeType::SCAN_MATERIALISED)
+    , primary_node_id(primary_node_id)
     , expression(expression) {
   }
 
@@ -21,6 +22,7 @@ protected:
   std::string treeSQLImpl(size_t indent) const override;
 
 public:
+  const int primary_node_id;
   const std::string expression;
 };
 } // namespace sql::explain

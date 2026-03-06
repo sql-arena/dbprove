@@ -1,6 +1,6 @@
 CREATE TABLE tpch.orders
 (
-    o_orderkey      INT PRIMARY KEY,
+    o_orderkey      INT,
     o_custkey       INT,
     o_orderstatus   VARCHAR(1),
     o_totalprice    DECIMAL(15, 2),

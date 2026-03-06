@@ -59,7 +59,7 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       return "yellowbrick";
     }
     case Type::SQLServer:
-      return "tempdb";
+      return "dbprove";
     case Type::DuckDB:
       return "duck.db";
     case Type::SQLite:
@@ -155,8 +155,13 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
       return "sa";
     case Type::ClickHouse:
       return getEnvVar("CLICKHOUSE_USER").value_or("default");
-    case Type::DuckDB:
+    case Type::Utopia:
     case Type::SQLite:
+      return "";
+    case Type::Oracle:
+    case Type::Databricks:
+  default:
+      // These types should have their own specialization or return empty
       return "";
   }
   return username.value_or("");
@@ -174,7 +179,7 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
       password = getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
       break;
     case Type::SQLServer:
-      return "password";
+      return "YourStrong!Passw0rd";
     case Type::MariaDB:
       password = getEnvVar("MYSQL_PWD");
     default:
@@ -250,6 +255,32 @@ std::string Engine::name() const {
     throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");
   }
   return std::string(canonical_names.at(type()));
+}
+
+std::string Engine::internalName() const {
+  switch (type_) {
+    case Type::MariaDB:
+      return "mariadb";
+    case Type::Postgres:
+      return "postgresql";
+    case Type::SQLite:
+      return "sqlite";
+    case Type::SQLServer:
+      return "mssql";
+    case Type::Oracle:
+      return "oracle";
+    case Type::DuckDB:
+      return "duckdb";
+    case Type::Utopia:
+      return "utopia";
+    case Type::Databricks:
+      return "databricks";
+    case Type::ClickHouse:
+      return "clickhouse";
+    case Type::Yellowbrick:
+      return "yellowbrick";
+  }
+  throw std::invalid_argument("Unknown engine type");
 }
 
 bool Engine::needsLocalFile() const {

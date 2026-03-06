@@ -1,7 +1,7 @@
-set(_targetName "dbprove_sql_msodbc")
+set(_targetName "dbprove_sql_mssql")
 
 add_library(${_targetName} STATIC)
-add_library(dbprove::sql::msodbc ALIAS ${_targetName})
+add_library(dbprove::sql::mssql ALIAS ${_targetName})
 find_package(ODBC REQUIRED)
 find_package(azure-identity-cpp CONFIG REQUIRED)
 
@@ -14,14 +14,37 @@ target_sources(${_targetName}
 
 find_package(absl CONFIG REQUIRED)       # provides absl::int128
 
+target_include_directories(${_targetName}
+        PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+)
+
 target_link_libraries(${_targetName}
         PRIVATE
-        dbprove::sql
+        dbprove::sql::core
         dbprove::sql::driver
         dbprove::sql::odbc
         Azure::azure-identity
-        odbc32
-)
+    )
+
+    if (DBPROVE_ENABLE_TESTING)
+        find_package(unofficial-vincentlaucsb-csv-parser CONFIG REQUIRED)
+        add_executable(test_mssql_bulk_load test/test_bulk_load.cpp)
+        target_link_libraries(test_mssql_bulk_load PRIVATE ${_targetName} dbprove::common unofficial::vincentlaucsb-csv-parser::csv)
+        target_include_directories(test_mssql_bulk_load PRIVATE ../include)
+    endif()
+
+    if (WIN32)
+        target_link_libraries(${_targetName} PRIVATE odbc32 odbcinst)
+    else()
+        find_package(ODBC REQUIRED)
+        find_library(ODBCINST_LIB NAMES odbcinst PATHS /opt/homebrew/lib /usr/local/lib)
+        if (ODBCINST_LIB)
+            target_link_libraries(${_targetName} PRIVATE ODBC::ODBC ${ODBCINST_LIB})
+        else()
+            target_link_libraries(${_targetName} PRIVATE ODBC::ODBC odbcinst)
+        endif()
+    endif()
 
 
 if (WIN32)
@@ -42,7 +65,7 @@ if (WIN32)
 
 elseif (UNIX)
     # Try typical msodbcsql include paths on Linux/macOS
-    file(GLOB _msodbc_paths "/opt/microsoft/msodbcsql*/include/msodbcsql.h")
+    file(GLOB _msodbc_paths "/opt/microsoft/msodbcsql*/include/msodbcsql.h" "/opt/homebrew/include/msodbcsql.h" "/usr/local/include/msodbcsql.h")
     if (_msodbc_paths)
         get_filename_component(_inc "${_msodbc_paths}" DIRECTORY)
         target_include_directories(${_targetName} PRIVATE "${_inc}")
@@ -51,7 +74,7 @@ elseif (UNIX)
         message(WARNING "msodbcsql.h not found — install msodbcsql-devel or fallback to odbcss.h")
         target_compile_definitions(${_targetName} PRIVATE USE_ODBCSS_H)
     endif ()
-    target_link_libraries(AzureFabricODBC PRIVATE dl)
+    target_link_libraries(${_targetName} PRIVATE dl)
 endif ()
 
 

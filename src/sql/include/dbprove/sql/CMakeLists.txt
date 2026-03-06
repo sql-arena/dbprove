@@ -1,5 +1,5 @@
 target_sources(${_targetName}
-        PUBLIC FILE_SET installed FILES
+        PUBLIC FILE_SET installed TYPE HEADERS FILES
         column_base.h
         connection_base.h
         connection_factory.h

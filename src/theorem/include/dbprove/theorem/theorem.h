@@ -137,6 +137,7 @@ public:
   std::vector<std::unique_ptr<Data>> data;
   [[nodiscard]] sql::ConnectionFactory& factory() const;
   Proof& ensure(const std::string& table);
+  Proof& ensureDataset(const std::string& dataset);
   /**
    * Make sure the schema exists
    * @param schema To create if not there
@@ -217,6 +218,7 @@ public:
   sql::ConnectionFactory factory;
   std::ostream& console;
   std::ostream& csv;
+  std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(const std::vector<std::string_view>& values) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,

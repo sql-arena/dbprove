@@ -31,6 +31,7 @@ target_link_libraries(${_targetName}
         PRIVATE
         libfort::fort
         dbprove::common
+        PUBLIC
         dbprove::sql
 )
 
@@ -39,3 +40,7 @@ target_include_directories(${_targetName} PRIVATE ${RANG_INCLUDE_DIRS})
 target_include_directories(${_targetName} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/ux>)
 
 add_subdirectory(include/dbprove/ux)
+
+if (DBPROVE_ENABLE_TESTING)
+    add_subdirectory(test)
+endif ()

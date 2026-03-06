@@ -1,9 +1,11 @@
 #pragma once
 #include <filesystem>
-#include "connection_base.h"
+#include "odbc/connection.h"
 
 
-namespace sql::msodbc {
+namespace sql::mssql {
+std::string makeConnectionString(const Credential& credential, std::optional<std::string> database_override = std::nullopt);
+
 class Connection final : public odbc::Connection {
 public:
   explicit Connection(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
@@ -14,5 +16,8 @@ public:
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
+
+private:
+  std::string fetchLivePlan(std::string_view statement);
 };
-}
+} // namespace sql::mssql

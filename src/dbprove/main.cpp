@@ -115,12 +115,17 @@ int main(int argc, char** argv) {
                  password, "Password. If omitted, will prompt");
   app.add_option("-t,--access-token",
                  token, "Access Token");
-  app.add_option("-a,--artifacts",
-                 artifacts_path, "Path to store/load explain artifacts");
+  CLI::Option* artifacts_opt = app.add_option("-a,--artifacts",
+                                             artifacts_path, "Path to store/load explain artifacts")
+                                   ->expected(0, 1);
   app.add_option("-T,--theorem",
                  all_theorems, "Which theorems to prove")->delimiter(',');
 
   CLI11_PARSE(app, argc, argv);
+
+  if (artifacts_opt->count() > 0 && (!artifacts_path || artifacts_path->empty() || *artifacts_path == "true")) {
+    artifacts_path = (fs::current_path() / "artifacts").string();
+  }
 
   const auto log_directory = dbprove::common::make_directory("logs");
   const std::string log_file = log_directory.string() + "/dbprove.log";
@@ -163,11 +168,26 @@ int main(int argc, char** argv) {
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
 
-  const auto proof_directory = common::make_directory("proof");
+  std::string engine_version = "unknown";
+  try {
+    sql::ConnectionFactory factory(engine, credentials, artifacts_path);
+    auto connection = factory.create();
+    engine_version = connection->version();
+    connection->close();
+  } catch (const std::exception& e) {
+    PLOGW << "Failed to retrieve engine version: " << e.what();
+  }
+
+  const auto proof_base_directory = common::make_directory("proof");
+  const auto proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
   const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
   std::ofstream proof_output_stream(proof_file);
   if (!proof_output_stream.is_open()) {
     throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
+  }
+
+  if (artifacts_path) {
+    PLOGI << "Using artifacts directory: " << fs::absolute(artifacts_path.value()).string();
   }
 
   auto input_state = theorem::RunCtx{engine, credentials, generator_state,

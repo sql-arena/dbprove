@@ -1,6 +1,8 @@
 #pragma once
 #include <magic_enum/magic_enum.hpp>
+#include <string>
 
+namespace sql { struct EngineDialect; }
 
 namespace sql::explain {
 class Column {
@@ -13,10 +15,10 @@ public:
     HASH, RANDOM, REPLICATED
   };
 
-  explicit Column(std::string name);
+  explicit Column(std::string name, const EngineDialect* dialect = nullptr);
 
-  explicit Column(const std::string& name, Sorting sorting);
-  explicit Column(const std::string& name, const std::string& alias);
+  explicit Column(const std::string& name, Sorting sorting, const EngineDialect* dialect = nullptr);
+  explicit Column(const std::string& name, const std::string& alias, const EngineDialect* dialect = nullptr);
 
   ~Column() = default;
   Column(const Column&) = default;

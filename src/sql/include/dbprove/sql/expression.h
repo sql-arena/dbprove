@@ -34,10 +34,6 @@ struct Token {
   }
 };
 
-Token safeToken(const std::vector<Token>& tokens, ssize_t index);
-
-std::vector<Token> tokenize(const std::string& expr);
-std::string render(std::vector<Token>& tokens);
 /**
  * Engines can construct one of these to do special, engine specific rendering
  */
@@ -77,20 +73,22 @@ protected:
   virtual const std::map<std::string_view, std::string_view>& engineFunctions() const;
 };
 
-/**
- * RAII setting the dialect
- */
-struct DialectContext {
-  explicit DialectContext(EngineDialect& dialect);
-  ~DialectContext();
+struct AnsiDialect final : EngineDialect {
+  const std::map<std::string_view, std::string_view>& engineFunctions() const override;
 };
+
+Token safeToken(const std::vector<Token>& tokens, ssize_t index);
+
+std::vector<Token> tokenize(const std::string& expr, const EngineDialect* dialect = nullptr);
+std::string render(std::vector<Token>& tokens, const EngineDialect* dialect = nullptr);
 
 /**
  * Cleans up an expression by removing unnecessary whitespace, newlines, tabs etc.
  * @param expression Expression to clean
+ * @param dialect Dialect to use for cleaning. If nullptr, use ANSI dialect.
  * @return A better formatted expression
  */
-std::string cleanExpression(std::string expression);
+std::string cleanExpression(std::string expression, const EngineDialect* dialect = nullptr);
 
 
 std::string removeQuotes(std::string_view str);

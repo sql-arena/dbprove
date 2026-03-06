@@ -193,7 +193,9 @@ void sql::postgresql::Connection::bulkLoad(const std::string_view table,
 
 std::string sql::postgresql::Connection::version() {
   const auto versionString = fetchScalar("SELECT version()").get<SqlString>().get();
-  const std::regex versionRegex(R"(PostgreSQL (\d+\.\d+))");
+  // PostgreSQL 17.2 (Debian 17.2-1.pgdg120+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 12.2.0-14) 12.2.0, 64-bit
+  // We extract the main version number
+  const std::regex versionRegex(R"(PostgreSQL (\d+\.\d+(\.\d+)?))");
   std::smatch match;
   if (std::regex_search(versionString, match, versionRegex)) {
     return match[1];

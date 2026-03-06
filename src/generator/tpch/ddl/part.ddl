@@ -1,6 +1,6 @@
 CREATE TABLE tpch.part
 (
-    p_partkey     INT PRIMARY KEY,
+    p_partkey     INT,
     p_name        VARCHAR(55),
     p_mfgr        VARCHAR(25),
     p_brand       VARCHAR(10),

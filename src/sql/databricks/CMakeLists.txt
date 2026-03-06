@@ -22,7 +22,7 @@ target_include_directories(${_targetName}
 
 target_link_libraries(${_targetName}
         PRIVATE
-        dbprove::sql
+        dbprove::sql::core
         CURL::libcurl
         dbprove::sql::driver
 )

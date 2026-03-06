@@ -6,6 +6,8 @@
 #include <format>
 
 
+#include <regex>
+
 template<typename Container>
 std::string join(const Container& strings, const std::string& delimiter) {
     if (strings.empty()) {
@@ -44,4 +46,13 @@ inline std::u8string to_u8string(const T s) {
 
 inline std::string to_date_string(std::chrono::system_clock::time_point tp) {
   return std::format("{:%Y-%m-%d}", tp);
+}
+
+
+inline std::string mask_connection_string(const std::string_view connection_string) {
+  std::string result(connection_string);
+  // Match PWD= followed by anything up to a semicolon or end of string
+  // Use case-insensitive matching for PWD
+  std::regex pwd_regex(R"((PWD=)([^;]*))", std::regex_constants::icase);
+  return std::regex_replace(result, pwd_regex, "$1*******");
 }

@@ -546,7 +546,7 @@ void pruneBroadCast(Node& root, ExplainCtx& ctx) {
  * The plan appears to have no way to tell what is in a set. So we have to guess it by looking for IN-lists in the
  * query itself.
  */
-void guessSets(const std::string_view statement, ExplainCtx& ctx) {
+void guessSets(const std::string_view statement, ExplainCtx& ctx, const EngineDialect* dialect = nullptr) {
   const std::string s(statement);
   // NOTE: We look for "col IN (" and then scan until the matching closing parenthesis,
   // handling nested parentheses correctly.
@@ -587,7 +587,7 @@ void guessSets(const std::string_view statement, ExplainCtx& ctx) {
     // Normalize whitespace inside the captured list
     const std::string normalized = std::regex_replace(in_list, std::regex("\\s+"), " ");
 
-    const auto key = to_upper(cleanExpression(col));
+    const auto key = to_upper(cleanExpression(col, dialect));
     ctx.filterSets[key] = normalized;
 
     // Advance searchStart past the captured list to avoid re-matching the same IN
@@ -604,9 +604,8 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std:
                                    + std::string(statement) + "\nFORMAT TSVRaw";
   ExplainCtx ctx;
   ClickHouseDialect dialect(ctx);
-  DialectContext d{dialect};
   auto string_explain = fetchScalar(explain_stmt).asString();
-  guessSets(statement, ctx);
+  guessSets(statement, ctx, &dialect);
 
   auto json_explain = json::parse(string_explain);
 

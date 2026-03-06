@@ -39,8 +39,9 @@ target_link_libraries(${_targetName}
         plog::plog
         google-cloud-cpp::storage
         libzip::zip
+        dbprove::ux
         PUBLIC
-        dbprove::sql
+        dbprove::sql::core
 )
 add_subdirectory(include/dbprove/generator)
 target_embed_files(${_targetName} SQL_FILES

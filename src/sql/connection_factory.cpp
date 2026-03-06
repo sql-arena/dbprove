@@ -2,9 +2,7 @@
 #include "duckdb/connection.h"
 #include "postgresql/connection.h"
 #include "utopia/connection.h"
-#ifndef __APPLE__
-#include "msodbc/connection.h"
-#endif
+#include "mssql/connection.h"
 #include "databricks/connection.h"
 #include "yellowbrick/connection.h"
 #include "clickhouse/connection.h"
@@ -29,10 +27,8 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
         throw std::invalid_argument("Yellowbrick engine requires a password credential");
       }
       return std::make_unique<yellowbrick::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
-#ifndef __APPLE__
     case Engine::Type::SQLServer:
-      return std::make_unique<msodbc::Connection>(credential_, engine_, artifacts_path_);
-#endif
+      return std::make_unique<sql::mssql::Connection>(credential_, engine_, artifacts_path_);
     case Engine::Type::ClickHouse:
       if (!std::holds_alternative<CredentialPassword>(credential_)) {
         throw std::invalid_argument("ClickHouse engine requires a password credential");

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <plog/Log.h>
 
 #include "sql.h"
 #include <regex>
@@ -6,16 +7,18 @@
 #include <stack>
 
 namespace sql {
-struct AnsiDialect final : EngineDialect {
+struct AnsiDialectGlobal final : EngineDialect {
   const std::map<std::string_view, std::string_view>& engineFunctions() const override {
     static const std::map<std::string_view, std::string_view> n = {};
     return n;
   }
 };
 
-auto ansiDialect = AnsiDialect();
+static auto ansiDialect = AnsiDialectGlobal();
 
-thread_local EngineDialect* current_dialect = &ansiDialect;
+const std::map<std::string_view, std::string_view>& AnsiDialect::engineFunctions() const {
+  return ansiDialect.engineFunctions();
+}
 
 const std::set<std::string_view>& EngineDialect::castFunctions() const {
   const static std::set<std::string_view> s = {};
@@ -27,13 +30,6 @@ const std::map<std::string_view, std::string_view>& EngineDialect::engineFunctio
   return n;
 }
 
-DialectContext::DialectContext(EngineDialect& dialect) {
-  current_dialect = &dialect;
-}
-
-DialectContext::~DialectContext() {
-  current_dialect = &ansiDialect;
-}
 
 std::string stripDoubleQuotes(std::string expr) {
   if (expr.size() >= 2 && expr.front() == '\"' && expr.back() == '\"') {
@@ -89,22 +85,31 @@ auto& operatorFuncs() {
   return operatorFuncs;
 }
 
+static char nextNonWhitespaceChar(const std::string& expr, size_t index) {
+  while (index < expr.size()) {
+    if (!std::isspace(static_cast<unsigned char>(expr[index]))) {
+      return expr[index];
+    }
+    ++index;
+  }
+  return '\0';
+}
+
 std::string transformPGShittyAny(std::string expr) {
   if (expr.size() >= 2 && expr.front() == '{' && expr.back() == '}') {
     expr = expr.substr(1, expr.size() - 2);
     std::vector<std::string> parts;
     size_t start = 0, end = 0;
     while ((end = expr.find(',', start)) != std::string::npos) {
-      parts.push_back("'" + expr.substr(start, end - start) + "'");
+      parts.push_back(removeQuotes(expr.substr(start, end - start)));
       start = end + 1;
     }
-    parts.push_back("'" + expr.substr(start) + "'");
+    parts.push_back(removeQuotes(expr.substr(start)));
     std::string result;
     for (size_t i = 0; i < parts.size(); ++i) {
       if (i > 0)
         result += ",";
-
-      result += stripDoubleQuotes(parts[i]);
+      result += "'" + parts[i] + "'";
     }
     return result;
   }
@@ -112,8 +117,11 @@ std::string transformPGShittyAny(std::string expr) {
 }
 
 
-std::string render(std::vector<Token>& tokens) {
-  current_dialect->preRender(tokens);
+std::string render(std::vector<Token>& tokens, const EngineDialect* dialect) {
+  if (dialect == nullptr) {
+    dialect = &ansiDialect;
+  }
+  const_cast<EngineDialect*>(dialect)->preRender(tokens);
   if (tokens.empty()) {
     return "";
   }
@@ -146,11 +154,30 @@ std::string render(std::vector<Token>& tokens) {
         }
         break;
       case Token::Type::Literal:
+        {
+        const auto upper_literal = to_upper(token.value);
+        const static std::set<std::string> case_keywords = {"CASE", "WHEN", "THEN", "ELSE", "END"};
+        if (case_keywords.contains(upper_literal)) {
+          if (!result.empty() && result.back() != ' ' && result.back() != '(') {
+            result += " ";
+          }
+          result += token.value;
+          if ((upper_literal == "CASE" || upper_literal == "WHEN" || upper_literal == "THEN" || upper_literal == "ELSE") &&
+              next_type != Token::Type::RightParen && next_type != Token::Type::Comma && next_type != Token::Type::None) {
+            result += " ";
+          }
+          break;
+        }
         if (prev_type == Token::Type::Literal || prev_type == Token::Type::RightParen) {
           result += " ";
         }
         result += token.value;
+        if (next_type == Token::Type::Function || next_type == Token::Type::CountDistinctFunction ||
+            next_type == Token::Type::ExtractFunction) {
+          result += " ";
+        }
         break;
+        }
       case Token::Type::Cast:
         result += "::";
         break;
@@ -177,7 +204,7 @@ std::string render(std::vector<Token>& tokens) {
         break;
     }
   }
-  return current_dialect->postRender(result);
+  return const_cast<EngineDialect*>(dialect)->postRender(result);
 }
 
 const std::map<std::string_view, std::string_view>& EngineDialect::ansiFunctions() {
@@ -204,10 +231,12 @@ std::string translate(const std::string& functionName, const std::map<std::strin
 }
 
 // Function to tokenize the input expression
-std::vector<Token> tokenize(const std::string& expr) {
+std::vector<sql::Token> tokenize(const std::string& expr, const EngineDialect* dialect) {
+  if (dialect == nullptr) {
+    dialect = &ansiDialect;
+  }
   std::vector<Token> tokens;
   Token prev_token = {Token::Type::None, ""};
-  auto dialect = current_dialect;
   size_t i = 0;
   while (i < expr.size()) {
     if (!tokens.empty()) {
@@ -313,7 +342,7 @@ std::vector<Token> tokenize(const std::string& expr) {
       continue;
     }
     // EXTRACT function like YEAR and friends
-    if (extractFuncs().contains(upper_literal)) {
+    if (extractFuncs().contains(upper_literal) && nextNonWhitespaceChar(expr, i) == '(') {
       addToken(tokens, {Token::Type::ExtractFunction, extractFuncs().at(upper_literal)});
       continue;
     }
@@ -439,22 +468,21 @@ std::vector<sql::Token> removeRedundantParenthesis(std::vector<Token>& tokens) {
   // Match up all parenthesis
   std::stack<Token*> match;
   for (size_t i = 0; i < tokens.size(); ++i) {
-    switch (tokens[i].type) {
-      case Token::Type::LeftParen:
-        match.push(&tokens[i]);
-        break;
-      case Token::Type::RightParen: {
-        const auto other = match.top();
-        match.pop();
-        other->matching = i;
-        break;
+    if (tokens[i].type == Token::Type::LeftParen) {
+      match.push(&tokens[i]);
+    } else if (tokens[i].type == Token::Type::RightParen) {
+      if (match.empty()) {
+        PLOGW << "Malformed expression: unmatched ')'";
+        return tokens; // Return original if malformed
       }
-      default:
-        break;
+      const auto other = match.top();
+      match.pop();
+      other->matching = i;
     }
   }
   if (!match.empty()) {
-    throw std::runtime_error("Malformed expression: unmatched '('");
+    PLOGW << "Malformed expression: unmatched '('";
+    return tokens; // Return original if malformed
   }
   for (size_t i = 0; i < tokens.size(); ++i) {
     const auto currentToken = tokens[i];
@@ -516,7 +544,7 @@ Table splitTable(std::string_view table_name) {
   return Table{std::string(schema), std::string(table)};
 }
 
-std::string cleanExpression(std::string expression) {
+std::string cleanExpression(std::string expression, const EngineDialect* dialect) {
   // XML escape back to the real values
   expression = std::regex_replace(expression, std::regex("&lt;"), "<");
   expression = std::regex_replace(expression, std::regex("&gt;"), ">");
@@ -526,18 +554,26 @@ std::string cleanExpression(std::string expression) {
   expression = std::regex_replace(expression, std::regex("""optional:"), "");
   // SQL Server braces
   expression = std::regex_replace(expression, std::regex("[\\[\\]]"), "");
-  // Strip schema from schema.table
-  size_t prev_size = 0;
-  do {
-    prev_size = expression.size();
-    expression = std::regex_replace(expression, std::regex(R"((?:[a-zA-Z_]\w*\.)?([a-zA-Z_]\w*))"), "$1");
-  } while (expression.size() != prev_size);
+  
+  // Strip schema from schema.table. We want to keep Alias.Column or Table.Column
+  // A schema prefix usually looks like [db].[schema].[table] or schema.table.
+  // We want to keep at most one dot if it represents a qualifier.
+  // The previous regex (?:[a-zA-Z_]\w*\.)?([a-zA-Z_]\w*) was too aggressive.
+  
+  // Better approach: strip until the last two parts if there are three or more dots, 
+  // or strip the first part if it's clearly a schema (though it's hard to tell schema from table).
+  // MSSQL specific: [db].[schema].[table].[column] -> [table].[column] or [alias].[column]
+  
+  // Let's use a similar regex as in cleanFilter but adapted for multiple engines if needed.
+  static const std::regex schema_prefix_regex(R"(([a-zA-Z_]\w*\.){2,})");
+  expression = std::regex_replace(expression, schema_prefix_regex, "");
+
   // Remove casts
   expression = std::regex_replace(expression, std::regex(R"(::\w+)"), "");
 
-  auto tokens = tokenize(expression);
+  auto tokens = tokenize(expression, dialect);
   tokens = transformOperatorFuncs(tokens);
   tokens = removeRedundantParenthesis(tokens);
-  return render(tokens);
+  return render(tokens, dialect);
 }
 }

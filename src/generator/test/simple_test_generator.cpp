@@ -45,6 +45,7 @@ void fk_gen(GeneratorState& state, sql::ConnectionBase* conn) {
 // Register the PK table
 REGISTER_GENERATOR(
     "test.pk",
+    "test",
     "CREATE TABLE test.pk (id INT PRIMARY KEY, val STRING)",
     pk_gen,
     5
@@ -53,17 +54,10 @@ REGISTER_GENERATOR(
 // Register the FK table
 REGISTER_GENERATOR(
     "test.fk",
+    "test",
     "CREATE TABLE test.fk (id INT PRIMARY KEY, pk_id INT, fk_val STRING)",
     fk_gen,
     10
-);
-
-// Register the Foreign Key relationship
-REGISTER_FK(
-    "test.fk",
-    ("pk_id"),
-    "test.pk",
-    ("id")
 );
 
 } // namespace generator

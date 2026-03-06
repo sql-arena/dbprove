@@ -10,7 +10,7 @@ class Selection : public Node {
   static const constexpr char* symbol_ = "σ";
 
 public:
-  explicit Selection(const std::string& filter_expression);
+  explicit Selection(const std::string& filter_expression, const EngineDialect* dialect = nullptr);
 
   std::string compactSymbolic() const override {
     std::string result;

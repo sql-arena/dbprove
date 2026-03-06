@@ -15,6 +15,7 @@ enum class NodeType {
   FILTER,
   DISTRIBUTE,
   LIMIT,
+  MATERIALISE,
   SEQUENCE,
   UNKNOWN
 };

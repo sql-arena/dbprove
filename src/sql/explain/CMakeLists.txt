@@ -1,4 +1,4 @@
-target_sources(${_targetName}
+target_sources(${_coreTargetName}
         PRIVATE
         column.cpp
         select.cpp
@@ -7,6 +7,7 @@ target_sources(${_targetName}
         distribution.cpp
         plan.cpp
         limit.cpp
+        materialise.cpp
         projection.cpp
         scan.cpp
         scan_empty.cpp

@@ -52,8 +52,8 @@ The Databricks parser is designed to be robust against variations in the Spark e
 ### Descriptive Artifact Naming and Storage
 
 The Databricks parser supports descriptive artifact naming and storage via centralized methods in `ConnectionBase`. When explaining a query:
-- `getArtefact(name, extension)`: Automatically looks for `artifacts_path/<engine>_<name>_<extension>` (e.g., `databricks_TPCH-Q01_json`).
-- `storeArtefact(name, extension, content)`: Automatically stores artifacts using the same `<engine>_<name>_<extension>` pattern.
+- `getArtefact(name, extension)`: Automatically looks for `artifacts_path/<engine>/<name>.<extension>` (e.g., `databricks/TPCH-Q01.json`).
+- `storeArtefact(name, extension, content)`: Automatically stores artifacts using the same `<name>.<extension>` pattern.
 
 This centralized logic ensures consistency across different database engines and simplifies the implementation of the `explain` method.
 

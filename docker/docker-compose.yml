@@ -1,0 +1,42 @@
+services:
+  postgresql:
+    build: ./postgresql
+    image: dbprove-postgresql:latest
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=bench
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../run/mount/postgresql:/var/lib/postgresql
+
+  clickhouse:
+    build: ./clickhouse
+    image: dbprove-clickhouse:latest
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ../run/mount/clickhouse:/var/lib/clickhouse
+
+  mssql:
+    build: ./mssql
+    image: dbprove-mssql:latest
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - ../run/mount/mssql:/var/opt/mssql
+      - ../run/table_data:/var/opt/mssql/table_data
+
+  trino:
+    build: ./trino
+    image: dbprove-trino:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../run/mount/trino:/data/trino

@@ -6,6 +6,10 @@ node_modules/
 dbprove/
 run/
 scratchpad/
+proof/
+logs/
+table_data/
+
 
 .DS_Store
 

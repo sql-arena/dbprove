@@ -43,14 +43,14 @@ public:
   bool isLeftDeep() const;
   RowCount rowsEstimated() const;;
   RowCount rowsActual() const;
-  void setFilter(const std::string& filter);
+  void setFilter(const std::string& filter, const EngineDialect* dialect = nullptr);
   auto filterCondition() const { return filter_condition; }
 
   /**
    * Generate the SQL needed top query data up until this point in the tree.
    * @return
    */
-  std::string treeSQL(size_t indent);
+  std::string treeSQL(size_t indent, const EngineDialect* dialect = nullptr);
 
   /**
    * Name of the SubQuery when we generate SQL

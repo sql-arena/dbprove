@@ -13,7 +13,7 @@ target_sources(${_targetName}
 find_package(pugixml CONFIG REQUIRED)
 target_link_libraries(${_targetName}
         PRIVATE
-        dbprove::sql
+        dbprove::sql::core
         dbprove::sql::driver
         dbprove::sql::postgres
         pugixml::pugixml

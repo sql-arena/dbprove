@@ -3,15 +3,11 @@
 #include "sql_exceptions.h"
 
 #include <cassert>
-#include <filter.h>
-#include <winsock2.h>
-
-#include <vincentlaucsb-csv-parser/internal/csv_reader.hpp>
-// The SQL odbc library needs some strange INT definitions
 #ifdef _WIN32
+#include <winsock2.h>
 #include <windows.h>
 #else
-#include <cstdint.h>
+#include <cstdint>
 #endif
 #include <sql.h>
 #include <sqlext.h>
@@ -107,6 +103,12 @@ public:
     const auto ret = SQLExecDirect(statement_handle, reinterpret_cast<SQLCHAR*>(const_cast<char*>(statement.data())),
                                    static_cast<SQLINTEGER>(statement.size()));
     check_return(ret, statement_handle);
+    
+    // Drain all results/messages from complex scripts (like tune.sql)
+    while (SQLMoreResults(statement_handle) != SQL_NO_DATA) {
+        // Just draining
+    }
+
     SQLFreeHandle(SQL_HANDLE_STMT, statement_handle);
   }
 

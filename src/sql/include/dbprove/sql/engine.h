@@ -72,6 +72,12 @@ public:
 
   [[nodiscard]] std::string name() const;
 
+  /**
+   * @brief Internal name of the engine, used for folder mapping
+   * @return String with the internal name (e.g., "postgresql", "clickhouse")
+   */
+  [[nodiscard]] std::string internalName() const;
+
   [[nodiscard]] Type type() const { return type_; }
 
   /**

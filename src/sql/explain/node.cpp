@@ -28,6 +28,8 @@ std::string Node::typeName() const {
       return "DISTRIBUTE";
     case NodeType::LIMIT:
       return "LIMIT";
+    case NodeType::MATERIALISE:
+      return "MATERIALISE";
     case NodeType::UNION:
       return "UNION";
     case NodeType::FILTER:
@@ -86,11 +88,11 @@ RowCount Node::rowsActual() const {
   return cutoff(rows_actual);
 }
 
-void Node::setFilter(const std::string& filter) {
-  filter_condition = cleanExpression(filter);
+void Node::setFilter(const std::string& filter, const EngineDialect* dialect) {
+  filter_condition = cleanExpression(filter, dialect);
 }
 
-std::string Node::treeSQL(const size_t indent) {
+std::string Node::treeSQL(const size_t indent, const EngineDialect* dialect) {
   if (cacheTreeSQL_.empty()) {
     cacheTreeSQL_ = treeSQLImpl(indent);
   }

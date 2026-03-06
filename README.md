@@ -43,7 +43,7 @@ To make analysis and debugging easier, you can cache Databricks plan artifacts (
 ```bash
 dbprove -e Databricks ... -a ./my_artifacts
 ```
-When this flag is used, `dbprove` will first check the specified directory for cached files (named `databricks_<hash>_json` and `databricks_<hash>_raw_explain`). If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
+When this flag is used, `dbprove` will first check the specified directory for cached files (named `databricks_<hash>.json` and `databricks_<hash>.raw_explain`). If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
 
 #### Authentication
 Before running Databricks-related commands that require a browser session, run the authentication script:

@@ -9,14 +9,14 @@ path make_directory(const std::string& directory) {
 
   if (!exists(directoryToMake)) {
     try {
-      create_directory(directoryToMake);
+      create_directories(directoryToMake);
     } catch (const std::filesystem::filesystem_error& e) {
       throw std::runtime_error(
-          "Failed to create 'table_data' directory: " + std::string(e.what()));
+          "Failed to create directory: " + directoryToMake.string() + " Error: " + std::string(e.what()));
     }
   } else {
     if (!is_directory(directoryToMake)) {
-      throw std::runtime_error("'table_data' exists but is not a directory.");
+      throw std::runtime_error("Path exists but is not a directory: " + directoryToMake.string());
     }
   }
   // We need write permission to put stuff the directory. Instead of relying on platform specific checks for
@@ -25,13 +25,17 @@ path make_directory(const std::string& directory) {
   try {
     std::ofstream testStream(testFile);
     if (!testStream) {
-      throw std::runtime_error("'table_data' exists, but no write permission.");
+      throw std::runtime_error("Directory exists, but no write permission: " + directoryToMake.string());
     }
     testStream.close();
     remove(testFile);
   } catch (...) {
-    throw std::runtime_error("'table_data' exists, but no write permission.");
+    throw std::runtime_error("Directory exists, but no write permission: " + directoryToMake.string());
   }
   return directoryToMake;
+}
+std::filesystem::path get_project_root() {
+  const std::filesystem::path current_file{__FILE__};
+  return current_file.parent_path().parent_path().parent_path();
 }
 }

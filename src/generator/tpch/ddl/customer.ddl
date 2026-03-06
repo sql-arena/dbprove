@@ -1,6 +1,6 @@
 CREATE TABLE tpch.customer
 (
-    c_custkey    INT PRIMARY KEY,
+    c_custkey    INT,
     c_name       VARCHAR(25),
     c_address    VARCHAR(40),
     c_nationkey  INT,

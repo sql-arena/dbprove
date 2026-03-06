@@ -2,25 +2,39 @@
 
 This directory contains Dockerfiles and configurations to start databases for benchmarking.
 
-## PostgreSQL
+## Automation
+
+You can use `docker-compose` to manage the database engines.
+
+To start all databases:
+```bash
+cd docker
+docker-compose up -d
+```
+
+To start a specific database (e.g., PostgreSQL) and ensure others are stopped:
+```bash
+cd docker
+docker-compose up -d --remove-orphans postgresql
+```
+Note: Always start only one engine at a time to avoid resource contention. The `--remove-orphans` flag or manual `docker-compose down` followed by `docker-compose up -d <engine>` is recommended.
+
+To stop all databases:
+```bash
+cd docker
+docker-compose down
+```
+
+## Engines
+
+### PostgreSQL
 - `postgresql/` - PostgreSQL configuration and setup (includes a benchmark-tuned config based on `postgres:latest`).
 
-### Build
-```bash
-cd docker/postgresql
-docker build -t sql-arena-postgres:latest .
-```
+### ClickHouse
+- `clickhouse/` - ClickHouse setup based on `clickhouse/clickhouse-server:latest`.
 
-### Run (example)
-```bash
-docker run --rm \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_DB=bench \
-  -p 5432:5432 \
-  sql-arena-postgres:latest
-```
+### MSSQL (SQL Server)
+- `mssql/` - SQL Server 2022 setup. Note: Default password is `YourStrong!Passw0rd`.
 
-Notes:
-- The image uses unsafe settings for durability (e.g., `fsync=off`) to maximize performance. For benchmarking only.
-- To customize memory-related settings, edit `docker/postgresql/conf/benchmark.conf` and rebuild.
+### Trino
+- `trino/` - Trino setup based on `trinodb/trino:latest`.

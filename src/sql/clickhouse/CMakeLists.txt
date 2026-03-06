@@ -39,6 +39,6 @@ add_library(clickhouse::clickhouse ALIAS clickhouse-cpp-lib)
 target_link_libraries(${_targetName}
         PRIVATE
         clickhouse::clickhouse
-        dbprove::sql
+        dbprove::sql::core
         dbprove::sql::driver
 )

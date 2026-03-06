@@ -2,6 +2,7 @@ project(test_connectivity LANGUAGES CXX)
 enable_testing()
 add_executable(test_connectivity
         connection.cpp
+        expression.cpp
         explain.cpp
         fixture.cpp)
 find_package(Catch2 CONFIG REQUIRED)

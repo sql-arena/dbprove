@@ -13,7 +13,7 @@ target_sources(${_targetName}
 
 target_link_libraries(${_targetName}
         PRIVATE
-        dbprove::sql
+        dbprove::sql::core
         dbprove::sql::driver
         ODBC::ODBC
 )

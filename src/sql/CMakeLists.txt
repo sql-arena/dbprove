@@ -1,19 +1,14 @@
 project(sql VERSION 0.1.0 LANGUAGES C CXX)
+find_package(pugixml CONFIG REQUIRED)
 
-set(_targetName "dbprove_sql")
-add_library(${_targetName} STATIC)
-add_library(dbprove::sql ALIAS ${_targetName})
-find_package(Cnl CONFIG REQUIRED)
+set(_coreTargetName "dbprove_sql_core")
+add_library(${_coreTargetName} STATIC)
+add_library(dbprove::sql::core ALIAS ${_coreTargetName})
 
-target_sources(${_targetName}
-        PUBLIC FILE_SET installed TYPE HEADERS BASE_DIRS include
-)
-target_sources(${_targetName}
+target_sources(${_coreTargetName}
         PRIVATE
         row_iterator.cpp
         result_base.cpp
-        connection_base.cpp
-        connection_factory.cpp
         credential.cpp
         engine.cpp
         sql_exception.cpp
@@ -21,18 +16,39 @@ target_sources(${_targetName}
         expression.cpp
         sql_type.cpp
 )
-add_subdirectory("explain")
 
-target_precompile_headers(${_targetName}
+target_precompile_headers(${_coreTargetName}
         PRIVATE
         <vector>
         <stdexcept>
         <string>
 )
 
-target_include_directories(${_targetName}
+target_include_directories(${_coreTargetName}
+        PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         PRIVATE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>
+)
+
+target_link_libraries(${_coreTargetName}
+        PUBLIC
+        dbprove::common
+        #PRIVATE
+        #Cnl::Cnl
+)
+
+add_subdirectory("explain")
+
+set(_targetName "dbprove_sql")
+add_library(${_targetName} STATIC)
+add_library(dbprove::sql ALIAS ${_targetName})
+
+target_sources(${_targetName}
+        PRIVATE
+        connection_base.cpp
+        connection_factory.cpp
+)
 
 add_subdirectory(include/dbprove/sql)
 
@@ -42,16 +58,15 @@ add_library(sql_driver_headers INTERFACE)
 add_library(dbprove::sql::driver ALIAS sql_driver_headers)
 target_include_directories(sql_driver_headers
         INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/explain>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/sql>)
 
 target_embed_files(${_targetName} SQL_FILES information_schema/data_type.sql)
 
 # Drivers
-if(NOT APPLE)
-    add_subdirectory("msodbc")
-    add_subdirectory("odbc")
-endif()
+add_subdirectory("mssql")
+add_subdirectory("odbc")
 add_subdirectory("postgresql")
 add_subdirectory("utopia")
 add_subdirectory("duckdb")
@@ -67,9 +82,9 @@ add_subdirectory("boilerplate")
 
 target_link_libraries(${_targetName}
         PUBLIC
-        dbprove::common
+        dbprove::sql::core
+        dbprove::sql::driver
         PRIVATE
-        Cnl::Cnl
         dbprove::sql::postgres
         dbprove::sql::utopia
         dbprove::sql::duckdb
@@ -81,15 +96,14 @@ target_link_libraries(${_targetName}
         dbprove::sql::mariadb
 )
 
-if(NOT APPLE)
-    target_link_libraries(${_targetName}
-            PRIVATE
-            dbprove::sql::msodbc
-    )
-endif()
+target_link_libraries(${_targetName}
+        PRIVATE
+        dbprove::sql::mssql
+        pugixml::pugixml
+        iconv
+)
 
 # Test it all, linking all drivers and running tests across them
 if (DBPROVE_ENABLE_TESTING)
     add_subdirectory("test")
 endif ()
-

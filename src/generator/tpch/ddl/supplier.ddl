@@ -1,6 +1,6 @@
 CREATE TABLE tpch.supplier
 (
-    s_suppkey   INT PRIMARY KEY,
+    s_suppkey   INT,
     s_name      VARCHAR(25),
     s_address   VARCHAR(40),
     s_nationkey INT,

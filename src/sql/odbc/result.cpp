@@ -8,7 +8,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <cstdint.h>
+#include <cstdint>
 #endif
 #include <sql.h>
 #include <sqlext.h>
@@ -101,14 +101,31 @@ public:
         return static_cast<SqlVariant>(SqlDecimal(std::string(bounceBuffer_)));
       }
       case SqlTypeKind::STRING: {
-        check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
-        return SqlVariant(std::string(bounceBuffer_));
+        std::string result;
+        while (true) {
+            const auto ret = SQLGetData(h, i, SQL_C_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator);
+            if (ret == SQL_NO_DATA) break;
+            check(ret, h);
+            if (indicator == SQL_NULL_DATA) return SqlVariant();
+            
+            // If the buffer was exactly filled, indicator might be larger than buffer or SQL_NO_TOTAL
+            size_t len = (indicator >= (SQLLEN)sizeof(bounceBuffer_) || indicator == SQL_NO_TOTAL) 
+                         ? sizeof(bounceBuffer_) - 1 
+                         : (size_t)indicator;
+            result.append(bounceBuffer_, len);
+            if (ret == SQL_SUCCESS) break;
+        }
+        return SqlVariant(result);
       }
       case SqlTypeKind::DATE: {
         check(SQLGetData(h, i, SQL_CHAR, bounceBuffer_, sizeof(bounceBuffer_), &indicator), h);
         // TODO: Dates are not fully represented by the SqlVariant - fix this when they are.
         return SqlVariant(std::string(bounceBuffer_));
       }
+      case SqlTypeKind::TIME:
+      case SqlTypeKind::DATETIME:
+      case SqlTypeKind::UNKNOWN:
+        throw InvalidTypeException("Unsupported type." + std::string(to_string(type_kind)));
       case SqlTypeKind::SQL_NULL:
         return SqlVariant();
     }
@@ -212,10 +229,10 @@ const RowBase& Result::nextRow() {
       impl_->parseRow();
       ++impl_->currentRowIndex_;
       return *impl_->currentRow_;
+    case SQL_STILL_EXECUTING:
+      return SentinelRow::instance();
     default:
-      throw std::runtime_error(
-          "Failed to fetch row next row from SQL Server. " "The last row was index: " + std::to_string(
-              impl_->currentRowIndex_));
+      return SentinelRow::instance();
   }
 }
 }

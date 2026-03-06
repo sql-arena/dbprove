@@ -2,6 +2,9 @@
 #include "theorem.h"
 #include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
+#include <dbprove/common/file_utility.h>
+#include <fstream>
+#include <filesystem>
 
 namespace dbprove::theorem {
 Proof::~Proof() = default;
@@ -12,6 +15,34 @@ sql::ConnectionFactory& Proof::factory() const {
 
 Proof& Proof::ensure(const std::string& table) {
   state.generator.ensure(table, factory());
+  return *this;
+}
+
+Proof& Proof::ensureDataset(const std::string& dataset) {
+  if (!state.ensured_datasets.insert(dataset).second) {
+    PLOGD << "Dataset '" << dataset << "' already ensured in this run; skipping ensure, summary, and tuning.";
+    return *this;
+  }
+
+  state.generator.ensureDataset(dataset, factory());
+  state.generator.printSummary(state.console);
+
+  const auto project_root = dbprove::common::get_project_root();
+  const auto tune_file_path = project_root / "src" / "sql" / state.engine.internalName() / "tune" / (dataset + ".sql");
+  if (std::filesystem::exists(tune_file_path)) {
+    PLOGI << "Tuning dataset '" << dataset << "' with " << tune_file_path.string();
+    std::ifstream ifs(tune_file_path);
+    if (!ifs.is_open()) {
+      PLOGW << "Failed to open " << tune_file_path.string();
+      return *this;
+    }
+
+    const std::string sql((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    auto conn = state.factory.create();
+    conn->execute(sql);
+    PLOGI << "Dataset tuning complete for '" << dataset << "'";
+  }
+
   return *this;
 }
 

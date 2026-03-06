@@ -6,7 +6,7 @@ class Scan final : public Node {
 public:
   enum class Strategy { SCAN, SEEK };
 
-  explicit Scan(const std::string& table_name, Strategy strategy = Strategy::SCAN);
+  explicit Scan(const std::string& table_name, Strategy strategy = Strategy::SCAN, const std::string& alias = "", const EngineDialect* dialect = nullptr);
 
   std::string compactSymbolic() const override;;
 
@@ -18,6 +18,7 @@ protected:
 public:
   const Strategy strategy;
   const std::string table_name;
+  const std::string alias;
 
 private:
   const std::string schema_name;

@@ -11,7 +11,7 @@ target_sources(${_targetName}
 
 target_link_libraries(${_targetName}
     PUBLIC
-    dbprove::sql
+    dbprove::sql::core
 )
 
 target_include_directories(${_targetName} PUBLIC

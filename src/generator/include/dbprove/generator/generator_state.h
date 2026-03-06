@@ -60,7 +60,14 @@ public:
    * @param conn Connection to generate the table at
    * @return Rowcount of the generated table
    */
-  void ensure(const std::span<std::string_view>& table_names, sql::ConnectionFactory& conn);
+  void ensure(std::span<const std::string_view> table_names, sql::ConnectionFactory& conn);
+
+  /**
+   * Makes sure an entire dataset is available on the given connection.
+   * @param dataset_name Dataset registered through REGISTER_GENERATOR
+   * @param conn Connection factory used for ensure/load operations
+   */
+  void ensureDataset(std::string_view dataset_name, sql::ConnectionFactory& conn);
 
   /**
    * Generate a table input (if not already made) and return the row count
@@ -80,15 +87,14 @@ public:
   void registerGeneration(const std::string_view table_name, const std::filesystem::path& path) const;
 
   /**
-   * Create the keys needed on this table.
-   *
-   * For database drives that don't support keys, this is a NOOP
-   * @param table_name Table to declare keys on. Will also create keys on any tables (that already exist) which reference it
-   * @param conn Connection to use
+   * @brief Prints a summary of all tables that were ensured/generated during this run.
+   * @param out The output stream to print to
    */
-  void declareKeys(const std::string_view table_name, sql::ConnectionBase& conn) const;
+  void printSummary(std::ostream& out) const;
+
   GeneratedTable& table(std::string_view table_name) const;
   static bool contains(std::string_view table_name);
+  static bool containsDataset(std::string_view dataset_name);
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
 
   [[nodiscard]] std::filesystem::path csvPath(const std::string_view table_name) const {
@@ -102,15 +108,7 @@ public:
 
 
 struct Registrar {
-  Registrar(std::string_view table_name, const std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
-};
-
-struct KeyRegistrar {
-  KeyRegistrar(std::string_view fk_table_name,
-               const std::vector<std::string_view>& fk_column_names,
-               std::string_view pk_table_name,
-               const std::vector<std::string_view>& pk_column_names
-      );
+  Registrar(std::string_view table_name, std::string_view dataset_name, std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
 };
 }
 
@@ -130,13 +128,7 @@ struct KeyRegistrar {
 #define BRACED(...) { __VA_ARGS__ }
 
 
-#define REGISTER_GENERATOR(NAME, DDL, FUNC, ROWS) \
+#define REGISTER_GENERATOR(NAME, DATASET, DDL, FUNC, ROWS) \
     extern void FUNC(generator::GeneratorState&, sql::ConnectionBase*); \
-    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DDL, FUNC, ROWS);
+    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DATASET, DDL, FUNC, ROWS);
 
-
-#define REGISTER_FK(FK_TABLE, FK_COLUMNS, PK_TABLE, PK_COLUMNS) \
-  static inline generator::KeyRegistrar CONCATENATE(_key_registrar_, __COUNTER__)( \
-    FK_TABLE, BRACED(UNPARENTHESIS(FK_COLUMNS)), \
-    PK_TABLE, BRACED(UNPARENTHESIS(PK_COLUMNS))  \
-    );

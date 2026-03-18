@@ -168,7 +168,12 @@ std::string render(std::vector<Token>& tokens, const EngineDialect* dialect) {
           }
           break;
         }
-        if (prev_type == Token::Type::Literal || prev_type == Token::Type::RightParen) {
+        const static std::set<std::string> case_spacing_keywords = {"CASE", "WHEN", "THEN", "ELSE"};
+        const bool prev_is_case_spacing_keyword =
+            prev_type == Token::Type::Literal &&
+            i > 0 &&
+            case_spacing_keywords.contains(to_upper(tokens[i - 1].value));
+        if ((prev_type == Token::Type::Literal && !prev_is_case_spacing_keyword) || prev_type == Token::Type::RightParen) {
           result += " ";
         }
         result += token.value;

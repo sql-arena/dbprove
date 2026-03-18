@@ -188,7 +188,11 @@ std::string makeConnectionString(const Credential& credential, std::optional<std
 }
 
 Connection::Connection(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path)
-  : odbc::Connection(credential, engine, makeConnectionString(credential, "master"), std::move(artifacts_path)) {
+  : odbc::Connection(credential, engine, makeConnectionString(credential, "master"), artifacts_path) {
+  if (artifacts_path) {
+    // In artifact mode we avoid touching the database during construction.
+    return;
+  }
   // We connected to master initially to ensure we can always get in.
   // Now we create the target database if it doesn't exist and switch to it.
   try {

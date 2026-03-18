@@ -3,7 +3,11 @@
 
 namespace sql::clickhouse {
 const std::map<std::string_view, std::string_view>& ClickHouseDialect::engineFunctions() const {
-  static const std::map<std::string_view, std::string_view> m = {{"UNIQEXACT", "COUNT DISTINCT"}, {"SUMIF", ""}};
+  static const std::map<std::string_view, std::string_view> m = {
+    {"UNIQEXACT", "COUNT DISTINCT"},
+    {"SUMIF", ""},
+    {"COUNTIF", ""},
+  };
   return m;
 }
 
@@ -27,6 +31,10 @@ void ClickHouseDialect::preRender(std::vector<Token>& tokens) {
     // In another extraordinary display of madness, ClickHouse requires the sumIf function to be case-sensitive
     if (token.value == "SUMIF") {
       token.value = "sumIf";
+      continue;
+    }
+    if (token.value == "COUNTIF") {
+      token.value = "countIf";
     }
   }
 }

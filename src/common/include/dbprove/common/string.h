@@ -37,6 +37,15 @@ inline std::string to_upper(const std::string_view sv) {
   return s;
 }
 
+inline std::string trim_string(const std::string_view sv) {
+  const auto start = sv.find_first_not_of(" \t\n\r");
+  if (start == std::string_view::npos) {
+    return "";
+  }
+  const auto end = sv.find_last_not_of(" \t\n\r");
+  return std::string(sv.substr(start, end - start + 1));
+}
+
 
 template<typename T>
 inline std::u8string to_u8string(const T s) {

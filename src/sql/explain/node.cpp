@@ -92,11 +92,19 @@ void Node::setFilter(const std::string& filter, const EngineDialect* dialect) {
   filter_condition = cleanExpression(filter, dialect);
 }
 
+void Node::setSyntheticFilter(const std::string& filter, const EngineDialect* dialect) {
+  synthetic_filter_condition = cleanExpression(filter, dialect);
+}
+
 std::string Node::treeSQL(const size_t indent, const EngineDialect* dialect) {
   if (cacheTreeSQL_.empty()) {
     cacheTreeSQL_ = treeSQLImpl(indent);
   }
   return cacheTreeSQL_;
+}
+
+std::string Node::actualsSql() {
+  return "/* DBPROVE_ACTUALS */\nSELECT COUNT(*)\nFROM " + treeSQL(0);
 }
 
 std::string Node::subquerySQLAlias() const {

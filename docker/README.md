@@ -31,7 +31,7 @@ docker-compose down
 - `postgresql/` - PostgreSQL configuration and setup (includes a benchmark-tuned config based on `postgres:latest`).
 
 ### ClickHouse
-- `clickhouse/` - ClickHouse setup based on `clickhouse/clickhouse-server:latest`.
+- `clickhouse/` - ClickHouse setup based on `clickhouse/clickhouse-server:26.1`.
 
 ### MSSQL (SQL Server)
 - `mssql/` - SQL Server 2022 setup. Note: Default password is `YourStrong!Passw0rd`.

@@ -49,6 +49,17 @@ TEST_CASE("Clean Expression Adds Spaces Around CASE Keywords", "[expression]") {
   CHECK(cleaned.find("'0'END") == std::string::npos);
 }
 
+TEST_CASE("Clean Expression Avoids Double Spaces In CASE Branches", "[expression]") {
+  const std::string expression = "CASE WHEN Expr1013 = 0 THEN NULL ELSE Expr1014 END AS Expr1006";
+  const auto cleaned = sql::cleanExpression(expression);
+
+  CHECK(cleaned.find("WHEN  ") == std::string::npos);
+  CHECK(cleaned.find("THEN  ") == std::string::npos);
+  CHECK(cleaned.find("ELSE  ") == std::string::npos);
+  CHECK(cleaned.find("ENDAS") == std::string::npos);
+  CHECK(cleaned.find("END AS") != std::string::npos);
+}
+
 TEST_CASE("Clean Expression Strips PG Array Item Double Quotes In IN Lists", "[expression]") {
   const std::string expression =
     "((part.p_container)::text = ANY ('{\"SM CASE\",\"SM BOX\",\"SM PACK\",\"SM PKG\"}'::text[]))";

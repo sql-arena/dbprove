@@ -5,6 +5,22 @@ static constexpr auto symbol_ = "📄";
 
 
 namespace sql::explain {
+namespace {
+std::string normalisedTableName(const std::string& input, const EngineDialect* dialect) {
+  const auto cleaned = cleanExpression(input, dialect);
+  const auto split = splitTable(cleaned);
+  if (!split.table_name.empty()) {
+    return split.table_name;
+  }
+  return cleaned;
+}
+
+std::string normalisedSchemaName(const std::string& input, const EngineDialect* dialect) {
+  const auto cleaned = cleanExpression(input, dialect);
+  return splitTable(cleaned).schema_name;
+}
+} // namespace
+
 std::string to_string(Scan::Strategy strategy) {
   return std::string(magic_enum::enum_name(strategy));
 }
@@ -12,9 +28,9 @@ std::string to_string(Scan::Strategy strategy) {
 Scan::Scan(const std::string& table_name, Strategy strategy, const std::string& alias, const EngineDialect* dialect)
   : Node(NodeType::SCAN)
   , strategy(strategy)
-  , table_name(cleanExpression(table_name, dialect))
+  , table_name(normalisedTableName(table_name, dialect))
   , alias(cleanExpression(alias, dialect))
-  , schema_name(splitTable(table_name).schema_name) {
+  , schema_name(normalisedSchemaName(table_name, dialect)) {
 }
 
 std::string Scan::compactSymbolic() const {
@@ -44,8 +60,9 @@ std::string Scan::treeSQLImpl(size_t indent) const {
   if (!alias.empty()) {
     result += "AS " + alias + " ";
   }
-  if (!filterCondition().empty()) {
-    result += "WHERE " + filterCondition();
+  const auto filter = syntheticFilterCondition().empty() ? filterCondition() : syntheticFilterCondition();
+  if (!filter.empty()) {
+    result += "WHERE " + filter;
   }
   result += ") AS " + subquerySQLAlias();
   return result;

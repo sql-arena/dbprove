@@ -24,6 +24,7 @@ public:
   Engine engine;
   CredentialPassword credential;
   const std::string connection_string;
+  bool is_open = false;
 
   void check_connection(const SQLRETURN ret, const SQLHANDLE handle, const SQLSMALLINT type) {
     if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
@@ -44,6 +45,12 @@ public:
     : engine(engine)
     , credential(credential)
     , connection_string(connection_string) {
+  }
+
+  void open() {
+    if (is_open) {
+      return;
+    }
     check_connection(SQLAllocHandle(SQL_HANDLE_ENV,SQL_NULL_HANDLE, &env), env, SQL_HANDLE_ENV);
 
     check_connection(SQLSetEnvAttr(env,SQL_ATTR_ODBC_VERSION, reinterpret_cast<SQLPOINTER>(SQL_OV_ODBC3), 0), env,
@@ -57,6 +64,7 @@ public:
                                       reinterpret_cast<SQLCHAR*>(const_cast<char*>((connection_string.c_str()))),
                                       SQL_NTS, outConnStr, sizeof(outConnStr), &outConnStrLen, SQL_DRIVER_NOPROMPT),
                      connection, SQL_HANDLE_DBC);
+    is_open = true;
   }
 
   void check_return(const SQLRETURN return_value, SQLHANDLE handle) {
@@ -90,9 +98,7 @@ public:
   }
 
   void check_connection_not_closed() {
-    if (!connection) {
-      throw ConnectionClosedException(credential);
-    }
+    open();
   }
 
   void executeRaw(const std::string_view statement) {
@@ -123,13 +129,15 @@ public:
   }
 
   void close() {
-    if (!connection) {
+    if (!is_open) {
       return;
     }
     SQLDisconnect(connection);
     SQLFreeHandle(SQL_HANDLE_DBC, connection);
     SQLFreeHandle(SQL_HANDLE_ENV, env);
     connection = nullptr;
+    env = nullptr;
+    is_open = false;
   }
 };
 

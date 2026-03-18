@@ -5,6 +5,7 @@ env.sh
 node_modules/
 dbprove/
 run/
+run_user/
 scratchpad/
 proof/
 logs/

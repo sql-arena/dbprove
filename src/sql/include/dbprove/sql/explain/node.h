@@ -17,6 +17,7 @@ namespace sql::explain {
 class Node : public TreeNode<Node> {
 protected:
   std::string filter_condition;
+  std::string synthetic_filter_condition;
 
   explicit Node(const NodeType type)
     : type(type)
@@ -44,13 +45,21 @@ public:
   RowCount rowsEstimated() const;;
   RowCount rowsActual() const;
   void setFilter(const std::string& filter, const EngineDialect* dialect = nullptr);
+  void setSyntheticFilter(const std::string& filter, const EngineDialect* dialect = nullptr);
   auto filterCondition() const { return filter_condition; }
+  auto syntheticFilterCondition() const { return synthetic_filter_condition; }
 
   /**
    * Generate the SQL needed top query data up until this point in the tree.
    * @return
    */
   std::string treeSQL(size_t indent, const EngineDialect* dialect = nullptr);
+
+  /**
+   * Generate the SQL statement used to gather actual rows for this node.
+   * Default behavior counts rows from subtree SQL; node subclasses can override.
+   */
+  virtual std::string actualsSql();
 
   /**
    * Name of the SubQuery when we generate SQL

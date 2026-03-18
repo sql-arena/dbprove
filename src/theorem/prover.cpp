@@ -14,6 +14,10 @@ void run_theorem(const Theorem& theorem, RunCtx& state) {
 }
 
 void writeVersion(RunCtx& input_state) {
+  if (input_state.artifact_mode) {
+    PLOGI << "Artifact mode: skipping engine version lookup";
+    return;
+  }
   PLOGI << "Reading Version...";
   const std::string version = input_state.factory.create()->version();
 

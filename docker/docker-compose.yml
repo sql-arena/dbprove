@@ -14,11 +14,14 @@ services:
   clickhouse:
     build: ./clickhouse
     image: dbprove-clickhouse:latest
+    environment:
+      - CLICKHOUSE_PASSWORD=default
     ports:
       - "8123:8123"
       - "9000:9000"
     volumes:
       - ../run/mount/clickhouse:/var/lib/clickhouse
+      - ../run/table_data:/var/lib/clickhouse/user_files/table_data:ro
 
   mssql:
     build: ./mssql

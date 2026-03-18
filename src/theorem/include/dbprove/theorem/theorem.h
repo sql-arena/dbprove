@@ -218,6 +218,7 @@ public:
   sql::ConnectionFactory factory;
   std::ostream& console;
   std::ostream& csv;
+  bool artifact_mode = false;
   std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(const std::vector<std::string_view>& values) const;

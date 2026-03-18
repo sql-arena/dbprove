@@ -124,6 +124,24 @@ static std::optional<std::string> extractSubplanJoinCondition(const std::string&
   return std::nullopt;
 }
 
+static std::optional<std::string> extractCorrelatedIndexCond(const json& node_json, const ExplainCtx& ctx) {
+  if (node_json.contains("Index Cond")) {
+    const auto cond = cleanPgExpression(node_json["Index Cond"].get<std::string>(), ctx);
+    if (!cond.empty()) {
+      return cond;
+    }
+  }
+
+  if (node_json.contains("Plans") && node_json["Plans"].is_array()) {
+    for (const auto& child : node_json["Plans"]) {
+      if (const auto cond = extractCorrelatedIndexCond(child, ctx); cond.has_value()) {
+        return cond;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 static std::optional<double> subplanTotalActualRows(const json& node_json) {
   if (!node_json.contains("Actual Rows")) {
     return std::nullopt;
@@ -207,12 +225,30 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json, ExplainCtx& ct
       join_strategy = Join::Strategy::HASH;
     } else if (pg_node_type == "Nested Loop") {
       join_strategy = Join::Strategy::LOOP;
-      // Loops may have an index scan as a child. In that case, the join condition is on the scan.
-      if (node_json.contains("Plans") && node_json["Plans"].size() >= 2) {
-        auto loop_child = node_json["Plans"][1];
-        if (loop_child.contains("Node Type") && loop_child["Node Type"] == "Index Scan") {
-          join_condition = loop_child["Index Cond"].get<std::string>();
+      // Loops often hold join keys inside inner index probes.
+      // Walk the inner subtree and extract the first available Index Cond.
+      const auto extract_loop_cond = [&](const auto& self, const json& j)-> std::string {
+        if (j.contains("Index Cond")) {
+          return cleanPgExpression(j["Index Cond"].get<std::string>(), ctx);
         }
+        if (j.contains("Node Type")) {
+          const auto t = j["Node Type"].get<std::string>();
+          if ((t == "Index Scan" || t == "Index Only Scan") && j.contains("Index Cond")) {
+            return cleanPgExpression(j["Index Cond"].get<std::string>(), ctx);
+          }
+        }
+        if (j.contains("Plans") && j["Plans"].is_array()) {
+          for (const auto& child : j["Plans"]) {
+            const auto cond = self(self, child);
+            if (!cond.empty()) {
+              return cond;
+            }
+          }
+        }
+        return "";
+      };
+      if (node_json.contains("Plans") && node_json["Plans"].size() >= 2) {
+        join_condition = extract_loop_cond(extract_loop_cond, node_json["Plans"][1]);
       }
     } else if (pg_node_type == "Merge Join") {
       join_strategy = Join::Strategy::MERGE;
@@ -253,7 +289,7 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json, ExplainCtx& ct
         join_condition = cleanPgExpression(join_condition, ctx);
       }
     }
-    if (join_condition.empty()) {
+    if (join_condition.empty() && join_type == Join::Type::INNER) {
       // PG doesn't use the notion of cross-join, it simply has loop join without conditions conditions.
       join_type = Join::Type::CROSS;
     }
@@ -452,6 +488,13 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
             join_condition = *extracted;
           }
         }
+        if (join_condition.empty()) {
+          // Correlated subplans often encode dependency via Index Cond in a nested scan.
+          // Use that as semi/anti join condition when scalar SubPlan filter parsing is insufficient.
+          if (const auto correlated = extractCorrelatedIndexCond(child_json, ctx); correlated.has_value()) {
+            join_condition = *correlated;
+          }
+        }
 
         auto join_type = Join::Type::LEFT_SEMI_INNER;
         if (filter.find("NOT (IN") != std::string::npos || filter.find("NOT EXISTS") != std::string::npos) {
@@ -483,7 +526,7 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
  * This transformation hoists these extra children to a root Sequence node.
  */
 void hoistSubPlans(std::unique_ptr<Node>& root, ExplainCtx& ctx) {
-  std::vector<std::unique_ptr<Node>> hoisted;
+  std::vector<std::shared_ptr<Node>> hoisted;
 
   // Traverse the tree and find nodes marked as subplans in the context.
   for (auto& n : root->depth_first()) {
@@ -510,7 +553,7 @@ void hoistSubPlans(std::unique_ptr<Node>& root, ExplainCtx& ctx) {
   if (!hoisted.empty()) {
     auto sequence = std::make_unique<Sequence>();
     for (auto& h : hoisted) {
-      sequence->addChild(std::move(h));
+      sequence->addSharedChild(std::move(h));
     }
     sequence->addChild(std::move(root));
     root = std::move(sequence);

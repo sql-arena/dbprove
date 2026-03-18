@@ -26,5 +26,8 @@ public:
     result += filterCondition();
     return result;
   }
+
+protected:
+  std::string treeSQLImpl(size_t indent) const override;
 };
 }

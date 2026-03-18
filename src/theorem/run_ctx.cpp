@@ -26,7 +26,8 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
   , generator(generator)
   , factory(engine, credentials, artifacts_path)
   , console(console)
-  , csv(csv) {
+  , csv(csv)
+  , artifact_mode(artifacts_path.has_value()) {
   writer->writer << std::vector<std::string_view>{"ENGINE",
                                                   "ID",
                                                   "CATEGORIES",

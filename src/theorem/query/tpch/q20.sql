@@ -7,10 +7,10 @@ INNER JOIN tpch.nation
 WHERE s_suppkey IN (SELECT ps_suppkey
                     FROM tpch.partsupp
                     WHERE ps_partkey IN (SELECT p_partkey
-                                         FROM tpch.part
+                                         FROM tpch.part AS p_inner
                                          WHERE p_name LIKE 'almond%')
-                      AND ps_availqty > (SELECT 0.5 * SUM(l_quantity)
-                                         FROM tpch.lineitem
+                      AND ps_availqty > (SELECT 0.5 * SUM(l_quantity) AS qty
+                                         FROM tpch.lineitem as li_inner
                                          WHERE l_partkey = ps_partkey
                                            AND l_suppkey = ps_suppkey
                                            AND l_shipdate >= '1993-01-01'

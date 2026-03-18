@@ -47,12 +47,12 @@ for engine_path in "$SOURCE_DIR"/*; do
                 engine_dir="$matched_dir"
             fi
         fi
-        
+
         if [ ! -d "$engine_dir" ]; then
             echo "    Warning: Engine directory '$engine_name' not found in $RESULTS_REPO/engine/. Skipping."
-            continue
+            mkdir -p "$engine_dir"
         fi
-        
+
         # Target version directory in the results repo
         target_version_dir="$engine_dir/$version"
         if [ ! -d "$target_version_dir" ]; then
@@ -62,8 +62,8 @@ for engine_path in "$SOURCE_DIR"/*; do
                  target_version_dir="$engine_dir/$matched_ver"
                  echo "    Matched version $version to $matched_ver"
              else
-                 echo "    Warning: Version folder matching '$version' not found in $engine_dir. Skipping."
-                 continue
+                 echo "    Version folder '$version' not found in $engine_dir. Creating it."
+                 mkdir -p "$target_version_dir"
              fi
         fi
         

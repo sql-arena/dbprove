@@ -10,7 +10,12 @@ target_sources(${_targetName}
         connection.cpp
         row.cpp
         explain.cpp
+        expression_node.cpp
+        plan_node.cpp
+        ast_parser.cpp
+        query_tree_parser.cpp
         dialect.cpp
+        literals.cpp
 )
 
 find_library(CLICKHOUSECPP_LIB
@@ -41,4 +46,11 @@ target_link_libraries(${_targetName}
         clickhouse::clickhouse
         dbprove::sql::core
         dbprove::sql::driver
+)
+
+add_executable(clickhouse_plan_tree_dump plan_tree_dump.cpp)
+target_link_libraries(clickhouse_plan_tree_dump
+        PRIVATE
+        dbprove::sql::clickhouse
+        dbprove::sql::core
 )

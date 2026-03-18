@@ -4,7 +4,8 @@ add_executable(test_connectivity
         connection.cpp
         expression.cpp
         explain.cpp
-        fixture.cpp)
+        fixture.cpp
+        ../clickhouse/test/literals.cpp)
 find_package(Catch2 CONFIG REQUIRED)
 
 target_link_libraries(test_connectivity

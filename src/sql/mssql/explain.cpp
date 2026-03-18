@@ -1,5 +1,6 @@
 #include "connection.h"
 #include "explain/plan.h"
+#include <cctype>
 #include <memory>
 #include <pugixml.hpp>
 #include <regex>
@@ -40,9 +41,17 @@ struct MssqlDialect final : EngineDialect {
       if (token.type == Token::Type::Literal) {
         // Handle qualified names: table.column or alias.column
         const size_t dot_pos = token.value.find('.');
-        if (dot_pos != std::string::npos) {
+        if (dot_pos != std::string::npos && dot_pos > 0 && dot_pos + 1 < token.value.size()) {
           const std::string qualifier = token.value.substr(0, dot_pos);
           const std::string column = token.value.substr(dot_pos + 1);
+
+          // Only treat identifier-like qualifiers as table/alias qualifiers.
+          // This avoids breaking numeric literals such as "1.".
+          const bool qualifier_is_identifier =
+              std::isalpha(static_cast<unsigned char>(qualifier.front())) || qualifier.front() == '_';
+          if (!qualifier_is_identifier) {
+            continue;
+          }
 
           // If the qualifier is not an alias, we strip it.
           // Otherwise, we keep it as a two-part name.
@@ -220,7 +229,7 @@ void fixRowCounts(Node* node) {
  * This transformation hoists these materializations to a new root Sequence node.
  */
 void hoistMaterialisations(std::unique_ptr<Node>& root) {
-  std::vector<std::unique_ptr<Node>> hoisted;
+  std::vector<std::shared_ptr<Node>> hoisted;
   
   // Collect all ScanMaterialised node IDs to see which Materialise nodes have consumers
   std::unordered_set<int> consumer_ids;
@@ -262,10 +271,9 @@ void hoistMaterialisations(std::unique_ptr<Node>& root) {
         if (join->childCount() == 1) {
             auto remaining_child = join->takeChild(0);
             if (join->isRoot()) {
-                root = std::move(remaining_child);
-                root->setParentToSelf();
+                join->addSharedChild(std::move(remaining_child));
             } else {
-                join->replaceWith(std::move(remaining_child));
+                join->replaceWithShared(std::move(remaining_child));
             }
         }
       }
@@ -275,7 +283,7 @@ void hoistMaterialisations(std::unique_ptr<Node>& root) {
   if (!hoisted.empty()) {
       auto sequence = std::make_unique<Sequence>();
       for (auto& h : hoisted) {
-          sequence->addChild(std::move(h));
+          sequence->addSharedChild(std::move(h));
       }
       
       // The original root (possibly modified) becomes the last child of the sequence
@@ -386,6 +394,15 @@ static std::string scalarOperatorToExpression(const xml_node& scalar_op, const M
   if (column_ref) {
       return qname(column_ref, ctx);
   }
+
+  // SQL Server often wraps identifiers as ScalarOperator -> Identifier -> ColumnReference.
+  const auto identifier = scalar_op.child("Identifier");
+  if (identifier) {
+    const auto id_col_ref = identifier.child("ColumnReference");
+    if (id_col_ref) {
+      return qname(id_col_ref, ctx);
+    }
+  }
   
   // Priority 2: Recurse into common structures if they exist (handling only simple ones for now)
   // Most SQL Server expressions in plans are nested ScalarOperators
@@ -400,7 +417,34 @@ static std::string scalarOperatorToExpression(const xml_node& scalar_op, const M
 
 std::string definedValueExpression(const xml_node& defined_value, const MssqlExplainCtx& ctx) {
   const auto scalar_op = defined_value.child("ScalarOperator");
-  std::string name = scalarOperatorToExpression(scalar_op, ctx);
+  std::string name;
+
+  // SQL Server uses ANY(...) internally in aggregate defined values for pass-through columns.
+  // We should render the underlying expression/column, never "IN ...".
+  if (scalar_op) {
+    const auto aggregate = scalar_op.child("Aggregate");
+    if (aggregate) {
+      const auto agg_type = to_upper(std::string(aggregate.attribute("AggType").as_string()));
+      if (agg_type == "ANY") {
+        for (auto arg_scalar : aggregate.children("ScalarOperator")) {
+          name = scalarOperatorToExpression(arg_scalar, ctx);
+          if (!name.empty()) {
+            break;
+          }
+        }
+        if (name.empty()) {
+          const auto agg_col_ref = aggregate.child("ColumnReference");
+          if (agg_col_ref) {
+            name = qname(agg_col_ref, ctx);
+          }
+        }
+      }
+    }
+  }
+
+  if (name.empty()) {
+    name = scalarOperatorToExpression(scalar_op, ctx);
+  }
   const auto column_ref = defined_value.child("ColumnReference");
   if (column_ref) {
     const std::string alias = column_ref.attribute("Column").as_string();

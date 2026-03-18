@@ -601,9 +601,11 @@ namespace sql::databricks
         for (Node* node : to_collapse) {
             if (node->isRoot()) {
                 PLOGD << "Collapsing root " << to_string(node->type) << " node";
+                if (node->childCount() == 0) {
+                    continue;
+                }
                 auto final_child = node->takeChild(0);
-                final_child->setParentToSelf();
-                root = std::move(final_child);
+                node->addSharedChild(std::move(final_child));
             } else {
                 PLOGD << "Collapsing relational no-op: " << to_string(node->type) << " node (rows: " << node->rows_actual << ")";
                 try {
@@ -624,8 +626,7 @@ namespace sql::databricks
         while (root->type == sql::explain::NodeType::SELECT || root->type == sql::explain::NodeType::PROJECTION) {
             if (root->childCount() == 1) {
                 PLOGD << "Removing top-level " << to_string(root->type) << " node";
-                root = root->takeChild(0);
-                root->setParentToSelf();
+                break;
             } else {
                 break;
             }

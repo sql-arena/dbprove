@@ -1,7 +1,5 @@
 #include "join.h"
 
-#include <regex>
-
 #include "glyphs.h"
 #include "sql_exceptions.h"
 
@@ -13,7 +11,28 @@ namespace sql::explain
         , strategy(join_strategy)
         , type(type)
         , condition(cleanExpression(condition, dialect))
+        , synthetic_condition(this->condition)
     {
+    }
+
+    void Join::setSyntheticCondition(const std::string& value, const EngineDialect* dialect) {
+      synthetic_condition = cleanExpression(value, dialect);
+    }
+
+    std::string Join::conditionForSql(const bool use_synthetic) const {
+      if (use_synthetic && !synthetic_condition.empty()) {
+        return synthetic_condition;
+      }
+      return condition;
+    }
+
+    bool Join::isSemiOrAnti() const {
+      return type == Type::LEFT_SEMI_INNER ||
+             type == Type::LEFT_SEMI_OUTER ||
+             type == Type::RIGHT_SEMI_INNER ||
+             type == Type::RIGHT_SEMI_OUTER ||
+             type == Type::LEFT_ANTI ||
+             type == Type::RIGHT_ANTI;
     }
 
     std::string Join::compactSymbolic() const
@@ -68,7 +87,7 @@ namespace sql::explain
         result += strategy_name.at(strategy);
         result += " ON ";
         max_width -= result.size();
-        result += ellipsify(condition, max_width);
+        result += ellipsify(conditionForSql(true), max_width);
         return result;
     }
 
@@ -138,92 +157,72 @@ namespace sql::explain
         }
     }
 
-    /**
-     * In ClickHouse, it is possible to have a join condition that looks like this:
-     *
-     * foo = foo
-     *
-     * This occurs if foo is in both left and right side of the join. This is not the trivially true equality
-     * it is ClickHouse explain that is really, really odd.
-     *
-     * A proper EXPLAIN would keep track of aliases.
-     * No such luck with ClickHouse
-     *
-     * HACK (filthy): Look for things of the form
-     *
-     *    <col> <op> <col>
-     *
-     * Replace wih aliases we assigned to make:
-     *
-     *    L.<col> <op> R.<col>
-     *
-     */
-    std::string fixCondition(const std::string& condition, const std::string& leftAlias, const std::string& rightAlias)
-    {
-        static const std::regex pattern(R"((\b\w+\b)\s*(=|<>)\s*(\b\w+\b))");
-        std::string result;
-        std::sregex_iterator begin(condition.begin(), condition.end(), pattern);
-        std::sregex_iterator end;
-
-        size_t last_pos = 0;
-        for (auto it = begin; it != end; ++it) {
-            const std::smatch& match = *it;
-            result += condition.substr(last_pos, match.position() - last_pos);
-            if (match[1] == match[3]) {
-                result += leftAlias + "." + match[1].str() + " " + match[2].str() + " " + rightAlias + "." + match[3].
-                    str();
-            } else {
-                result += match.str();
-            }
-            last_pos = match.position() + match.length();
-        }
-        result += condition.substr(last_pos);
-        return result;
+std::string renderJoinTreeSql(const Join& join, const size_t indent) {
+    auto make_newline = [](const size_t i) {
+      std::string out = "\n";
+      for (size_t p = 0; p < i; ++p) {
+        out += "  ";
+      }
+      return out;
+    };
+    std::string result = make_newline(indent);
+    result += "(SELECT * ";
+    result += make_newline(indent);
+    auto* outer_child = join.lastChild();
+    auto* inner_child = join.firstChild();
+    const auto is_right_semi_or_anti =
+        join.type == Join::Type::RIGHT_SEMI_INNER ||
+        join.type == Join::Type::RIGHT_SEMI_OUTER ||
+        join.type == Join::Type::RIGHT_ANTI;
+    if (is_right_semi_or_anti) {
+      // RIGHT SEMI/ANTI returns rows from the right side.
+      outer_child = join.firstChild();
+      inner_child = join.lastChild();
     }
+    result += "FROM " + outer_child->treeSQL(indent + 1);
 
-
-    std::string Join::treeSQLImpl(const size_t indent) const
-    {
-        std::string result = newline(indent);
-        result += "(SELECT * ";
-        result += newline(indent);
-        result += "FROM " + lastChild()->treeSQL(indent + 1);
-
-        auto fixed_condition = fixCondition(condition, firstChild()->subquerySQLAlias(),
-                                            lastChild()->subquerySQLAlias());
-        switch (type) {
-        case Type::LEFT_SEMI_INNER:
-        case Type::LEFT_SEMI_OUTER:
-        case Type::RIGHT_SEMI_INNER:
-        case Type::RIGHT_SEMI_OUTER: {
-            result += newline(indent);
-            result += "WHERE EXISTS (SELECT * FROM";
-            result += firstChild()->treeSQL(indent + 1);
-            result += newline(indent);
+    const auto& fixed_condition = join.conditionForSql(true);
+    switch (join.type) {
+        case Join::Type::LEFT_SEMI_INNER:
+        case Join::Type::LEFT_SEMI_OUTER:
+        case Join::Type::RIGHT_SEMI_INNER:
+        case Join::Type::RIGHT_SEMI_OUTER: {
+            result += make_newline(indent);
+            result += "WHERE EXISTS (SELECT 1 FROM";
+            result += inner_child->treeSQL(indent + 1);
+            result += make_newline(indent);
             result += "WHERE " + fixed_condition;
+            result += make_newline(indent);
+            result += "LIMIT 1";
             result += ")";
             break;
         }
-        case Type::LEFT_ANTI:
-        case Type::RIGHT_ANTI: {
-            result += newline(indent);
-            result += "WHERE NOT EXISTS (SELECT * FROM";
-            result += firstChild()->treeSQL(indent + 1);
-            result += newline(indent);
+        case Join::Type::LEFT_ANTI:
+        case Join::Type::RIGHT_ANTI: {
+            result += make_newline(indent);
+            result += "WHERE NOT EXISTS (SELECT 1 FROM";
+            result += inner_child->treeSQL(indent + 1);
+            result += make_newline(indent);
             result += "WHERE " + fixed_condition;
+            result += make_newline(indent);
+            result += "LIMIT 1";
             result += ")";
             break;
         }
         default: {
-            result += newline(indent);
-            result += type_to_sql(type) + " " + firstChild()->treeSQL(indent + 1);
-            result += newline(indent);
+            result += make_newline(indent);
+            result += type_to_sql(join.type) + " " + join.firstChild()->treeSQL(indent + 1);
+            result += make_newline(indent);
             result += "  ON " + fixed_condition;
-            result += newline(indent);
+            result += make_newline(indent);
             break;
         }
         }
-        result += ") AS " + subquerySQLAlias();
+        result += ") AS " + join.subquerySQLAlias();
         return result;
     }
+
+std::string Join::treeSQLImpl(const size_t indent) const {
+  return renderJoinTreeSql(*this, indent);
+}
 }

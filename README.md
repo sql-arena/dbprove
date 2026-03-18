@@ -55,6 +55,31 @@ This script will open a browser window using Playwright. Complete the login and 
 # Coding Guidelines
 Detailed coding guidelines for contributors and AI agents are maintained in [ai-rules.md](ai-rules.md).
 
+# Session Bootstrap (Explain Rendering)
+
+For new sessions focused on execution-plan parsing/rendering, read these files in order:
+
+1. `ai-rules.md` for contributor and AI-agent coding preferences.
+2. `src/sql/clickhouse/README.md` for current ClickHouse-specific explain behavior and known edge cases.
+3. `src/sql/explain/README.md` for canonical node model and shared rendering semantics across engines.
+4. `src/sql/README.md` for SQL folder structure, tune scripts, and where engine-specific explain parsers live.
+5. `src/sql/<engine>/README.md` for engine-specific plan source format and post-processing.
+
+Core implementation files for ClickHouse explain rendering:
+
+- `src/sql/clickhouse/explain.cpp` (plan extraction, parsing, post-processing, actual row reconstruction)
+- `src/sql/clickhouse/dialect.{h,cpp}` (expression normalization and render-time rewrites)
+- `src/sql/explain/*.h|*.cpp` (canonical nodes + SQL/tree rendering)
+
+Typical local workflow:
+
+```bash
+cmake --preset osx-arm-base
+cmake --build out/build/osx-arm-base --target dbprove test_connectivity
+cd run
+../out/build/osx-arm-base/src/sql/test/test_connectivity
+```
+
 # Thirdparty Rules
 
 Thirdparty libraries are managed with `vcpkg`. In general, the goal is to keep third party dependencies to a minimum.

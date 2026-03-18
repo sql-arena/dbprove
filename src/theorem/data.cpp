@@ -21,19 +21,25 @@ void DataExplain::render(Proof& proof) {
   const auto joined = plan->rowsJoined();
   const auto aggregated = plan->rowsAggregated();
   const auto sorted = plan->rowsSorted();
+  const auto seeked = plan->rowsSeeked();
   const auto scanned = plan->rowsScanned();
+  const auto distributed = plan->rowsDistributed();
   const auto hash_build = plan->rowsHashBuild();
   std::vector<ux::RowStats> stats;
   stats.push_back({"Join", joined});
   stats.push_back({"Hash", hash_build});
   stats.push_back({"Aggregate", aggregated});
   stats.push_back({"Sort", sorted});
+  stats.push_back({"Distribute", distributed});
+  stats.push_back({"Seek", seeked});
   stats.push_back({"Scan", scanned});
   RowStatTable(out, stats);
 
   proof.writeCsv("Join", std::to_string(joined), Unit::Rows);
   proof.writeCsv("Aggregate", std::to_string(aggregated), Unit::Rows);
   proof.writeCsv("Sort", std::to_string(sorted), Unit::Rows);
+  proof.writeCsv("Distribute", std::to_string(distributed), Unit::Rows);
+  proof.writeCsv("Seek", std::to_string(seeked), Unit::Rows);
   proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
   proof.writeCsv("Hash", std::to_string(hash_build), Unit::Rows);
   auto mis_estimates = plan->misEstimations();

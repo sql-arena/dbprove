@@ -33,6 +33,10 @@ public:
   const Strategy strategy;
   const Type type;
   const std::string condition;
+  std::string synthetic_condition;
+  void setSyntheticCondition(const std::string& value, const EngineDialect* dialect = nullptr);
+  std::string conditionForSql(bool use_synthetic) const;
+  [[nodiscard]] bool isSemiOrAnti() const;
   const Node& buildChild() const;
 
   /**

@@ -176,8 +176,7 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
       password = getEnvVar("YBPASSWORD").value_or("yellowbrick");
       break;
     case Type::ClickHouse:
-      password = getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
-      break;
+      return getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
     case Type::SQLServer:
       return "YourStrong!Passw0rd";
     case Type::MariaDB:

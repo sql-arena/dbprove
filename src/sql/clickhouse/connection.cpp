@@ -16,6 +16,7 @@
 #include <string_view>
 #include <fstream>
 #include <regex>
+#include <cstdlib>
 
 #include "limit.h"
 #include <clickhouse/client.h>
@@ -26,6 +27,31 @@ namespace ch = clickhouse;
 
 
 namespace sql::clickhouse {
+namespace {
+bool isActualsQuery(const std::string_view statement) {
+  return statement.find("DBPROVE_ACTUALS") != std::string_view::npos;
+}
+
+int actualsTimeoutSeconds() {
+  constexpr int default_timeout = 120;
+  constexpr int min_timeout = 1;
+  constexpr int max_timeout = 120;
+  if (const auto* env = std::getenv("DBPROVE_ACTUALS_TIMEOUT_SEC")) {
+    try {
+      const auto parsed = std::stoi(env);
+      if (parsed >= min_timeout && parsed <= max_timeout) {
+        return parsed;
+      }
+      LOG_WARNING << "Ignoring DBPROVE_ACTUALS_TIMEOUT_SEC=" << parsed
+                  << " outside allowed range [" << min_timeout << ", " << max_timeout << "]";
+    } catch (...) {
+      LOG_WARNING << "Ignoring invalid DBPROVE_ACTUALS_TIMEOUT_SEC='" << env << "'";
+    }
+  }
+  return default_timeout;
+}
+}
+
 void handleClickHouseException(ch::Client& client, const ch::ServerException& e) {
   try {
     client.ResetConnection();
@@ -50,10 +76,16 @@ public:
 
   explicit Pimpl(const CredentialPassword& credential)
     : credential(credential) {
-    ch::ClientOptions options;
-    options.SetHost(credential.host).SetPort(credential.port).SetUser(credential.username).
-            SetPassword(credential.password.value_or("")).SetDefaultDatabase(credential.database);
-    client = std::make_unique<ch::Client>(options);
+  }
+
+  ch::Client& getClient() {
+    if (!client) {
+      ch::ClientOptions options;
+      options.SetHost(credential.host).SetPort(credential.port).SetUser(credential.username).
+              SetPassword(credential.password.value_or("")).SetDefaultDatabase(credential.database);
+      client = std::make_unique<ch::Client>(options);
+    }
+    return *client;
   }
 
   std::unique_ptr<ch::Client> client;
@@ -80,9 +112,15 @@ Connection::~Connection() {
 
 
 void Connection::execute(std::string_view statement) {
-  auto& client = *impl_->client;
+  auto& client = impl_->getClient();
+  auto sql = std::string(statement);
+  static const std::regex delete_all_regex(R"(^\s*DELETE\s+FROM\s+([a-zA-Z0-9_\.]+)\s*;?\s*$)", std::regex::icase);
+  std::smatch delete_match;
+  if (std::regex_match(sql, delete_match, delete_all_regex) && delete_match.size() > 1) {
+    sql = "TRUNCATE TABLE " + delete_match[1].str();
+  }
   try {
-    client.Execute(std::string(statement));
+    client.Execute(sql);
   } catch (const ch::ServerException& e) {
     handleClickHouseException(client, e);
   } catch (std::exception& e) {
@@ -101,18 +139,44 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
     ...Ugly!
   */
 
-  auto& client = *impl_->client;
+  auto& client = impl_->getClient();
   std::vector<std::shared_ptr<ch::Block>> blocks;
+  const bool actuals_query = isActualsQuery(statement);
+  const auto timeout_seconds = actuals_query ? actualsTimeoutSeconds() : 0;
   try {
+    if (actuals_query) {
+      client.Execute("SET max_execution_time = " + std::to_string(timeout_seconds));
+      client.Execute("SET timeout_overflow_mode = 'throw'");
+    }
     client.Select(std::string(statement), [&](const ch::Block& b) {
       if (b.GetRowCount() == 0) {
         return;
       }
       blocks.push_back(std::make_shared<ch::Block>(b));
     });
+    if (actuals_query) {
+      client.Execute("SET max_execution_time = 0");
+      client.Execute("SET timeout_overflow_mode = 'break'");
+    }
   } catch (const ch::ServerException& e) {
+    if (actuals_query) {
+      try {
+        client.Execute("SET max_execution_time = 0");
+        client.Execute("SET timeout_overflow_mode = 'break'");
+      } catch (const ch::Exception&) {
+        // ignore cleanup failure
+      }
+    }
     handleClickHouseException(client, e);
   } catch (std::exception& e) {
+    if (actuals_query) {
+      try {
+        client.Execute("SET max_execution_time = 0");
+        client.Execute("SET timeout_overflow_mode = 'break'");
+      } catch (const ch::Exception&) {
+        // ignore cleanup failure
+      }
+    }
     throw std::runtime_error(e.what());
   }
   return std::make_unique<Result>(std::make_unique<BlockHolder>(blocks));
@@ -121,55 +185,13 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 
 void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
-  auto& client = *impl_->client;
-  auto columns = tableColumns(table);
-  std::vector<std::shared_ptr<ch::ColumnString>> column_data(columns.size());
-  for (auto& col : column_data) {
-    col = std::make_shared<ch::ColumnString>();
-  }
   for (const auto& path : source_paths) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-      throw std::runtime_error("Failed to open file: " + path.string());
-    }
-    size_t batch_size = 100000;
-    size_t row_count = 0;
-    std::string line;
-    std::getline(file, line); // Skip header
-    while (std::getline(file, line)) {
-      std::istringstream ss(line);
-      std::string value;
-      size_t i = 0;
-      while (std::getline(ss, value, '|')) {
-        column_data[i]->Append(value);
-        ++i;
-      }
-      ++row_count;
-      if (row_count >= batch_size) {
-        ch::Block block;
-        for (size_t j = 0; j < columns.size(); ++j) {
-          block.AppendColumn(columns[j], column_data[j]);
-          column_data[j] = std::make_shared<ch::ColumnString>();
-        }
-        try {
-          client.Insert(std::string(table), block);
-        } catch (const ch::ServerException& e) {
-          handleClickHouseException(client, e);
-        }
-        row_count = 0;
-      }
-    }
-    if (row_count > 0) {
-      ch::Block block;
-      for (size_t j = 0; j < columns.size(); ++j) {
-        block.AppendColumn(columns[j], column_data[j]);
-      }
-      try {
-        client.Insert(std::string(table), block);
-      } catch (const ch::ServerException& e) {
-        handleClickHouseException(client, e);
-      }
-    }
+    const auto file_name = path.filename().string();
+    const auto statement =
+        "INSERT INTO " + std::string(table) +
+        " SELECT * FROM file('table_data/" + file_name + "', 'CSVWithNames')"
+        " SETTINGS format_csv_delimiter='|'";
+    execute(statement);
   }
 }
 
@@ -184,12 +206,13 @@ void Connection::createSchema(const std::string_view schema_name) {
 
 std::string Connection::translateDialectDdl(const std::string_view ddl) const {
   auto result = std::string(ddl);
-  if (ddl.contains("tpch.lineitem")) {
-    result = std::regex_replace(result, std::regex(";"), "PRIMARY KEY (l_orderkey, l_linenumber);");
-  }
-  if (ddl.contains("tpch.partsupp")) {
-    result = std::regex_replace(result, std::regex(";"), "PRIMARY KEY (ps_partkey, ps_suppkey);");
-  }
+  // Normalise generic type names used by test generators.
+  result = std::regex_replace(result, std::regex(R"(\bSTRING\b)", std::regex::icase), "String");
+  result = std::regex_replace(result, std::regex(R"(\bBIGINT\b)", std::regex::icase), "Int64");
+  result = std::regex_replace(result, std::regex(R"(\bINT\b)", std::regex::icase), "Int32");
+  // Map generic TPCH DDL to a valid ClickHouse table definition.
+  // We use MergeTree with ORDER BY tuple() as a neutral default that works for all tables.
+  result = std::regex_replace(result, std::regex(R"(;\s*$)"), " ENGINE = MergeTree() ORDER BY tuple();");
   return result;
 }
 

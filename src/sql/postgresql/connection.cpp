@@ -15,19 +15,11 @@ class sql::postgresql::Connection::Pimpl {
 public:
   Connection& connection;
   const CredentialPassword credential;
-  PGconn* conn;
+  PGconn* conn = nullptr;
 
   explicit Pimpl(Connection& connection, const CredentialPassword& credential)
     : connection(connection)
     , credential(credential) {
-    std::string connection_string = "host=" + credential.host + " dbname=" + credential.database + " user=" + credential
-                                    .username + " port=" + std::to_string(credential.port);
-    if (credential.password.has_value()) {
-      connection_string += " password=" + credential.password.value();
-    }
-    conn = PQconnectdb(connection_string.c_str());
-
-    check_connection();
   }
 
   void safeClose() {
@@ -38,6 +30,14 @@ public:
   }
 
   void check_connection() {
+    if (conn == nullptr) {
+      std::string connection_string = "host=" + credential.host + " dbname=" + credential.database + " user=" + credential
+                                      .username + " port=" + std::to_string(credential.port);
+      if (credential.password.has_value()) {
+        connection_string += " password=" + credential.password.value();
+      }
+      conn = PQconnectdb(connection_string.c_str());
+    }
     if (conn == nullptr) {
       throw ConnectionClosedException(credential);
     }
@@ -117,7 +117,7 @@ const sql::ConnectionBase::TypeMap& sql::postgresql::Connection::typeMap() const
 }
 
 sql::postgresql::Connection::~Connection() {
-  PQfinish(impl_->conn);
+  impl_->safeClose();
 }
 
 void sql::postgresql::Connection::execute(const std::string_view statement) {

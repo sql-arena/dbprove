@@ -20,5 +20,7 @@ protected:
 
 public:
   std::vector<Column> columns_projected;
+  std::vector<Column> synthetic_columns_projected;
+  bool include_input_columns = true;
 };
 }

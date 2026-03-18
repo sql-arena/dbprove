@@ -3,6 +3,10 @@
 #include <memory>
 #include <magic_enum/magic_enum.hpp>
 
+namespace sql {
+class ConnectionBase;
+}
+
 
 namespace sql::explain {
 /**
@@ -27,6 +31,7 @@ struct Magnitude {
 
 class Plan {
   std::unique_ptr<Node> plan_tree;
+  static void syncSequenceRowCounts(Node& root);
 
 public:
   struct MisEstimation {
@@ -52,6 +57,9 @@ public:
 
   explicit Plan(std::unique_ptr<Node> root_node)
     : plan_tree(std::move(root_node)) {
+    if (plan_tree != nullptr) {
+      syncSequenceRowCounts(*plan_tree);
+    }
   }
 
   /**
@@ -66,13 +74,19 @@ public:
     return *plan_tree;
   }
 
+  [[nodiscard]] std::unique_ptr<Node> releasePlanTree() {
+    return std::move(plan_tree);
+  }
+
   [[nodiscard]] RowCount rowsAggregated() const;
   [[nodiscard]] RowCount rowsSorted() const;
   [[nodiscard]] RowCount rowsJoined() const;
   [[nodiscard]] RowCount rowsHashBuild() const;
+  [[nodiscard]] RowCount rowsSeeked() const;
   [[nodiscard]] RowCount rowsProcessed() const;
   [[nodiscard]] RowCount rowsReturned() const;
   [[nodiscard]] RowCount rowsScanned() const;
+  [[nodiscard]] RowCount rowsDistributed() const;
   [[nodiscard]] RowCount rowsFiltered() const;
   [[nodiscard]] std::vector<MisEstimation> misEstimations() const;
 
@@ -88,5 +102,11 @@ public:
    * @param mode Mode to use for rendering
    */
   void render(std::ostream& out, size_t max_width, RenderMode mode = RenderMode::MUGGLE) const;
+
+  /**
+   * Execute actuals SQL and update node row counts.
+   * This is best-effort: query failures are ignored and remaining nodes continue.
+   */
+  void fixActuals(sql::ConnectionBase& connection);
 };
 }

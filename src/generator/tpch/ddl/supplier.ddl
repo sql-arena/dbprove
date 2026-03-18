@@ -1,10 +1,10 @@
 CREATE TABLE tpch.supplier
 (
-    s_suppkey   INT,
-    s_name      VARCHAR(25),
-    s_address   VARCHAR(40),
-    s_nationkey INT,
-    s_phone     VARCHAR(15),
-    s_acctbal   DECIMAL(15, 2),
-    s_comment   VARCHAR(101)
+    s_suppkey   INT NOT NULL,
+    s_name      VARCHAR(25) NOT NULL,
+    s_address   VARCHAR(40) NOT NULL,
+    s_nationkey INT NOT NULL,
+    s_phone     VARCHAR(15) NOT NULL,
+    s_acctbal   DECIMAL(15, 2) NOT NULL,
+    s_comment   VARCHAR(101) NOT NULL
 );

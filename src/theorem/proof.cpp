@@ -14,11 +14,19 @@ sql::ConnectionFactory& Proof::factory() const {
 }
 
 Proof& Proof::ensure(const std::string& table) {
+  if (state.artifact_mode) {
+    PLOGD << "Artifact mode: skipping ensure('" << table << "')";
+    return *this;
+  }
   state.generator.ensure(table, factory());
   return *this;
 }
 
 Proof& Proof::ensureDataset(const std::string& dataset) {
+  if (state.artifact_mode) {
+    PLOGI << "Artifact mode: skipping dataset ensure/tuning for '" << dataset << "'";
+    return *this;
+  }
   if (!state.ensured_datasets.insert(dataset).second) {
     PLOGD << "Dataset '" << dataset << "' already ensured in this run; skipping ensure, summary, and tuning.";
     return *this;

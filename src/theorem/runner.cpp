@@ -73,7 +73,7 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
 void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   const auto connection = factory_.create();
   for (auto& query : queries) {
-    proof.data.push_back(std::make_unique<DataQuery>(query));
+    DataQuery(query).render(proof);
     auto qs = query.start();
     auto explain = connection->explain(query.textTagged(), proof.theorem.name);
     query.stop(qs);

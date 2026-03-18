@@ -8,9 +8,10 @@ GroupBy::GroupBy(const Strategy strategy, const std::vector<Column>& group_keys,
   , strategy(strategy)
   , group_keys(group_keys)
   , aggregates(aggregates) {
-  for (size_t i = 0; i < aggregates.size(); ++i) {
-    const auto& agg = aggregates[i];
-    aggregateAliases[agg] = "agg_" + std::to_string(i);
+  for (const auto& agg : aggregates) {
+    if (agg.hasAlias()) {
+      aggregateAliases[agg] = agg.alias;
+    }
   }
 }
 
@@ -47,9 +48,17 @@ std::string GroupBy::compactSymbolic() const {
 std::string GroupBy::renderMuggle(size_t max_width) const {
   std::string result;
   if (!aggregates.empty()) {
+    std::vector<Column> aliased_aggregates;
+    aliased_aggregates.reserve(aggregates.size());
+    for (const auto& aggregate : aggregates) {
+      auto rendered = aggregate.name;
+      if (aggregateAliases.contains(aggregate)) {
+        rendered += " AS " + aggregateAliases.at(aggregate);
+      }
+      aliased_aggregates.emplace_back(rendered);
+    }
     result += "AGGREGATE ";
-    max_width -= result.size();
-    result += join(aggregates, ", ", max_width - 1);
+    result += join(aliased_aggregates, ", ");
     if (!group_keys.empty()) {
       result += " ";
     }
@@ -66,21 +75,35 @@ std::string GroupBy::renderMuggle(size_t max_width) const {
 }
 
 std::string GroupBy::treeSQLImpl(const size_t indent) const {
+  const auto& group_keys_for_sql = synthetic_group_keys.empty() ? group_keys : synthetic_group_keys;
+  const auto& aggregates_for_sql = synthetic_aggregates.empty() ? aggregates : synthetic_aggregates;
+  const auto& aliases_for_sql = synthetic_aggregateAliases.empty() ? aggregateAliases : synthetic_aggregateAliases;
   std::string result = newline(indent);
   result += "(SELECT ";
-  result += join(group_keys, ", ");
+  for (size_t i = 0; i < group_keys_for_sql.size(); ++i) {
+    if (i > 0) {
+      result += ", ";
+    }
+    result += group_keys_for_sql[i].name;
+    if (group_keys_for_sql[i].hasAlias()) {
+      result += " AS " + group_keys_for_sql[i].alias;
+    }
+  }
 
-  auto col_count = group_keys.size();
-  // Aggregates must have a name so parent projection nodes can refer to them
-  for (auto [c, a] : aggregateAliases) {
+  auto col_count = group_keys_for_sql.size();
+  for (const auto& aggregate : aggregates_for_sql) {
     result += col_count++ > 0 ? ", " : "";
-    result += c.name + " AS " + a;
+    if (aliases_for_sql.contains(aggregate)) {
+      result += aggregate.name + " AS " + aliases_for_sql.at(aggregate);
+    } else {
+      result += aggregate.name;
+    }
   }
   result += newline(indent);
   result += "FROM " + firstChild()->treeSQL(indent + 1);
   result += newline(indent);
-  if (!group_keys.empty()) {
-    result += "GROUP BY " + join(group_keys, ", ");
+  if (!group_keys_for_sql.empty()) {
+    result += "GROUP BY " + join(group_keys_for_sql, ", ");
   }
   result += newline(indent);
   result += ") AS " + subquerySQLAlias();

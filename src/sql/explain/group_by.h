@@ -31,5 +31,8 @@ public:
   const std::vector<Column> group_keys;
   const std::vector<Column> aggregates;
   std::map<Column, std::string> aggregateAliases;
+  std::vector<Column> synthetic_group_keys;
+  std::vector<Column> synthetic_aggregates;
+  std::map<Column, std::string> synthetic_aggregateAliases;
 };
 }

@@ -161,7 +161,7 @@ struct TreeBreathIterable {
 template <typename T>
 class TreeNode {
   inline static std::atomic<uint64_t> currentId_{0};
-  std::vector<std::unique_ptr<T>> children_;
+  std::vector<std::shared_ptr<T>> children_;
   T* parent_;
   uint64_t id_;
 
@@ -179,6 +179,37 @@ public:
     , id_(currentId_++) {
   }
 
+  TreeNode(const TreeNode&) = delete;
+  TreeNode& operator=(const TreeNode&) = delete;
+
+  TreeNode(TreeNode&& other) noexcept
+    : children_(std::move(other.children_))
+    , parent_(static_cast<T*>(this))
+    , id_(other.id_) {
+    for (auto& child : children_) {
+      if (child) {
+        child->parent_ = static_cast<T*>(this);
+      }
+    }
+    other.parent_ = static_cast<T*>(&other);
+  }
+
+  TreeNode& operator=(TreeNode&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    children_ = std::move(other.children_);
+    parent_ = static_cast<T*>(this);
+    id_ = other.id_;
+    for (auto& child : children_) {
+      if (child) {
+        child->parent_ = static_cast<T*>(this);
+      }
+    }
+    other.parent_ = static_cast<T*>(&other);
+    return *this;
+  }
+
   void remove() {
     if (isRoot()) {
       throw std::runtime_error("Cannot remove a root node");
@@ -188,10 +219,29 @@ public:
 
   void replaceWith(std::unique_ptr<T> new_node) {
     assert(new_node && !isRoot());
+    auto shared_new_node = std::shared_ptr<T>(std::move(new_node));
+    T* p = parent_;
+    shared_new_node->parent_ = p;
+
+    // Transfer children from this node to the new node, preserving existing children of new_node
+    for (auto& c : children_) {
+      c.get()->parent_ = shared_new_node.get();
+      shared_new_node->children_.push_back(std::move(c));
+    }
+    children_.clear();
+    for (auto& c : parent().children_) {
+      if (c.get() == this) {
+        c = std::move(shared_new_node);
+        return;
+      }
+    }
+  }
+
+  void replaceWithShared(std::shared_ptr<T> new_node) {
+    assert(new_node && !isRoot());
     T* p = parent_;
     new_node->parent_ = p;
 
-    // Transfer children from this node to the new node, preserving existing children of new_node
     for (auto& c : children_) {
       c.get()->parent_ = new_node.get();
       new_node->children_.push_back(std::move(c));
@@ -199,13 +249,19 @@ public:
     children_.clear();
     for (auto& c : parent().children_) {
       if (c.get() == this) {
-        c.swap(new_node);
+        c = std::move(new_node);
         return;
       }
     }
   }
 
   void addChild(std::unique_ptr<T> child) {
+    auto shared_child = std::shared_ptr<T>(std::move(child));
+    shared_child->parent_ = static_cast<T*>(this);
+    children_.push_back(std::move(shared_child));
+  }
+
+  void addSharedChild(std::shared_ptr<T> child) {
     child->parent_ = static_cast<T*>(this);
     children_.push_back(std::move(child));
   }
@@ -215,7 +271,7 @@ public:
       if (it->get() == node) {
         size_t index = static_cast<size_t>(it - children_.begin());
         // Steal grandchildren out of the child safely
-        std::vector<std::unique_ptr<T>> grandchildren = std::move(it->get()->children_);
+        std::vector<std::shared_ptr<T>> grandchildren = std::move(it->get()->children_);
         for (auto& g : grandchildren) {
           g->parent_ = static_cast<T*>(this);
         }
@@ -314,7 +370,7 @@ public:
     return children_[index].get();
   }
 
-  std::unique_ptr<T> takeChild(const size_t index) {
+  std::shared_ptr<T> takeChild(const size_t index) {
     if (index >= children_.size()) {
       throw std::out_of_range("Child index out of range");
     }
@@ -336,6 +392,3 @@ public:
     return false;
   }
 };
-
-
-

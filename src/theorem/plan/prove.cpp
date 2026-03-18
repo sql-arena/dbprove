@@ -101,7 +101,7 @@ void tpch_q14(Proof& proof) {
 void tpch_q15(Proof& proof) {
   proof.ensureDataset("tpch");
   const Runner runner(proof.factory());
-  runner.serialExplain(Query(resource::q14_sql), proof);
+  runner.serialExplain(Query(resource::q15_sql), proof);
 }
 
 void tpch_q16(Proof& proof) {

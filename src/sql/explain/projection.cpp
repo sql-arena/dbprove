@@ -18,10 +18,22 @@ std::string Projection::compactSymbolic() const {
 }
 
 std::string Projection::renderMuggle(size_t max_width) const {
-  // TODO: This needs fixing for max width
   std::string result = "PROJECT ";
-  max_width -= result.size();
-  result += join(columns_projected, ", ", max_width - 1);
+  if (max_width > result.size()) {
+    max_width -= result.size();
+  }
+  std::string rendered_columns;
+  for (size_t i = 0; i < columns_projected.size(); ++i) {
+    if (i > 0) {
+      rendered_columns += ", ";
+    }
+    rendered_columns += columns_projected[i].name;
+    if (columns_projected[i].hasAlias()) {
+      rendered_columns += " AS ";
+      rendered_columns += columns_projected[i].alias;
+    }
+  }
+  result += ellipsify(rendered_columns, max_width > 0 ? max_width - 1 : max_width);
   return result;
 }
 
@@ -51,28 +63,16 @@ std::string replace(const std::string& input, const std::string& search, const s
 
 
 std::string Projection::treeSQLImpl(size_t indent) const {
+  const auto& projected = synthetic_columns_projected.empty() ? columns_projected : synthetic_columns_projected;
   std::string result = newline(indent);
-  result += "(SELECT * ";
-  for (const auto c : columns_projected) {
-    result += ", ";
-    const auto descendant_agg = findDescendantAgg(this);
-    if (descendant_agg) {
-      std::string resolved = c.name;
-      for (const auto& [a, v] : descendant_agg->aggregateAliases) {
-        if (resolved.contains(a.name)) {
-          resolved = replace(resolved, a.name, v);
-        }
-      }
-      if (resolved != c.name) {
-        if (c.hasAlias()) {
-          result += resolved + " AS " + c.alias;
-        } else {
-          result += resolved;
-        }
-        continue;
-      }
+  result += "(SELECT ";
+  if (include_input_columns || projected.empty()) {
+    result += "*";
+  }
+  for (const auto c : projected) {
+    if (result.back() != ' ') {
+      result += ", ";
     }
-
     if (!c.hasAlias()) {
       result += c.name;
       continue;

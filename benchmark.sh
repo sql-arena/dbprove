@@ -74,7 +74,26 @@ wait_for_engine() {
                 sleep 5
             done
             ;;
+        clickhouse)
+            until docker exec docker-clickhouse-1 clickhouse-client --user default --password default -q "SELECT 1" >/dev/null 2>&1; do
+                echo "Waiting for ClickHouse to be ready..."
+                sleep 2
+            done
+            ;;
     esac
+}
+
+ensure_clickhouse_26() {
+    local container_name="docker-clickhouse-1"
+    local current_version
+
+    current_version=$(docker exec "$container_name" clickhouse-client --user default --password default -q "SELECT version()" 2>/dev/null | tr -d '\r' || true)
+    if [[ "$current_version" != 26.* ]]; then
+        echo "ClickHouse version '$current_version' detected. Recreating with 26.x image..."
+        docker-compose down
+        docker-compose up -d --remove-orphans --force-recreate --build clickhouse
+        wait_for_engine clickhouse
+    fi
 }
 
 # Check for parameter
@@ -177,13 +196,20 @@ if [ -n "$SERVICE_NAME" ]; then
         # Shut down any existing containers from this project to ensure only one engine runs at a time
         docker-compose down
         # Use --force-recreate to handle any name conflicts and ensure a fresh start
-        docker-compose up -d --remove-orphans --force-recreate "$SERVICE_NAME"
+        if [ "$SERVICE_NAME" = "clickhouse" ]; then
+            docker-compose up -d --remove-orphans --force-recreate --build "$SERVICE_NAME"
+        else
+            docker-compose up -d --remove-orphans --force-recreate "$SERVICE_NAME"
+        fi
     else
         echo "Docker container for $SERVICE_NAME is already running. Using existing container."
         OTHER_SERVICES=$(docker-compose ps --services 2>/dev/null | grep -v "^$SERVICE_NAME$" || true)
         if [ -n "$OTHER_SERVICES" ]; then
             echo "Stopping other services: $OTHER_SERVICES"
             docker-compose stop $OTHER_SERVICES
+        fi
+        if [ "$SERVICE_NAME" = "clickhouse" ]; then
+            ensure_clickhouse_26
         fi
     fi
     # Always wait for the engine to be ready to ensure dbprove can connect

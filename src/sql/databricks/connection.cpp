@@ -8,13 +8,119 @@
 #include <curl/curl.h>
 #include <duckdb/common/exception.hpp>
 #include <nlohmann/json.hpp>
+#include <regex>
 
 #include "plog/Log.h"
+#include <cctype>
 
 
 namespace sql::databricks
 {
     using namespace nlohmann;
+
+    static std::string trimCopy(const std::string_view input)
+    {
+        size_t begin = 0;
+        size_t end = input.size();
+        while (begin < end && std::isspace(static_cast<unsigned char>(input[begin]))) {
+            ++begin;
+        }
+        while (end > begin && std::isspace(static_cast<unsigned char>(input[end - 1]))) {
+            --end;
+        }
+        return std::string(input.substr(begin, end - begin));
+    }
+
+    static std::vector<std::string> splitStatements(const std::string_view sql)
+    {
+        std::vector<std::string> out;
+        std::string current;
+        current.reserve(sql.size());
+
+        bool in_single_quote = false;
+        bool in_double_quote = false;
+        bool in_line_comment = false;
+        bool in_block_comment = false;
+
+        for (size_t i = 0; i < sql.size(); ++i) {
+            const char c = sql[i];
+            const char next = (i + 1 < sql.size()) ? sql[i + 1] : '\0';
+
+            if (in_line_comment) {
+                if (c == '\n') {
+                    in_line_comment = false;
+                    current.push_back(c);
+                }
+                continue;
+            }
+
+            if (in_block_comment) {
+                if (c == '*' && next == '/') {
+                    in_block_comment = false;
+                    ++i;
+                }
+                continue;
+            }
+
+            if (!in_single_quote && !in_double_quote) {
+                if (c == '-' && next == '-') {
+                    in_line_comment = true;
+                    ++i;
+                    continue;
+                }
+                if (c == '/' && next == '*') {
+                    in_block_comment = true;
+                    ++i;
+                    continue;
+                }
+                if (c == ';') {
+                    const auto stmt = trimCopy(current);
+                    if (!stmt.empty()) {
+                        out.push_back(stmt);
+                    }
+                    current.clear();
+                    continue;
+                }
+            }
+
+            if (c == '\'' && !in_double_quote) {
+                if (in_single_quote && next == '\'') {
+                    current.push_back(c);
+                    current.push_back(next);
+                    ++i;
+                    continue;
+                }
+                in_single_quote = !in_single_quote;
+                current.push_back(c);
+                continue;
+            }
+
+            if (c == '"' && !in_single_quote) {
+                in_double_quote = !in_double_quote;
+                current.push_back(c);
+                continue;
+            }
+
+            current.push_back(c);
+        }
+
+        const auto tail = trimCopy(current);
+        if (!tail.empty()) {
+            out.push_back(tail);
+        }
+
+        return out;
+    }
+
+    static std::string normalizeVersionString(const std::string& raw_version)
+    {
+        static const std::regex version_regex(R"((\d+)\.(\d+)\.(\d+))");
+        std::smatch match;
+        if (std::regex_search(raw_version, match, version_regex) && match.size() >= 4) {
+            return match[1].str() + "." + match[2].str() + "." + match[3].str();
+        }
+        return raw_version;
+    }
 
     static size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* s)
     {
@@ -240,8 +346,11 @@ namespace sql::databricks
 
     void Connection::execute(std::string_view statement)
     {
-        auto response = impl_->sendQuery(statement);
-        handleDatabricksResponse(token_, response);
+        const auto statements = splitStatements(statement);
+        for (const auto& stmt : statements) {
+            auto response = impl_->sendQuery(stmt);
+            handleDatabricksResponse(token_, response);
+        }
     }
 
     std::string Connection::execute(std::string_view statement, const std::map<std::string, std::string>& tags)
@@ -312,7 +421,8 @@ namespace sql::databricks
     std::string Connection::version()
     {
         try {
-            return fetchScalar("SELECT version()").asString();
+            const auto raw = fetchScalar("SELECT version()").asString();
+            return normalizeVersionString(raw);
         } catch (...) {
             return "Databricks (version unknown)";
         }

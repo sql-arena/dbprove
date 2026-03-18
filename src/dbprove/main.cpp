@@ -168,22 +168,33 @@ int main(int argc, char** argv) {
   theorem::init();
   auto theorems = theorem::parse(all_theorems);
 
+  const bool artifact_mode = artifacts_path.has_value();
   std::string engine_version = "unknown";
-  try {
-    sql::ConnectionFactory factory(engine, credentials, artifacts_path);
-    auto connection = factory.create();
-    engine_version = connection->version();
-    connection->close();
-  } catch (const std::exception& e) {
-    PLOGW << "Failed to retrieve engine version: " << e.what();
+  if (!artifact_mode) {
+    try {
+      sql::ConnectionFactory factory(engine, credentials, artifacts_path);
+      auto connection = factory.create();
+      engine_version = connection->version();
+      connection->close();
+    } catch (const std::exception& e) {
+      PLOGW << "Failed to retrieve engine version: " << e.what();
+    }
   }
 
-  const auto proof_base_directory = common::make_directory("proof");
-  const auto proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
-  const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
-  std::ofstream proof_output_stream(proof_file);
-  if (!proof_output_stream.is_open()) {
-    throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
+  std::ofstream proof_output_stream;
+  NullStream null_output_stream;
+  std::ostream* csv_output_stream = &null_output_stream;
+  if (!artifact_mode) {
+    const auto proof_base_directory = common::make_directory("proof");
+    const auto proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
+    const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
+    proof_output_stream.open(proof_file);
+    if (!proof_output_stream.is_open()) {
+      throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
+    }
+    csv_output_stream = &proof_output_stream;
+  } else {
+    PLOGI << "Artifact mode enabled: skipping engine version check and proof CSV output";
   }
 
   if (artifacts_path) {
@@ -191,7 +202,7 @@ int main(int argc, char** argv) {
   }
 
   auto input_state = theorem::RunCtx{engine, credentials, generator_state,
-                                     std::cout, proof_output_stream, artifacts_path};
+                                     std::cout, *csv_output_stream, artifacts_path};
 
   theorem::prove(theorems, input_state);
 }

@@ -1,6 +1,8 @@
 #include "explain/plan.h"
 #include "cutoff.h"
 #include "dbprove/common/pretty.h"
+#include <dbprove/sql/connection_base.h>
+#include <plog/Log.h>
 
 #include <cmath>
 #include <iostream>
@@ -8,6 +10,7 @@
 #include <rang.hpp>
 
 #include "join.h"
+#include "scan.h"
 #include "sql_exceptions.h"
 
 
@@ -18,6 +21,16 @@ constexpr auto HORIZONTAL_LINE = "─";
 constexpr auto UNION_LAST_CHILD = "└";
 
 namespace sql::explain {
+void Plan::syncSequenceRowCounts(Node& root) {
+  for (auto& node : root.depth_first()) {
+    if (node.type != NodeType::SEQUENCE || node.childCount() == 0 || node.lastChild() == nullptr) {
+      continue;
+    }
+    node.rows_estimated = node.lastChild()->rows_estimated;
+    node.rows_actual = node.lastChild()->rows_actual;
+  }
+}
+
 RowCount countRowsByNode(Node& node, const NodeType type) {
   double result = 0;
   for (const auto& n : node.depth_first()) {
@@ -130,7 +143,45 @@ RowCount Plan::rowsReturned() const {
 }
 
 RowCount Plan::rowsScanned() const {
-  return countRowsByNode(planTree(), NodeType::SCAN);
+  double result = 0;
+  for (const auto& n : planTree().depth_first()) {
+    if (n.type == NodeType::SCAN_MATERIALISED) {
+      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
+        result += n.rows_actual;
+      }
+      continue;
+    }
+    if (n.type != NodeType::SCAN) {
+      continue;
+    }
+    const auto& scan = reinterpret_cast<const Scan&>(n);
+    if (scan.strategy == Scan::Strategy::SCAN) {
+      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
+        result += n.rows_actual;
+      }
+    }
+  }
+  return cutoff(result);
+}
+
+RowCount Plan::rowsSeeked() const {
+  double result = 0;
+  for (const auto& n : planTree().depth_first()) {
+    if (n.type != NodeType::SCAN) {
+      continue;
+    }
+    const auto& scan = reinterpret_cast<const Scan&>(n);
+    if (scan.strategy == Scan::Strategy::SEEK) {
+      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
+        result += n.rows_actual;
+      }
+    }
+  }
+  return cutoff(result);
+}
+
+RowCount Plan::rowsDistributed() const {
+  return countRowsByNode(planTree(), NodeType::DISTRIBUTE);
 }
 
 RowCount Plan::rowsFiltered() const {
@@ -305,5 +356,29 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     }
     out << std::endl;
   }
+}
+
+void Plan::fixActuals(sql::ConnectionBase& connection) {
+  for (auto& node : planTree().depth_first()) {
+    const auto sql = node.actualsSql();
+    try {
+      node.rows_actual = static_cast<RowCount>(connection.fetchScalar(sql).asInt8());
+    } catch (const std::exception& e) {
+      PLOGE << "fixActuals failed for node id=" << node.id()
+            << " type=" << node.typeName()
+            << " error=" << e.what()
+            << "\nSQL:\n"
+            << sql;
+      continue;
+    } catch (...) {
+      PLOGE << "fixActuals failed for node id=" << node.id()
+            << " type=" << node.typeName()
+            << " error=<unknown>"
+            << "\nSQL:\n"
+            << sql;
+      continue;
+    }
+  }
+  syncSequenceRowCounts(planTree());
 }
 }

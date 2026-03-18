@@ -260,16 +260,30 @@ The ClickHouse transport layer is intentionally small compared with the explain 
 
 These transport details are usually not where explain bugs live, but they are relevant when debugging artifact fetches or actual-row collection.
 
-### Current Known Failure Modes From Full `PLAN` Sweep
+### Projection Source Resolution
 
-Observed while running `dbprove -e clickhouse -T PLAN` against the local ClickHouse 26.1 docker image with artifact capture enabled:
+ClickHouse `Expression` nodes often carry two different names for the same projected value:
 
-- TPC-H Q01 through Q14 canonicalize far enough to render plans.
-- TPC-H Q15 currently aborts during resolved `PlanNode` validation. The failing node is `Filter_39`, where a typed literal constant such as `_CAST('1743799.3741'_Nullable(Decimal(38, 4)), 'Nullable(Decimal(38, 4))'_String)` is still represented as a `COLUMN` leaf owned by the filter node. Validation then rejects it because the leaf resolves to a non-scan node instead of being recognized as a constant literal.
+- a semantic alias that should survive in the canonical plan (`nation`, `supplier_no`, `total_revenue`, `numcust`)
+- an executable child-slot name that parent subtree SQL must actually reference (`a1`, `a2`, `a5`, `l_suppkey`, `nation`)
 
-These are useful anchor cases when debugging:
+The stable rule is:
 
-- Q15: typed-decimal literal normalization before/while validating `Filter` expression trees
+1. Build the initial canonical `Projection` columns from the resolved `ExpressionNode` tree.
+2. If a projected expression is only forwarding a referenced child value, walk its alias/reference lineage and collect candidate source names in order.
+3. After children are lowered, compare those candidates against the immediate child node's executable output names.
+4. Rewrite the projection source to the first candidate that the child really exposes.
+
+This avoids both failure modes that showed up during TPC-H work:
+
+- using semantic aliases that the child does not actually output yet (`supplier_no`, `total_revenue`, `totacctbal`)
+- using positional child-column rewrites that accidentally remap unrelated columns in wide joins/projections
+
+Practical examples:
+
+- Q15: outer revenue projections must read `l_suppkey` / `a5`, even though the semantic aliases are `supplier_no` / `total_revenue`
+- Q22: final top projection must read `a1` / `a2`, not re-expand `COUNT()` / `SUM(c_acctbal)` and not fall back to base `c_acctbal`
+- Q09: grouped `nation` must keep reading child output `nation`, not regress to base `n_name`
 
 Update after fixing the Q04 actuals failure:
 
@@ -311,6 +325,22 @@ Actuals SQL aliasing notes:
 - Alias assignment is constructor-driven in canonical nodes (`Column(..., alias)`), not inferred later in `treeSQLImpl(...)`.
 - For ClickHouse `Aggregating`, aggregate output aliases are passed explicitly from resolved expression metadata (prefer `alias_user`, then stable output/result names).
 - For ClickHouse `Expression` projections, function expressions with stable `alias_user` are emitted as `expr AS alias` so parent nested nodes can reference internal slots (`aN`) safely.
+- For forwarded projections, executable source selection is child-aware: prefer the first lineage-derived candidate that the immediate child actually exposes, rather than the first semantic alias seen in the reference chain.
+
+### Validation Status
+
+As of 2026-03-18, running
+
+```bash
+DBPROVE_ACTUALS_TIMEOUT_SEC=30 dbprove -e clickhouse -T PLAN
+```
+
+against the local ClickHouse 26.1 setup completes the full TPC-H `PLAN` sweep without:
+
+- `PlanNode` validation failures
+- `fixActuals failed`
+- correlated `CommonSubplan` errors
+- zeroed-out actual rowcounts on the previously failing Q15 / Q21 / Q22 paths
 
 ### Known Limitations
 

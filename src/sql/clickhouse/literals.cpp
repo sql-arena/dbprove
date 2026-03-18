@@ -5,6 +5,29 @@
 namespace sql::clickhouse {
 
 std::string stripClickHouseTypedLiterals(std::string input) {
+  auto normalize_quoted_literal_with_trailing_parens = [](const std::string& raw) -> std::string {
+    const auto text = trim_string(raw);
+    if (text.size() < 2 || text.front() != '\'') {
+      return raw;
+    }
+    for (size_t i = 1; i < text.size(); ++i) {
+      if (text[i] != '\'') {
+        continue;
+      }
+      if (i + 1 < text.size() && text[i + 1] == '\'') {
+        ++i;
+        continue;
+      }
+      const auto suffix = trim_string(text.substr(i + 1));
+      if (!suffix.empty() &&
+          std::all_of(suffix.begin(), suffix.end(), [](const char c) { return c == ')'; })) {
+        return text.substr(0, i + 1);
+      }
+      return raw;
+    }
+    return raw;
+  };
+
   auto unwrap_cast_literal = [](const std::string& raw) -> std::string {
     const auto text = trim_string(raw);
     const auto upper = to_upper(text);
@@ -94,6 +117,7 @@ std::string stripClickHouseTypedLiterals(std::string input) {
       input,
       std::regex(R"('((?:[^'\\]|\\.)*)'_[A-Za-z][A-Za-z0-9]*(?:\([^)]*\))?(?=[^A-Za-z0-9_]|$))"),
       "'$1'");
+  input = normalize_quoted_literal_with_trailing_parens(input);
 
   // ClickHouse typed constants may be wrapped in _CAST(<const>, '<Type>').
   input = std::regex_replace(
@@ -120,6 +144,8 @@ std::string stripClickHouseTypedLiterals(std::string input) {
       input,
       std::regex("\\b" + typed_prefix + R"(_'((?:[^'\\]|\\.)*)')"),
       "'$1'");
+
+  input = normalize_quoted_literal_with_trailing_parens(input);
 
   return input;
 }

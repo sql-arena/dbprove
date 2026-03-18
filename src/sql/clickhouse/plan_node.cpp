@@ -1868,7 +1868,11 @@ bool isQuotedLiteralWithOptionalTypeSuffix(const std::string& value) {
     }
     in_single_quote = false;
     const auto suffix = trim_string(value.substr(i + 1));
-    return suffix.empty() || suffix.starts_with("_");
+    return suffix.empty() ||
+           suffix.starts_with("_") ||
+           std::all_of(suffix.begin(), suffix.end(), [](const char c) {
+             return c == ')';
+           });
   }
   return !in_single_quote;
 }

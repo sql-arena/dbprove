@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <sstream>
@@ -33,6 +34,7 @@ using namespace nlohmann;
 
 std::string cleanFilter(std::string filter);
 std::string stripSyntheticTableQualifiers(std::string expression);
+bool expressionNodeTreeContainsExists(const ExpressionNode& root);
 
 struct CorrelatedExistsRelation {
   std::string left_table;
@@ -871,6 +873,286 @@ bool isSyntheticAliasName(const std::string& value) {
   });
 }
 
+std::string normalizeProjectionAliasCandidate(std::string candidate) {
+  candidate = cleanExpression(trim_string(std::move(candidate)));
+  if (candidate.empty() || isSyntheticAliasName(candidate)) {
+    return "";
+  }
+  if (candidate.find('.') != std::string::npos ||
+      candidate.find('(') != std::string::npos ||
+      candidate.find(')') != std::string::npos ||
+      candidate.find(' ') != std::string::npos ||
+      candidate.find(',') != std::string::npos ||
+      candidate.find('-') != std::string::npos) {
+    return "";
+  }
+  if (!(std::isalpha(static_cast<unsigned char>(candidate.front())) ||
+        candidate.front() == '_')) {
+    return "";
+  }
+  for (const auto c : candidate) {
+    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_')) {
+      return "";
+    }
+  }
+  if (candidate.starts_with("__table") || candidate.starts_with("__TABLE")) {
+    return "";
+  }
+  return candidate;
+}
+
+std::string selectProjectionAlias(const ExpressionNode& expression) {
+  for (const auto* candidate_raw : {
+         &expression.output_name,
+         &expression.alias_user,
+         &expression.result_name,
+         &expression.source_name,
+       }) {
+    const auto candidate = normalizeProjectionAliasCandidate(*candidate_raw);
+    if (!candidate.empty()) {
+      return candidate;
+    }
+  }
+  return "";
+}
+
+std::string renderProjectionAliasSourceSql(const ExpressionNode& expression) {
+  std::set<const ExpressionNode*> visited;
+  const ExpressionNode* current = &expression;
+  bool traversed_reference = false;
+  while (current != nullptr && !visited.contains(current)) {
+    visited.insert(current);
+    if (current->kind == ExpressionNode::Kind::REFERENCE) {
+      traversed_reference = true;
+      if (current->references != nullptr) {
+        current = current->references.get();
+        continue;
+      }
+      if (current->childCount() == 1 && current->firstChild() != nullptr) {
+        current = current->firstChild();
+        continue;
+      }
+      if (current->linked_child_output_root != nullptr &&
+          current->linked_child_output_root != current) {
+        current = current->linked_child_output_root;
+        continue;
+      }
+      break;
+    }
+    if (current->kind == ExpressionNode::Kind::ALIAS &&
+        current->childCount() == 1 &&
+        current->firstChild() != nullptr) {
+      current = current->firstChild();
+      continue;
+    }
+    break;
+  }
+
+  if (traversed_reference) {
+    if (current != nullptr &&
+        current->kind == ExpressionNode::Kind::FUNCTION &&
+        !current->alias_user.empty()) {
+      return current->alias_user;
+    }
+    if (current != nullptr &&
+        current->leaf_binding == ExpressionNode::LeafBinding::CHILD_OUTPUT &&
+        !current->linked_child_output_name.empty()) {
+      return stripSyntheticTableQualifiers(current->linked_child_output_name);
+    }
+    if (current != nullptr && !current->source_name.empty()) {
+      return stripSyntheticTableQualifiers(current->source_name);
+    }
+    if (current != nullptr &&
+        !current->output_name.empty() &&
+        !isSyntheticAliasName(current->output_name)) {
+      return stripSyntheticTableQualifiers(current->output_name);
+    }
+  }
+  return expression.renderExecutableSql();
+}
+
+std::vector<std::string> executableOutputNamesForNode(const Node& node) {
+  switch (node.type) {
+    case NodeType::PROJECTION: {
+      const auto* projection = dynamic_cast<const Projection*>(&node);
+      if (projection == nullptr) {
+        return {};
+      }
+      std::vector<std::string> names;
+      if (projection->include_input_columns && projection->childCount() > 0 && projection->firstChild() != nullptr) {
+        names = executableOutputNamesForNode(*projection->firstChild());
+      }
+      const auto& projected = projection->synthetic_columns_projected.empty()
+                                ? projection->columns_projected
+                                : projection->synthetic_columns_projected;
+      for (const auto& column : projected) {
+        names.push_back(column.hasAlias() ? column.alias : column.name);
+      }
+      return names;
+    }
+    case NodeType::GROUP_BY: {
+      const auto* group_by = dynamic_cast<const GroupBy*>(&node);
+      if (group_by == nullptr) {
+        return {};
+      }
+      std::vector<std::string> names;
+      const auto& group_keys = group_by->synthetic_group_keys.empty()
+                                 ? group_by->group_keys
+                                 : group_by->synthetic_group_keys;
+      const auto& aggregates = group_by->synthetic_aggregates.empty()
+                                 ? group_by->aggregates
+                                 : group_by->synthetic_aggregates;
+      const auto& aliases = group_by->synthetic_aggregateAliases.empty()
+                              ? group_by->aggregateAliases
+                              : group_by->synthetic_aggregateAliases;
+      for (const auto& key : group_keys) {
+        names.push_back(key.hasAlias() ? key.alias : key.name);
+      }
+      for (const auto& aggregate : aggregates) {
+        if (aliases.contains(aggregate)) {
+          names.push_back(aliases.at(aggregate));
+        } else if (aggregate.hasAlias()) {
+          names.push_back(aggregate.alias);
+        } else {
+          names.push_back(aggregate.name);
+        }
+      }
+      return names;
+    }
+    case NodeType::FILTER:
+    case NodeType::SORT:
+    case NodeType::LIMIT:
+    case NodeType::MATERIALISE:
+    case NodeType::DISTRIBUTE: {
+      if (node.childCount() > 0 && node.firstChild() != nullptr) {
+        return executableOutputNamesForNode(*node.firstChild());
+      }
+      return {};
+    }
+    case NodeType::JOIN: {
+      std::vector<std::string> names;
+      for (const auto* child : node.children()) {
+        if (child == nullptr) {
+          continue;
+        }
+        auto child_names = executableOutputNamesForNode(*child);
+        names.insert(names.end(), child_names.begin(), child_names.end());
+      }
+      return names;
+    }
+    default:
+      return {};
+  }
+}
+
+std::vector<std::string> projectionSourceCandidatesFromLineage(const ExpressionNode& expression) {
+  std::vector<std::string> candidates;
+  std::set<std::string> seen_upper;
+  std::set<const ExpressionNode*> visited;
+  const ExpressionNode* current = &expression;
+  bool traversed_reference = false;
+
+  auto add_candidate = [&](std::string raw) {
+    raw = normalizeProjectionAliasCandidate(stripSyntheticTableQualifiers(std::move(raw)));
+    if (raw.empty()) {
+      return;
+    }
+    const auto upper = to_upper(raw);
+    if (!seen_upper.insert(upper).second) {
+      return;
+    }
+    candidates.push_back(std::move(raw));
+  };
+
+  while (current != nullptr && !visited.contains(current)) {
+    visited.insert(current);
+    if (current->kind == ExpressionNode::Kind::REFERENCE) {
+      traversed_reference = true;
+    }
+    if (traversed_reference) {
+      add_candidate(current->alias_user);
+      add_candidate(current->linked_child_output_name);
+      add_candidate(current->output_name);
+      add_candidate(current->result_name);
+      add_candidate(current->source_name);
+    }
+    if (current->kind == ExpressionNode::Kind::REFERENCE) {
+      if (current->references != nullptr) {
+        current = current->references.get();
+        continue;
+      }
+      if (current->childCount() == 1 && current->firstChild() != nullptr) {
+        current = current->firstChild();
+        continue;
+      }
+      if (current->linked_child_output_root != nullptr &&
+          current->linked_child_output_root != current) {
+        current = current->linked_child_output_root;
+        continue;
+      }
+      break;
+    }
+    if (current->kind == ExpressionNode::Kind::ALIAS &&
+        current->childCount() == 1 &&
+        current->firstChild() != nullptr) {
+      current = current->firstChild();
+      continue;
+    }
+    break;
+  }
+  return candidates;
+}
+
+void retargetProjectionColumnsToChildLineage(Projection& projection,
+                                             const PlanNode& plan_node) {
+  if (projection.childCount() == 0 || projection.firstChild() == nullptr) {
+    return;
+  }
+  const auto child_output_names = executableOutputNamesForNode(*projection.firstChild());
+  if (child_output_names.empty()) {
+    return;
+  }
+  std::set<std::string> child_output_names_upper;
+  for (const auto& name : child_output_names) {
+    child_output_names_upper.insert(to_upper(name));
+  }
+
+  std::vector<Column> rewritten;
+  rewritten.reserve(projection.columns_projected.size());
+  size_t projected_index = 0;
+  for (const auto& expr : plan_node.output_expressions) {
+    if (expressionNodeTreeContainsExists(expr)) {
+      continue;
+    }
+    if (projected_index >= projection.columns_projected.size()) {
+      break;
+    }
+    const auto alias = selectProjectionAlias(expr);
+    std::optional<Column> replacement;
+    for (const auto& candidate : projectionSourceCandidatesFromLineage(expr)) {
+      if (!child_output_names_upper.contains(to_upper(candidate))) {
+        continue;
+      }
+      if (!alias.empty() && to_upper(candidate) != to_upper(alias)) {
+        replacement.emplace(candidate, alias);
+      } else {
+        replacement.emplace(candidate);
+      }
+      break;
+    }
+    if (replacement.has_value()) {
+      rewritten.push_back(std::move(replacement.value()));
+    } else {
+      rewritten.push_back(projection.columns_projected[projected_index]);
+    }
+    ++projected_index;
+  }
+
+  if (rewritten.size() == projection.columns_projected.size()) {
+    projection.columns_projected = std::move(rewritten);
+  }
+}
+
 bool expressionNodeTreeContainsExists(const ExpressionNode& root) {
   std::set<const ExpressionNode*> visited;
   std::vector<const ExpressionNode*> stack;
@@ -1100,31 +1382,10 @@ std::unique_ptr<Node> createExplainNodeFromResolvedPlanNode(
       if (expressionNodeTreeContainsExists(projection_expression)) {
         continue;
       }
-      std::string rendered_expression;
-      std::string rendered_alias;
-
-      const bool alias_projection = isExplicitNonSyntheticAliasProjection(projection_expression);
-      if (alias_projection) {
-        rendered_alias = cleanExpression(
-            !projection_expression.output_name.empty() ? projection_expression.output_name
-            : !projection_expression.result_name.empty() ? projection_expression.result_name
-                                                         : projection_expression.source_name);
-        if (projection_expression.childCount() == 1 && projection_expression.firstChild() != nullptr) {
-          rendered_expression = projection_expression.firstChild()->renderSql();
-        } else {
-          rendered_expression = projection_expression.renderSql();
-        }
-      } else {
-        rendered_expression = projection_expression.renderSql();
-        if (!projection_expression.alias_user.empty()) {
-          const auto fallback_alias = cleanExpression(projection_expression.alias_user);
-          if (!fallback_alias.empty() &&
-              !expressionNodeTreeContainsExists(projection_expression) &&
-              !isSyntheticAliasName(fallback_alias) &&
-              to_upper(cleanExpression(rendered_expression)) != to_upper(fallback_alias)) {
-            rendered_alias = fallback_alias;
-          }
-        }
+      const auto rendered_alias = selectProjectionAlias(projection_expression);
+      auto rendered_expression = projection_expression.renderExecutableSql();
+      if (!rendered_alias.empty()) {
+        rendered_expression = renderProjectionAliasSourceSql(projection_expression);
       }
       if (rendered_expression.empty()) {
         throw ExplainException("Failed to render projection expression for node '" + ch_node_id + "'");
@@ -1392,6 +1653,12 @@ std::unique_ptr<Node> buildExplainNode(PlanNode& plan_node, ExplainCtx& ctx,
       if (child_node) {
         node->addChild(std::move(child_node));
       }
+    }
+  }
+
+  if (node->type == NodeType::PROJECTION) {
+    if (auto* projection = dynamic_cast<Projection*>(node.get()); projection != nullptr) {
+      retargetProjectionColumnsToChildLineage(*projection, *active_plan);
     }
   }
 

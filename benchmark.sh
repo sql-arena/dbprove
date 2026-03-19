@@ -24,7 +24,6 @@ SUPPORTED_ENGINES=(
     "utopia"
 )
 
-VERBOSE_FLAG=""
 RESET_FLAG=false
 ENGINE_PARAM=""
 GCS_ACCESS_VERIFIED=false
@@ -32,7 +31,7 @@ DATABRICKS_ACCESS_VERIFIED=false
 
 usage() {
     echo "Usage: $0 [-v] [-r] -e <engine|ALL>"
-    echo "  -v: Enable verbose output (passed to dbprove)"
+    echo "  -v: Accepted for compatibility, but benchmark.sh no longer enables dbprove DEBUG logging"
     echo "  -r: Force restart of Docker-backed engines"
     echo "  -e: Engine to benchmark, or ALL to run every supported engine"
     echo "Supported dbprove engines: ${SUPPORTED_ENGINES[*]}"
@@ -410,9 +409,6 @@ run_engine() {
     echo "Running dbprove for $engine..."
     cd "$RUN_DIR"
     local dbprove_args=("-T" "PLAN" "-e" "$engine")
-    if [ -n "$VERBOSE_FLAG" ]; then
-        dbprove_args=("$VERBOSE_FLAG" "${dbprove_args[@]}")
-    fi
     "$DBPROVE_PATH" "${dbprove_args[@]}"
 
     echo "Benchmark completed for $engine."
@@ -423,7 +419,7 @@ source_env_if_present
 while getopts "vre:" opt; do
     case "$opt" in
         v)
-            VERBOSE_FLAG="-v"
+            echo "Note: benchmark.sh no longer forwards -v to dbprove; continuing with INFO-level output."
             ;;
         r)
             RESET_FLAG=true

@@ -37,6 +37,11 @@ bool isCastFn(const std::string& fn_name) {
   return upper == "_CAST" || upper == "CAST";
 }
 
+bool isNoopFn(const std::string& fn_name) {
+  const auto upper = to_upper(trim_string(fn_name));
+  return upper == "TONULLABLE";
+}
+
 bool isLikeFn(const std::string& fn_name) {
   const auto upper = to_upper(trim_string(fn_name));
   return upper == "LIKE" || upper == "ILIKE";
@@ -255,7 +260,7 @@ std::string renderExpressionNodeSqlQualifiedInternal(
     if (fn_name.empty()) {
       throw std::runtime_error("Cannot render FUNCTION ExpressionNode without function name");
     }
-    if (isCastFn(fn_name) && !args.empty()) {
+    if ((isCastFn(fn_name) || isNoopFn(fn_name)) && !args.empty()) {
       return args.front();
     }
     if (isLikeFn(fn_name)) {
@@ -334,7 +339,7 @@ std::string renderExpressionNodeSqlInternal(const ExpressionNode& node) {
     if (fn_name.empty()) {
       throw std::runtime_error("Cannot render FUNCTION ExpressionNode without function name");
     }
-    if (isCastFn(fn_name) && !args.empty()) {
+    if ((isCastFn(fn_name) || isNoopFn(fn_name)) && !args.empty()) {
       return args.front();
     }
     if (isLikeFn(fn_name)) {
@@ -466,7 +471,7 @@ std::string renderExpressionNodeUserInternal(const ExpressionNode& node) {
       args.push_back(child_rendered);
     }
     rendered += ")";
-    if (isCastFn(fn_name) && !args.empty()) {
+    if ((isCastFn(fn_name) || isNoopFn(fn_name)) && !args.empty()) {
       return args.front();
     }
     if (isLikeFn(fn_name)) {

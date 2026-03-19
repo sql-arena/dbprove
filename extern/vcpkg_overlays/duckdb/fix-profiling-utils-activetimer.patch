@@ -1,0 +1,49 @@
+diff --git a/src/include/duckdb/main/profiling_utils.hpp b/src/include/duckdb/main/profiling_utils.hpp
+index 1a771e2..9d0d8ce 100644
+--- a/src/include/duckdb/main/profiling_utils.hpp
++++ b/src/include/duckdb/main/profiling_utils.hpp
+@@ -27,9 +27,7 @@ namespace duckdb {
+ // Top level query metrics
+ struct QueryMetrics {
+ public:
+-    QueryMetrics() {
+-        Reset();
+-    }
++	QueryMetrics();
+ 
+ 	ProfilingInfo query_global_info;
+ 
+@@ -49,14 +47,7 @@ public:
+         return static_cast<double>(active_metrics[GetMetricsIndex(metric)]) / 1e9;
+     }
+ 
+-    void Reset() {
+-        for(idx_t i = 0; i < ACTIVELY_TRACKED_METRICS; i++) {
+-            active_metrics[i] = 0;
+-        }
+-
+-        latency_timer.reset();
+-        query_name = "";
+-    }
++	void Reset();
+ 
+     void Merge(const QueryMetrics &other) {
+         for(idx_t i = 0; i < ACTIVELY_TRACKED_METRICS; i++) {
+@@ -156,4 +147,17 @@ private:
+ 	bool is_active;
+ };
+ 
++inline QueryMetrics::QueryMetrics() {
++	Reset();
++}
++
++inline void QueryMetrics::Reset() {
++	for(idx_t i = 0; i < ACTIVELY_TRACKED_METRICS; i++) {
++		active_metrics[i] = 0;
++	}
++
++	latency_timer.reset();
++	query_name = "";
++}
++
+ }

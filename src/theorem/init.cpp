@@ -20,11 +20,12 @@ void init() {
   test::init();
 }
 
-Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func) {
+Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
+                    const std::optional<sql::RowCount> expected_row_count) {
   if (theorem_map_.contains(name)) {
     throw std::runtime_error("Theorem " + name + " already exists");
   }
-  theorem_map_.emplace(name, std::make_unique<Theorem>(name, description, func));
+  theorem_map_.emplace(name, std::make_unique<Theorem>(name, description, func, expected_row_count));
   return *theorem_map_.at(name).get();
 }
 

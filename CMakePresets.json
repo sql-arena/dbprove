@@ -13,10 +13,12 @@
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
         "VCPKG_MANIFEST_DIR": "${sourceDir}",
         "VCPKG_MANIFEST_MODE": "ON",
-        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed"
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays"
       },
       "environment": {
-        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg"
+        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays"
       }
     },
     {

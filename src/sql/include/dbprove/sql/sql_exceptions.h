@@ -4,6 +4,7 @@
 #include <string>
 
 #include "credential.h"
+#include "sql_type.h"
 
 namespace sql {
 /**
@@ -221,6 +222,16 @@ class InvalidRowsException final : public Exception {
 public:
   explicit InvalidRowsException(const std::string& error, const std::string_view statement)
     : Exception(SqlState::INVALID_CURSOR_24, error, statement) {
+  }
+};
+
+class UnexpectedRowCountException final : public Exception {
+public:
+  explicit UnexpectedRowCountException(const RowCount expected, const RowCount actual, const std::string_view statement)
+    : Exception(SqlState::INVALID_CURSOR_24,
+                "Expected query to return " + std::to_string(expected) + " rows, but it returned "
+                    + std::to_string(actual),
+                statement) {
   }
 };
 

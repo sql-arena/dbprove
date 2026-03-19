@@ -6,6 +6,7 @@
 #include "join.h"
 #include "limit.h"
 #include "scan.h"
+#include "scan_materialised.h"
 #include "select.h"
 #include "sort.h"
 #include "union.h"
@@ -215,6 +216,22 @@ std::unique_ptr<Node> createNodeFromPgType(const json& node_json, ExplainCtx& ct
       return nullptr;
     }
     node = std::make_unique<Scan>(relation_name, Scan::Strategy::SEEK, alias);
+  } else if (pg_node_type == "CTE Scan" || pg_node_type == "WorkTable Scan") {
+    std::string cte_name;
+    if (node_json.contains("CTE Name")) {
+      cte_name = node_json["CTE Name"].get<std::string>();
+    } else if (node_json.contains("Alias")) {
+      cte_name = node_json["Alias"].get<std::string>();
+    }
+
+    if (node_json.contains("Alias")) {
+      const auto alias = node_json["Alias"].get<std::string>();
+      if (!cte_name.empty() && alias != cte_name) {
+        ctx.aliases_.insert(alias);
+      }
+    }
+
+    node = std::make_unique<ScanMaterialised>(-1, "", cte_name);
   } else if (pg_node_type == "Hash Join" || pg_node_type == "Nested Loop" || pg_node_type == "Merge Join") {
     std::string join_condition;
 

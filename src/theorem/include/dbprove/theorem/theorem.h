@@ -5,8 +5,10 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <optional>
 
 #include "dbprove/sql/connection_factory.h"
+#include "dbprove/sql/sql_type.h"
 #include <magic_enum/magic_enum.hpp>
 
 namespace dbprove::theorem {
@@ -146,6 +148,7 @@ public:
   Proof& ensureSchema(const std::string& schema);
   void render();
   [[nodiscard]] std::ostream& console() const;
+  [[nodiscard]] bool artifactMode() const;
   /**
    * Write data into the csv stream for later merging and processing
    * @param key Unique name (in the context of the  theorem) of the measurement
@@ -167,9 +170,11 @@ class Theorem {
   std::string categories_string_;
 
 public:
-  Theorem(std::string theorem, std::string description, const TheoremFunction& func)
+  Theorem(std::string theorem, std::string description, const TheoremFunction& func,
+          std::optional<sql::RowCount> expected_row_count = std::nullopt)
     : name(std::move(theorem))
     , description(std::move(description))
+    , expected_row_count_(expected_row_count)
     , func(func) {
   }
 
@@ -197,9 +202,16 @@ public:
     return categories_string_;
   }
 
+  [[nodiscard]] const std::optional<sql::RowCount>& expectedRowCount() const {
+    return expected_row_count_;
+  }
+
   std::string name;
   std::string description;
   TheoremFunction func;
+
+private:
+  std::optional<sql::RowCount> expected_row_count_;
 };
 
 

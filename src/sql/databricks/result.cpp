@@ -9,23 +9,74 @@
 #include <nlohmann/json.hpp>
 
 #include "plog/Log.h"
+#include <algorithm>
+#include <cctype>
 
 namespace sql::databricks
 {
     using namespace nlohmann;
 
+    bool starts_with(const std::string& value, const std::string_view prefix)
+    {
+        return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+    }
+
+    std::string normalize_databricks_type(std::string type_name)
+    {
+        std::transform(type_name.begin(), type_name.end(), type_name.begin(), [](const unsigned char c) {
+            return static_cast<char>(std::toupper(c));
+        });
+        return type_name;
+    }
 
     SqlTypeKind map_databricks_type(const std::string& dbrick_type)
     {
-        static std::map<std::string, SqlTypeKind> m = {
-            {"INT", SqlTypeKind::INT},
-            {"STRING", SqlTypeKind::STRING},
-            {"LONG", SqlTypeKind::BIGINT},
-        };
-        if (!m.contains(dbrick_type)) {
-            throw ProtocolException("Do not know how to map Databricks type: " + dbrick_type);
+        const auto normalized = normalize_databricks_type(dbrick_type);
+
+        if (normalized == "SHORT" || normalized == "BYTE" || normalized == "TINYINT" || normalized == "SMALLINT") {
+            return SqlTypeKind::SMALLINT;
         }
-        return m[dbrick_type];
+        if (normalized == "INT" || normalized == "INTEGER") {
+            return SqlTypeKind::INT;
+        }
+        if (normalized == "LONG" || normalized == "BIGINT") {
+            return SqlTypeKind::BIGINT;
+        }
+        if (normalized == "FLOAT" || normalized == "REAL") {
+            return SqlTypeKind::REAL;
+        }
+        if (normalized == "DOUBLE") {
+            return SqlTypeKind::DOUBLE;
+        }
+        if (starts_with(normalized, "DECIMAL")) {
+            return SqlTypeKind::DECIMAL;
+        }
+        if (normalized == "DATE") {
+            return SqlTypeKind::DATE;
+        }
+        if (normalized == "TIME") {
+            return SqlTypeKind::TIME;
+        }
+        if (starts_with(normalized, "TIMESTAMP") || normalized == "DATETIME") {
+            return SqlTypeKind::DATETIME;
+        }
+        if (normalized == "VOID" || normalized == "NULL") {
+            return SqlTypeKind::SQL_NULL;
+        }
+        if (normalized == "STRING" ||
+            starts_with(normalized, "VARCHAR") ||
+            starts_with(normalized, "CHAR") ||
+            normalized == "BOOLEAN" ||
+            normalized == "BINARY" ||
+            starts_with(normalized, "ARRAY") ||
+            starts_with(normalized, "MAP") ||
+            starts_with(normalized, "STRUCT") ||
+            starts_with(normalized, "VARIANT") ||
+            starts_with(normalized, "INTERVAL")) {
+            return SqlTypeKind::STRING;
+        }
+
+        throw ProtocolException("Do not know how to map Databricks type: " + dbrick_type);
     }
 
     void Result::parseRows(const json& result)
@@ -43,6 +94,10 @@ namespace sql::databricks
             }
 
             for (size_t colIdx = 0; colIdx < row.size(); ++colIdx) {
+                if (row[colIdx].is_null()) {
+                    currentRow.push_back(SqlVariant());
+                    continue;
+                }
                 switch (columnTypes_[colIdx]) {
                 case SqlTypeKind::SMALLINT:
                     currentRow.push_back(SqlVariant(static_cast<int16_t>(std::stoi(row[colIdx].get<std::string>()))));
@@ -60,9 +115,11 @@ namespace sql::databricks
                     currentRow.push_back(SqlVariant(static_cast<double>(std::stod(row[colIdx].get<std::string>()))));
                     break;
                 case SqlTypeKind::DECIMAL:
-                    // For DECIMAL type, assuming you store as string for precision arithmetic
-                    currentRow.push_back(SqlVariant(row[colIdx].get<std::string>()));
+                    currentRow.push_back(SqlVariant(SqlDecimal(row[colIdx].get<std::string>())));
                     break;
+                case SqlTypeKind::DATE:
+                case SqlTypeKind::TIME:
+                case SqlTypeKind::DATETIME:
                 case SqlTypeKind::STRING:
                     currentRow.push_back(SqlVariant(row[colIdx].get<std::string>()));
                     break;

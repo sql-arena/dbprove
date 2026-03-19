@@ -75,3 +75,14 @@ TEST_CASE("Clean Expression Keeps Parentheses For Partial Count", "[expression]"
   CHECK(cleaned.find("PARTIAL COUNT(*)") != std::string::npos);
   CHECK(cleaned.find("COUNT *") == std::string::npos);
 }
+
+TEST_CASE("Clean Expression Handles DuckDB Scalar Subquery Error Wrapper", "[expression]") {
+  const std::string expression =
+    R"(CASE  WHEN ((#1 > 1)) THEN ("error"('More than one row returned by a subquery used as an expression - scalar subqueries can only return a single row. Use "SET scalar_subquery_error_on_multiple_rows=false" to revert to previous behavior of returning a random row.')) ELSE #0 END)";
+  const auto cleaned = sql::cleanExpression(expression);
+
+  CHECK(hasBalancedParentheses(cleaned));
+  CHECK(cleaned.find("CASE WHEN") != std::string::npos);
+  CHECK(cleaned.find("\"error\"") != std::string::npos);
+  CHECK(cleaned.find("scalar_subquery_error_on_multiple_rows=false") != std::string::npos);
+}

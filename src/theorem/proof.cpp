@@ -38,6 +38,13 @@ Proof& Proof::ensureDataset(const std::string& dataset) {
   const auto project_root = dbprove::common::get_project_root();
   const auto tune_file_path = project_root / "src" / "sql" / state.engine.internalName() / "tune" / (dataset + ".sql");
   if (std::filesystem::exists(tune_file_path)) {
+    auto conn = state.factory.create();
+    if (conn->shouldSkipDatasetTuning(dataset)) {
+      PLOGI << "Skipping dataset tuning for '" << dataset
+            << "' because the engine reported the dataset is already tuned.";
+      return *this;
+    }
+
     PLOGI << "Tuning dataset '" << dataset << "' with " << tune_file_path.string();
     std::ifstream ifs(tune_file_path);
     if (!ifs.is_open()) {
@@ -46,7 +53,6 @@ Proof& Proof::ensureDataset(const std::string& dataset) {
     }
 
     const std::string sql((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    auto conn = state.factory.create();
     conn->execute(sql);
     PLOGI << "Dataset tuning complete for '" << dataset << "'";
   }
@@ -71,6 +77,10 @@ void Proof::render() {
 
 std::ostream& Proof::console() const {
   return state.console;
+}
+
+bool Proof::artifactMode() const {
+  return state.artifact_mode;
 }
 
 

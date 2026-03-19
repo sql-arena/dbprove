@@ -83,6 +83,12 @@ public:
   virtual void analyse(std::string_view table_name);
 
   /**
+   * Allow an engine to skip dataset-specific tuning when it can determine that
+   * the expected metadata is already in place.
+   */
+  virtual bool shouldSkipDatasetTuning(std::string_view dataset);
+
+  /**
    * Fetch the row count from a table in the most effective way available to the database.
    * @param table Table to count rows for.
    * @return The count of rows if the table exists, `nullopt` if the table does not exist.

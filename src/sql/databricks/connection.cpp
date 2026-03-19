@@ -9,14 +9,73 @@
 #include <duckdb/common/exception.hpp>
 #include <nlohmann/json.hpp>
 #include <regex>
+#include <array>
+#include <sstream>
 
 #include "plog/Log.h"
 #include <cctype>
+#include <chrono>
+#include <thread>
 
 
 namespace sql::databricks
 {
     using namespace nlohmann;
+
+    constexpr int kStatementWaitTimeoutSeconds = 50;
+    constexpr unsigned kHistoryLookupRetries = 15;
+    constexpr auto kHistoryLookupDelay = std::chrono::seconds(2);
+    constexpr size_t kDatabricksLogPayloadLimit = 512;
+    constexpr std::array<std::string_view, 18> kDatabricksTpchConstraintNames = {
+        "fk_customer_nation",
+        "fk_lineitem_orders",
+        "fk_lineitem_part",
+        "fk_lineitem_partsupp",
+        "fk_lineitem_supplier",
+        "fk_nation_region",
+        "fk_orders_customer",
+        "fk_partsupp_part",
+        "fk_partsupp_supplier",
+        "fk_supplier_nation",
+        "pk_customer",
+        "pk_lineitem",
+        "pk_nation",
+        "pk_orders",
+        "pk_part",
+        "pk_partsupp",
+        "pk_region",
+        "pk_supplier",
+    };
+
+    static std::string truncateForLog(const std::string& text, const size_t limit = kDatabricksLogPayloadLimit)
+    {
+        if (text.size() <= limit) {
+            return text;
+        }
+        return text.substr(0, limit) + "... [truncated " + std::to_string(text.size() - limit) + " chars]";
+    }
+
+    static std::string formatJsonForLog(const json& payload, const size_t limit = kDatabricksLogPayloadLimit)
+    {
+        return truncateForLog(payload.dump(), limit);
+    }
+
+    static std::string databricksTpchConstraintCheckSql()
+    {
+        std::ostringstream sql;
+        sql << "SELECT COUNT(DISTINCT constraint_name) AS c "
+               "FROM information_schema.table_constraints "
+               "WHERE table_schema = 'tpch' "
+               "AND constraint_name IN (";
+        for (size_t i = 0; i < kDatabricksTpchConstraintNames.size(); ++i) {
+            if (i > 0) {
+                sql << ", ";
+            }
+            sql << "'" << kDatabricksTpchConstraintNames[i] << "'";
+        }
+        sql << ")";
+        return sql.str();
+    }
 
     static std::string trimCopy(const std::string_view input)
     {
@@ -140,7 +199,7 @@ namespace sql::databricks
      */
     static void handleDatabricksResponse(const CredentialAccessToken& credential, json& response)
     {
-        PLOGD << "Handling Databricks response: " << response.dump();
+        PLOGD << "Handling Databricks response: " << formatJsonForLog(response);
         if (response.contains("status")) {
             const auto& status = response["status"];
             if (status.contains("state")) {
@@ -242,7 +301,7 @@ namespace sql::databricks
             json payload = {
                 {"statement", std::string(query)},
                 {"warehouse_id", warehouse_id_},
-                {"wait_timeout", "30s"},
+                {"wait_timeout", std::to_string(kStatementWaitTimeoutSeconds) + "s"},
                 {"disposition", "INLINE"}
             };
 
@@ -418,6 +477,21 @@ namespace sql::databricks
         execute("ANALYZE TABLE " + std::string(table_name) + " COMPUTE STATISTICS");
     }
 
+    bool Connection::shouldSkipDatasetTuning(std::string_view dataset)
+    {
+        if (dataset != "tpch") {
+            return false;
+        }
+
+        try {
+            const auto present_constraints = fetchScalar(databricksTpchConstraintCheckSql()).asInt8();
+            return present_constraints == static_cast<int64_t>(kDatabricksTpchConstraintNames.size());
+        } catch (const std::exception& e) {
+            PLOGD << "Failed to check existing Databricks TPCH constraints before tuning: " << e.what();
+            return false;
+        }
+    }
+
     std::string Connection::version()
     {
         try {
@@ -430,10 +504,11 @@ namespace sql::databricks
 
     json Connection::queryHistory(const std::string& statement_id) const
     {
-        unsigned remaining_retry = 3;
+        unsigned remaining_retry = kHistoryLookupRetries;
         while (remaining_retry-- > 0) {
-            PLOGI << "Collecting history query history API - remaining retries: " << remaining_retry;
-            sleep(1);
+            PLOGI << "Collecting query from Databricks history API for statement_id=" << statement_id
+                  << " remaining retries: " << remaining_retry;
+            std::this_thread::sleep_for(kHistoryLookupDelay);
             auto response =  impl_->queryHistory(statement_id);
 
             if (response["res"].size() == 0) {
@@ -446,6 +521,7 @@ namespace sql::databricks
             }
             return response;
         }
-        throw std::runtime_error("Could not find statement_id" + statement_id + " in history API.");
+        throw std::runtime_error("Could not find statement_id " + statement_id + " in history API after " +
+                                 std::to_string(kHistoryLookupRetries) + " retries.");
     }
 }

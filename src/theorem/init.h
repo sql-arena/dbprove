@@ -2,6 +2,7 @@
 #include "theorem.h"
 #include <map>
 #include <functional>
+#include <optional>
 
 namespace dbprove::theorem {
 using TheoremMap = std::map<std::string, std::unique_ptr<Theorem>>;
@@ -11,7 +12,8 @@ using CategorySet = std::set<Category>;
 /**
  * New theorems must call this to register themselves
  */
-Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func);
+Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
+                    std::optional<sql::RowCount> expected_row_count = std::nullopt);
 /**
  * Theorems belong to categories.
  * That allows us to easily group up and report on things depending on where in the stack they belong

@@ -1,6 +1,8 @@
 #include "connection.h"
 #include <dbprove/sql/sql.h>
 #include <explain_nodes.h>
+#include <materialise.h>
+#include <sequence.h>
 
 #include <nlohmann/json.hpp>
 #include <duckdb.hpp>
@@ -20,23 +22,99 @@ struct ExplainContext {
    * Delimiters are expression used to materialize scans
    */
   std::map<size_t, std::string> delimiter_expressions;
+  std::map<size_t, std::string> cte_names;
   std::stack<Node*> propagate_estimate;
   std::stack<Node*> propagate_actual;
 };
 
+bool hasBalancedExpressionFragments(const std::string& expression) {
+  int paren_depth = 0;
+  bool in_single_quote = false;
+  for (size_t i = 0; i < expression.size(); ++i) {
+    const char c = expression[i];
+    if (in_single_quote) {
+      if (c == '\'' && i + 1 < expression.size() && expression[i + 1] == '\'') {
+        ++i;
+        continue;
+      }
+      if (c == '\'') {
+        in_single_quote = false;
+      }
+      continue;
+    }
+    if (c == '\'') {
+      in_single_quote = true;
+      continue;
+    }
+    if (c == '(') {
+      ++paren_depth;
+    } else if (c == ')') {
+      --paren_depth;
+    }
+  }
+  return !in_single_quote && paren_depth == 0;
+}
+
+std::vector<std::string> parseExpressionList(const json& value) {
+  if (value.is_string()) {
+    return {value.get<std::string>()};
+  }
+  if (!value.is_array()) {
+    throw ExplainException("Expected string or array of expression fragments: " + value.dump());
+  }
+
+  std::vector<std::string> expressions;
+  std::string current_expression;
+  for (const auto& item : value) {
+    const auto fragment = item.get<std::string>();
+    if (!current_expression.empty()) {
+      current_expression += " ";
+    }
+    current_expression += fragment;
+    if (hasBalancedExpressionFragments(current_expression)) {
+      expressions.push_back(current_expression);
+      current_expression.clear();
+    }
+  }
+  if (!current_expression.empty()) {
+    expressions.push_back(current_expression);
+  }
+  return expressions;
+}
+
+bool isRawProjectionReference(const std::string& expression) {
+  return std::regex_match(expression, std::regex("#[0-9]+"));
+}
+
+bool isInternalProjectionExpression(const std::string& expression) {
+  return std::regex_match(expression, std::regex("__internal_.*"));
+}
+
+bool isSyntheticNullFillProjection(const std::vector<std::string>& projections) {
+  bool saw_null = false;
+  bool saw_raw_or_internal = false;
+  for (const auto& projection : projections) {
+    if (projection == "NULL") {
+      saw_null = true;
+      continue;
+    }
+    if (isRawProjectionReference(projection) || isInternalProjectionExpression(projection)) {
+      saw_raw_or_internal = true;
+      continue;
+    }
+    return false;
+  }
+  return saw_null && saw_raw_or_internal;
+}
+
 std::string parseFilter(json filter) {
-  if (filter.is_string()) {
-    return filter.get<std::string>();
-  }
-  if (!filter.is_array()) {
-    throw ExplainException("Cannot parse filter: " + filter.dump());
-  }
+  const auto filters = parseExpressionList(filter);
   std::string result;
-  for (size_t i = 0; i < filter.size(); ++i) {
+  for (size_t i = 0; i < filters.size(); ++i) {
     if (i > 0) {
       result += " AND ";
     }
-    result += filter[i].get<std::string>();
+    result += filters[i];
   }
   return result;
 }
@@ -57,13 +135,7 @@ std::vector<Column> parseOrderColumns(const json& node_json) {
   std::unique_ptr<Sort> sortNode = nullptr;
 
   if (extra_info.contains("Order By")) {
-    if (extra_info["Order By"].is_array()) {
-      for (auto& sort_key : extra_info["Order By"]) {
-        auto [column, sort_order] = parseSortString(sort_key.get<std::string>());
-        sort_keys.push_back(Column(column, sort_order));
-      }
-    } else {
-      const auto sort_key = extra_info["Order By"].get<std::string>();
+    for (const auto& sort_key : parseExpressionList(extra_info["Order By"])) {
       auto [column, sort_order] = parseSortString(sort_key);
       sort_keys.push_back(Column(column, sort_order));
     }
@@ -72,21 +144,59 @@ std::vector<Column> parseOrderColumns(const json& node_json) {
 }
 
 std::string extractConditions(const json& extra_info) {
-  if (!extra_info["Conditions"].is_array()) {
-    return extra_info["Conditions"].get<std::string>();
-  }
-
+  const auto conditions = parseExpressionList(extra_info["Conditions"]);
   std::string result;
-  for (size_t i = 0; i < extra_info["Conditions"].size(); ++i) {
-    auto c = extra_info["Conditions"][i];
-    result += c.get<std::string>();
-    if (c < extra_info["Conditions"].size() - 1) {
+  for (size_t i = 0; i < conditions.size(); ++i) {
+    result += conditions[i];
+    if (i + 1 < conditions.size()) {
       result += " AND ";
     }
   }
   return result;
 }
 
+void linkScanMaterialisedToSourceMaterialise(Node& root) {
+  std::map<int, const Materialise*> materialise_by_id;
+  std::map<std::string, const Materialise*> materialise_by_name;
+  for (auto& n : root.depth_first()) {
+    if (n.type != NodeType::MATERIALISE) {
+      continue;
+    }
+    const auto* materialise = dynamic_cast<const Materialise*>(&n);
+    if (materialise == nullptr) {
+      continue;
+    }
+    if (materialise->node_id >= 0) {
+      materialise_by_id[materialise->node_id] = materialise;
+    }
+    if (!materialise->materialised_node_name.empty()) {
+      materialise_by_name[materialise->materialised_node_name] = materialise;
+    }
+  }
+  for (auto& n : root.depth_first()) {
+    if (n.type != NodeType::SCAN_MATERIALISED) {
+      continue;
+    }
+    auto* scan_materialised = dynamic_cast<ScanMaterialised*>(&n);
+    if (scan_materialised == nullptr || scan_materialised->sourceMaterialise() != nullptr) {
+      continue;
+    }
+    const Materialise* source = nullptr;
+    if (!scan_materialised->primary_node_name.empty() &&
+        materialise_by_name.contains(scan_materialised->primary_node_name)) {
+      source = materialise_by_name.at(scan_materialised->primary_node_name);
+    } else if (scan_materialised->primary_node_id >= 0 &&
+               materialise_by_id.contains(scan_materialised->primary_node_id)) {
+      source = materialise_by_id.at(scan_materialised->primary_node_id);
+    }
+    if (source != nullptr) {
+      scan_materialised->setSourceMaterialise(source);
+    }
+  }
+}
+
+std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx);
+std::unique_ptr<Node> buildCteNode(json& node_json, ExplainContext& ctx);
 
 std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
   const auto operator_name = node_json["operator_name"].get<std::string>();
@@ -116,21 +226,26 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     node = std::make_unique<ScanMaterialised>(-1, materialised_expression);
   } else if (operator_name == "COLUMN_DATA_SCAN") {
     node = std::make_unique<ScanMaterialised>();
+  } else if (operator_name == "CTE_SCAN") {
+    const auto cte_index = std::atoi(extra_info["CTE Index"].get<std::string>().c_str());
+    const auto cte_name = ctx.cte_names.contains(cte_index) ? ctx.cte_names.at(cte_index) : "";
+    node = std::make_unique<ScanMaterialised>(cte_index, "", cte_name);
   } else if (operator_name.contains("PROJECTION")) {
     std::vector<Column> projection_columns;
     // DuckDB uses a special projection node to “flip types” and compress.
     size_t internal_projections = 0;
-    const std::regex internal_projection("__internal_.*");
-    const std::regex raw_projection("#[0-9]+");
-    for (auto& column : extra_info["Projections"]) {
-      const std::string column_name = column.get<std::string>();
+    const auto projection_expressions = parseExpressionList(extra_info["Projections"]);
+    if (isSyntheticNullFillProjection(projection_expressions)) {
+      return nullptr;
+    }
+    for (const auto& column_name : projection_expressions) {
       if (std::regex_match(column_name, std::regex(".*error\\(.*"))) {
         // DuckDb internal error handling
         return nullptr;
       }
       projection_columns.push_back(Column(column_name));
-      bool is_internal = std::regex_match(column_name, raw_projection);
-      is_internal |= std::regex_match(column_name, internal_projection);
+      bool is_internal = isRawProjectionReference(column_name);
+      is_internal |= isInternalProjectionExpression(column_name);
       internal_projections += is_internal ? 1 : 0;
     }
     if (internal_projections == projection_columns.size()) {
@@ -184,22 +299,22 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
     // An aggregate without group by
     std::vector<Column> aggregate_columns;
     if (extra_info.contains("Aggregates")) {
-      for (auto& column : extra_info["Aggregates"]) {
-        aggregate_columns.push_back(Column(column.get<std::string>()));
+      for (const auto& column : parseExpressionList(extra_info["Aggregates"])) {
+        aggregate_columns.push_back(Column(column));
       }
     }
     node = std::make_unique<GroupBy>(GroupBy::Strategy::SIMPLE, std::vector<Column>({}), aggregate_columns);
   } else if (operator_name == "HASH_GROUP_BY" || operator_name == "PERFECT_HASH_GROUP_BY") {
     std::vector<Column> group_by_columns;
     if (extra_info.contains("Groups")) {
-      for (auto& column : extra_info["Groups"]) {
-        group_by_columns.push_back(Column(column.get<std::string>()));
+      for (const auto& column : parseExpressionList(extra_info["Groups"])) {
+        group_by_columns.push_back(Column(column));
       }
     }
     std::vector<Column> aggregate_columns;
     if (extra_info.contains("Aggregates")) {
-      for (auto& column : extra_info["Aggregates"]) {
-        aggregate_columns.push_back(Column(column.get<std::string>()));
+      for (const auto& column : parseExpressionList(extra_info["Aggregates"])) {
+        aggregate_columns.push_back(Column(column));
       }
     }
     node = std::make_unique<GroupBy>(GroupBy::Strategy::HASH, group_by_columns, aggregate_columns);
@@ -243,11 +358,44 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
   return node;
 }
 
+std::unique_ptr<Node> buildCteNode(json& node_json, ExplainContext& ctx) {
+  const auto& extra_info = node_json["extra_info"];
+  const auto cte_index = std::atoi(extra_info["Table Index"].get<std::string>().c_str());
+  const auto cte_name = extra_info.contains("CTE Name") ? extra_info["CTE Name"].get<std::string>() : "";
+  if (!cte_name.empty()) {
+    ctx.cte_names[cte_index] = cte_name;
+  }
+
+  if (!node_json.contains("children") || node_json["children"].size() < 2) {
+    throw std::runtime_error("CTE operator must have at least two children");
+  }
+
+  auto sequence = std::make_unique<Sequence>();
+  auto materialise = std::make_unique<Materialise>("CTE", cte_index, cte_name);
+
+  auto producer_json = node_json["children"][0];
+  auto producer = buildExplainNode(producer_json, ctx);
+  materialise->rows_actual = producer->rows_actual;
+  materialise->rows_estimated = producer->rows_estimated;
+  materialise->addChild(std::move(producer));
+  sequence->addChild(std::move(materialise));
+
+  for (size_t i = 1; i < node_json["children"].size(); ++i) {
+    auto consumer_json = node_json["children"][i];
+    sequence->addChild(buildExplainNode(consumer_json, ctx));
+  }
+
+  return sequence;
+}
+
 
 std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
   // Determine the node type from the “Node Type” field
   if (!node_json.contains("operator_name")) {
     throw std::runtime_error("Missing 'Node Type' in EXPLAIN node");
+  }
+  if (node_json["operator_name"].get<std::string>() == "CTE") {
+    return buildCteNode(node_json, ctx);
   }
   auto node = createNodeFromJson(node_json, ctx);
   while (node == nullptr) {
@@ -255,12 +403,15 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainContext& ctx) {
       throw std::runtime_error(
           "EXPLAIN tries to skip past a node that has no children. You must handle all leaf nodes");
     }
-    if (node_json["Plans"].size() > 1) {
+    if (node_json["children"].size() > 1) {
       throw std::runtime_error(
           "EXPLAIN parsing Tried to skip past a node with >1 children. You have to deal with this case");
     }
     node_json = node_json["children"][0];
     const auto operator_name = node_json["operator_name"].get<std::string>();
+    if (operator_name == "CTE") {
+      return buildCteNode(node_json, ctx);
+    }
     node = createNodeFromJson(node_json, ctx);
   }
 
@@ -312,6 +463,7 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
   plan->planning_time = planning_time;
   plan->execution_time = execution_time;
   plan->flipJoins();
+  linkScanMaterialisedToSourceMaterialise(plan->planTree());
   return plan;
 }
 

@@ -3,6 +3,9 @@
 #include <vector>
 #include <chrono>
 #include <mutex>
+#include <optional>
+
+#include <dbprove/sql/sql_type.h>
 
 namespace dbprove::theorem {
 struct QueryStats {
@@ -15,6 +18,7 @@ struct QueryStats {
 class Query {
   std::string text_;
   std::string text_tagged_;
+  std::optional<sql::RowCount> expected_row_count_;
   std::mutex stats_mutex_;
   std::vector<QueryStats> stats_;
   static thread_local std::vector<QueryStats> thread_stats_;
@@ -27,24 +31,31 @@ class Query {
   }
 
 public:
-  explicit Query(std::string text, const char* theorem = nullptr)
+  explicit Query(std::string text, const char* theorem = nullptr,
+                 std::optional<sql::RowCount> expected_row_count = std::nullopt)
     : text_(std::move(text))
-    , text_tagged_(tagSQL(text_, theorem)) {
+    , text_tagged_(tagSQL(text_, theorem))
+    , expected_row_count_(expected_row_count) {
   };
 
-  explicit Query(std::string_view text, const char* theorem = nullptr)
+  explicit Query(std::string_view text, const char* theorem = nullptr,
+                 std::optional<sql::RowCount> expected_row_count = std::nullopt)
     : text_(std::string(text))
-    , text_tagged_(tagSQL(text_, theorem)) {
+    , text_tagged_(tagSQL(text_, theorem))
+    , expected_row_count_(expected_row_count) {
   };
 
-  explicit Query(const char* text, const char* theorem = nullptr)
+  explicit Query(const char* text, const char* theorem = nullptr,
+                 std::optional<sql::RowCount> expected_row_count = std::nullopt)
     : text_(text)
-    , text_tagged_(tagSQL(text_, theorem)) {
+    , text_tagged_(tagSQL(text_, theorem))
+    , expected_row_count_(expected_row_count) {
   }
 
   Query(Query&& other) noexcept {
     text_ = std::move(other.text_);
     text_tagged_ = std::move(other.text_tagged_);
+    expected_row_count_ = std::move(other.expected_row_count_);
     stats_ = std::move(other.stats_);
     thread_stats_ = std::move(other.thread_stats_);
   };
@@ -53,6 +64,7 @@ public:
     if (this != &other) {
       text_ = std::move(other.text_);
       text_tagged_ = std::move(other.text_tagged_);
+      expected_row_count_ = std::move(other.expected_row_count_);
       stats_ = std::move(other.stats_);
       // No need to move the mutex
     }
@@ -61,6 +73,8 @@ public:
 
   const std::string& text() const { return text_; }
   const std::string& textTagged() const { return text_tagged_; }
+  const std::optional<sql::RowCount>& expectedRowCount() const { return expected_row_count_; }
+  void setExpectedRowCount(const std::optional<sql::RowCount> expected_row_count) { expected_row_count_ = expected_row_count; }
 
   QueryStats& start() {
     thread_stats_.push_back({});

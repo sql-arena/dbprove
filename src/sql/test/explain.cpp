@@ -58,3 +58,18 @@ TEST_CASE("Explain Two Join", "[Connection Explain]") {
 TEST_CASE("Explain Union All", "[Connection Explain]") {
   explainAndRenderPlan(resource::union_and_join_sql);
 }
+
+TEST_CASE("Explain CTE Reuse", "[Connection Explain]") {
+  explainAndRenderPlan(R"SQL(
+WITH revenue AS (
+  SELECT id_dim1 AS supplier_no,
+         SUM(d) AS total_revenue
+  FROM fact
+  GROUP BY id_dim1
+)
+SELECT supplier_no,
+       total_revenue
+FROM revenue
+WHERE total_revenue = (SELECT MAX(total_revenue) FROM revenue)
+)SQL");
+}

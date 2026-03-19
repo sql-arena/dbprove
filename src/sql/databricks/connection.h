@@ -22,6 +22,7 @@ public:
   const TypeMap& typeMap() const override;
   std::optional<RowCount> tableRowCount(const std::string_view table) override;
   void analyse(std::string_view table_name) override;
+  bool shouldSkipDatasetTuning(std::string_view dataset) override;
 
 private:
   nlohmann::json getLiveScrapedPlan(std::string_view statement);

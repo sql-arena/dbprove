@@ -2,10 +2,10 @@ vcpkg_from_github(
         OUT_SOURCE_PATH SOURCE_PATH
         REPO duckdb/duckdb
         REF v${VERSION}
-        SHA512 8e725d94cfd81989d4f6d206728188e5b290ce3a7f71d89adc6beed91957f965180d34d69d9099d04e35fc402b389de56184875397b29286789bd9c5655595c5
+        SHA512 c7fabf6e4e0ccf3d1f9bc750c23def714ebe460e82e8c0e06ac157f50c245224807fd717751de65fb51e6203db4e30adb5c7500fb4524696d96d1efab34fb395
         HEAD_REF main
     PATCHES
-        fix-incomplete-type.patch
+        fix-profiling-utils-activetimer.patch
 )
 
 # Remove vendored dependencies which are not properly namespaced
@@ -60,8 +60,8 @@ vcpkg_cmake_configure(
             -DBUILD_UNITTESTS=OFF
             -DBUILD_SHELL=FALSE
             "${BUILD_EXTENSIONS_FLAG}"
-            -DENABLE_EXTENSION_AUTOLOADING=1
-            -DENABLE_EXTENSION_AUTOINSTALL=1
+            -DENABLE_EXTENSION_AUTOLOADING=0
+            -DENABLE_EXTENSION_AUTOINSTALL=0
             -DWITH_INTERNAL_ICU=OFF
             -DENABLE_SANITIZER=OFF
             -DENABLE_THREAD_SANITIZER=OFF

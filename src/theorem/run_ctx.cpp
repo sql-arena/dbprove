@@ -1,21 +1,36 @@
 #include "theorem.h"
-#include <csv.hpp>
 
 namespace dbprove::theorem {
-using namespace csv;
-
 class RunCtx::CsvWriter {
 public:
-  using PipeWriter = csv::DelimWriter<std::ostream, '|', '"', false>;
-  PipeWriter writer;
+  std::ostream& out;
 
   explicit CsvWriter(std::ostream& out)
-    : writer(out) {
+    : out(out) {
   }
 };
 
+namespace {
+void writeQuotedField(std::ostream& out, const std::string_view value) {
+  out.put('"');
+  for (const char c : value) {
+    if (c == '"') {
+      out.put('"');
+    }
+    out.put(c);
+  }
+  out.put('"');
+}
+}
+
 void RunCtx::writeCsv(const std::vector<std::string_view>& values) const {
-  writer->writer << values;
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      writer->out.put('|');
+    }
+    writeQuotedField(writer->out, values[i]);
+  }
+  writer->out.put('\n');
 }
 
 RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
@@ -28,15 +43,15 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
   , console(console)
   , csv(csv)
   , artifact_mode(artifacts_path.has_value()) {
-  writer->writer << std::vector<std::string_view>{"ENGINE",
-                                                  "ID",
-                                                  "CATEGORIES",
-                                                  "TAGS",
-                                                  "THEOREM",
-                                                  "THEOREM_DESCRIPTION",
-                                                  "PROOF_NAME",
-                                                  "PROOF_VALUE",
-                                                  "PROOF_UNIT"};
+  writeCsv(std::vector<std::string_view>{"ENGINE",
+                                         "ID",
+                                         "CATEGORIES",
+                                         "TAGS",
+                                         "THEOREM",
+                                         "THEOREM_DESCRIPTION",
+                                         "PROOF_NAME",
+                                         "PROOF_VALUE",
+                                         "PROOF_UNIT"});
 }
 
 RunCtx::~RunCtx() = default;

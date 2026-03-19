@@ -950,9 +950,8 @@ std::string renderProjectionAliasSourceSql(const ExpressionNode& expression) {
 
   if (traversed_reference) {
     if (current != nullptr &&
-        current->kind == ExpressionNode::Kind::FUNCTION &&
-        !current->alias_user.empty()) {
-      return current->alias_user;
+        current->kind == ExpressionNode::Kind::FUNCTION) {
+      return current->renderExecutableSql();
     }
     if (current != nullptr &&
         current->leaf_binding == ExpressionNode::LeafBinding::CHILD_OUTPUT &&

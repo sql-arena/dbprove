@@ -32,6 +32,12 @@ bool isActualsQuery(const std::string_view statement) {
   return statement.find("DBPROVE_ACTUALS") != std::string_view::npos;
 }
 
+void bootstrapSession(ch::Client& client) {
+  // Match ANSI outer-join semantics so COUNT(right_col) does not count
+  // ClickHouse default-filled values for unmatched right-side rows.
+  client.Execute("SET join_use_nulls = 1");
+}
+
 int actualsTimeoutSeconds() {
   constexpr int default_timeout = 120;
   constexpr int min_timeout = 1;
@@ -55,6 +61,7 @@ int actualsTimeoutSeconds() {
 void handleClickHouseException(ch::Client& client, const ch::ServerException& e) {
   try {
     client.ResetConnection();
+    bootstrapSession(client);
   } catch (const ch::Exception& e) {
     // NOOP: we want to make sure we still get the throw below.
   }
@@ -84,6 +91,7 @@ public:
       options.SetHost(credential.host).SetPort(credential.port).SetUser(credential.username).
               SetPassword(credential.password.value_or("")).SetDefaultDatabase(credential.database);
       client = std::make_unique<ch::Client>(options);
+      bootstrapSession(*client);
     }
     return *client;
   }

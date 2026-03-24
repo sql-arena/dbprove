@@ -25,5 +25,10 @@ public:
     std::string result = "SELECT";
     return result;
   }
+
+  std::string actualsSql() override;
+
+protected:
+  std::string treeSQLImpl(size_t indent) const override;
 };
 }

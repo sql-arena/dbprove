@@ -34,6 +34,11 @@ exists - dynamic og runtime loading  is acceptable. It is important that `dbprov
 can always run with drivers that it has statically linked and that newly added drivers
 do not cause it to fail on startup.
 
+The concrete driver-extension checklist now lives in:
+
+- `src/sql/README.md` for engine registration, CMake wiring, artifacts, and test hooks
+- `src/sql/boilerplate/README.md` for the template driver layout
+
 ### Databricks Support
 Databricks connectivity relies on a browser-based authentication flow for some features (like plan dumping). 
 

@@ -2,7 +2,11 @@
 #include "result_holder.h"
 #include "parsers.h"
 #include <dbprove/sql/row_base.h>
-#include <duckdb.hpp>
+#include <duckdb/common/types/data_chunk.hpp>
+#include <duckdb/common/types/decimal.hpp>
+#include <duckdb/common/types/value.hpp>
+#include <duckdb/main/materialized_query_result.hpp>
+#include <duckdb/main/query_result.hpp>
 
 #include "sql_exceptions.h"
 

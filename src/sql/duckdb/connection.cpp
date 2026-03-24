@@ -3,8 +3,11 @@
 #include "result_holder.h"
 #include "sql_exceptions.h"
 #include <dbprove/sql/sql.h>
+#include <duckdb/common/exception.hpp>
+#include <duckdb/main/connection.hpp>
+#include <duckdb/main/database.hpp>
+#include <duckdb/main/query_result.hpp>
 #include <nlohmann/json.hpp>
-#include <duckdb.hpp>
 #include <memory>
 #include <regex>
 #include <scan_materialised.h>

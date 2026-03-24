@@ -8,6 +8,7 @@
 #include "clickhouse/connection.h"
 #include "mariadb/connection.h"
 #include "sqlite/connection.h"
+#include "trino/connection.h"
 
 namespace sql {
 std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
@@ -45,6 +46,11 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
         throw std::invalid_argument("SQLite engine requires a file credential");
       }
       return std::make_unique<sqlite::Connection>(std::get<CredentialFile>(credential_), engine_, artifacts_path_);
+    case Engine::Type::Trino:
+      if (!std::holds_alternative<CredentialPassword>(credential_)) {
+        throw std::invalid_argument("Trino engine requires a password credential");
+      }
+      return std::make_unique<trino::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
     default:
       throw std::invalid_argument("Unsupported engine type: " + engine_.name());
   }

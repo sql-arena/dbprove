@@ -50,25 +50,7 @@ bool isKeywordToken(const std::string& token) {
 }
 
 std::vector<std::string> splitTopLevelByDelimiter(const std::string& text, const char delimiter) {
-  std::vector<std::string> out;
-  int depth = 0;
-  size_t start = 0;
-  for (size_t i = 0; i < text.size(); ++i) {
-    if (text[i] == '(') {
-      ++depth;
-      continue;
-    }
-    if (text[i] == ')') {
-      --depth;
-      continue;
-    }
-    if (text[i] == delimiter && depth == 0) {
-      out.push_back(trim_string(text.substr(start, i - start)));
-      start = i + 1;
-    }
-  }
-  out.push_back(trim_string(text.substr(start)));
-  return out;
+  return split_top_level_by_delimiter(text, delimiter);
 }
 
 std::vector<std::string> splitTopLevelConjunctions(std::string text) {

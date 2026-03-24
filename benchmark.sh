@@ -21,6 +21,7 @@ SUPPORTED_ENGINES=(
     "duckdb"
     "databricks"
     "mariadb"
+    "trino"
     "utopia"
 )
 
@@ -35,8 +36,7 @@ usage() {
     echo "  -r: Force restart of Docker-backed engines"
     echo "  -e: Engine to benchmark, or ALL to run every supported engine"
     echo "Supported dbprove engines: ${SUPPORTED_ENGINES[*]}"
-    echo "Aliases: postgres/pg, clickhouse/ch, sqlserver, duck, mysql"
-    echo "Note: Docker has a Trino service, but dbprove does not currently expose a Trino engine."
+    echo "Aliases: postgres/pg, clickhouse/ch, sqlserver, duck, mysql, presto"
     exit 1
 }
 
@@ -88,12 +88,11 @@ normalize_engine() {
         mariadb|mysql)
             printf 'mariadb\n'
             ;;
+        trino|presto)
+            printf 'trino\n'
+            ;;
         utopia)
             printf 'utopia\n'
-            ;;
-        trino)
-            echo "Error: Trino has a Docker service, but dbprove does not currently support '-e trino'." >&2
-            exit 1
             ;;
         snowflake)
             echo "Error: Snowflake is scaffolded in the source tree, but benchmark.sh only runs engines currently exposed by dbprove." >&2
@@ -112,7 +111,7 @@ normalize_engine() {
 
 engine_service_name() {
     case "$1" in
-        postgresql|clickhouse|mssql)
+        postgresql|clickhouse|mssql|trino)
             printf '%s\n' "$1"
             ;;
         *)
@@ -123,7 +122,7 @@ engine_service_name() {
 
 engine_requires_gcs() {
     case "$1" in
-        databricks)
+        databricks|trino)
             return 1
             ;;
         *)
@@ -302,6 +301,12 @@ wait_for_engine() {
                 sleep 2
             done
             ;;
+        trino)
+            until curl -fsS http://localhost:8080/v1/info 2>/dev/null | grep -q '"starting":false'; do
+                echo "Waiting for Trino to be ready..."
+                sleep 2
+            done
+            ;;
     esac
 }
 
@@ -363,7 +368,7 @@ start_engine_if_needed() {
     if [ "$RESET_FLAG" = true ] || [ "$container_running" != "true" ]; then
         echo "Starting/Restarting Docker container for $service_name..."
         docker-compose down
-        if [ "$service_name" = "clickhouse" ]; then
+        if [ "$service_name" = "clickhouse" ] || [ "$service_name" = "trino" ]; then
             docker-compose up -d --remove-orphans --force-recreate --build "$service_name"
         else
             docker-compose up -d --remove-orphans --force-recreate "$service_name"

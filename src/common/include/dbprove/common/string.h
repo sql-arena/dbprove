@@ -46,6 +46,48 @@ inline std::string trim_string(const std::string_view sv) {
   return std::string(sv.substr(start, end - start + 1));
 }
 
+inline std::string strip_enclosing(const std::string_view sv, const char open, const char close) {
+  auto trimmed = trim_string(sv);
+  if (trimmed.size() >= 2 && trimmed.front() == open && trimmed.back() == close) {
+    trimmed = trimmed.substr(1, trimmed.size() - 2);
+  }
+  return trimmed;
+}
+
+inline std::vector<std::string> split_top_level_by_delimiter(const std::string_view text, const char delimiter) {
+  std::vector<std::string> out;
+  int paren_depth = 0;
+  int bracket_depth = 0;
+  size_t start = 0;
+
+  for (size_t i = 0; i < text.size(); ++i) {
+    switch (text[i]) {
+      case '(':
+        ++paren_depth;
+        continue;
+      case ')':
+        --paren_depth;
+        continue;
+      case '[':
+        ++bracket_depth;
+        continue;
+      case ']':
+        --bracket_depth;
+        continue;
+      default:
+        break;
+    }
+
+    if (text[i] == delimiter && paren_depth == 0 && bracket_depth == 0) {
+      out.push_back(trim_string(text.substr(start, i - start)));
+      start = i + 1;
+    }
+  }
+
+  out.push_back(trim_string(text.substr(start)));
+  return out;
+}
+
 
 template<typename T>
 inline std::u8string to_u8string(const T s) {

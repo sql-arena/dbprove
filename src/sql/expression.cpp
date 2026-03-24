@@ -330,7 +330,7 @@ std::vector<sql::Token> tokenize(const std::string& expr, const EngineDialect* d
     }
 
     auto upper_literal = to_upper(literal);
-    std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE)");
+    std::regex op_regex(R"(OR|AND|NOT|LIKE|ILIKE|BETWEEN)");
     if (std::regex_match(upper_literal, op_regex)) {
       addToken(tokens, {Token::Type::Operator, upper_literal});
       continue;

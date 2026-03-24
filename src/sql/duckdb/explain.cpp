@@ -5,7 +5,6 @@
 #include <sequence.h>
 
 #include <nlohmann/json.hpp>
-#include <duckdb.hpp>
 #include <memory>
 #include <regex>
 #include <scan_materialised.h>

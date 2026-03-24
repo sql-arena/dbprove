@@ -29,7 +29,9 @@ Engine::Engine(const std::string_view name) {
                                                                {"yb", Type::Yellowbrick},
                                                                {"ybd", Type::Yellowbrick},
                                                                {"clickhouse", Type::ClickHouse},
-                                                               {"ch", Type::ClickHouse}};
+                                                               {"ch", Type::ClickHouse},
+                                                               {"trino", Type::Trino},
+                                                               {"presto", Type::Trino}};
 
   const std::string name_lower = to_lower(name);
   if (!known_names.contains(name_lower)) {
@@ -64,11 +66,12 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       return "duck.db";
     case Type::SQLite:
       return "sqlite.db";
-    case Type::Postgres: {
+    case Type::Postgres:
       return "postgres";
     case Type::ClickHouse:
       return "default";
-    }
+    case Type::Trino:
+      return "tpch";
     default:
       return "";
   }
@@ -101,6 +104,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
     case Type::DuckDB:
     case Type::SQLite:
     case Type::SQLServer:
+    case Type::Trino:
       return "localhost";
     default:
       host = getEnvVar("BASE_URL", "API_URL", "ENDPOINT", "SERVICE_URL", "API_HOST");
@@ -131,6 +135,8 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
       return 1521;
     case Type::ClickHouse:
       return 9000; // ClickHouse only speaks its native protocol via C++
+    case Type::Trino:
+      return 8080;
     case Type::DuckDB:
     case Type::SQLite:
       return 42; // Dummy port, Duck is localhost
@@ -155,6 +161,8 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
       return "sa";
     case Type::ClickHouse:
       return getEnvVar("CLICKHOUSE_USER").value_or("default");
+    case Type::Trino:
+      return getEnvVar("TRINO_USER").value_or("trino");
     case Type::Utopia:
     case Type::SQLite:
       return "";
@@ -219,6 +227,7 @@ Credential Engine::parseCredentials(const std::string& host, const uint16_t port
     case Type::SQLServer:
     case Type::ClickHouse:
     case Type::Yellowbrick:
+    case Type::Trino:
     case Type::Oracle: {
       if (!username) {
         throw std::invalid_argument("Username is required for " + engine_name);
@@ -249,7 +258,8 @@ std::string Engine::name() const {
                                                                    {Type::DuckDB, "DuckDB"},
                                                                    {Type::Databricks, "Databricks"},
                                                                    {Type::Yellowbrick, "Yellowbrick"},
-                                                                   {Type::SQLServer, "SQL Server"}};
+                                                                   {Type::SQLServer, "SQL Server"},
+                                                                   {Type::Trino, "Trino"}};
   if (!canonical_names.contains(type())) {
     throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");
   }
@@ -278,6 +288,8 @@ std::string Engine::internalName() const {
       return "clickhouse";
     case Type::Yellowbrick:
       return "yellowbrick";
+    case Type::Trino:
+      return "trino";
   }
   throw std::invalid_argument("Unknown engine type");
 }
@@ -285,6 +297,7 @@ std::string Engine::internalName() const {
 bool Engine::needsLocalFile() const {
   switch (type_) {
     case Type::Databricks:
+    case Type::Trino:
       return false;
     default:
       return true;

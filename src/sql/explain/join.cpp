@@ -85,7 +85,9 @@ namespace sql::explain
         std::string result = join_name.at(type);
         result += " JOIN ";
         result += strategy_name.at(strategy);
-        result += " ON ";
+        if (type != Type::CROSS) {
+          result += " ON ";
+        }
         max_width -= result.size();
         result += ellipsify(conditionForSql(true), max_width);
         return result;
@@ -212,9 +214,13 @@ std::string renderJoinTreeSql(const Join& join, const size_t indent) {
         default: {
             result += make_newline(indent);
             result += type_to_sql(join.type) + " " + join.firstChild()->treeSQL(indent + 1);
-            result += make_newline(indent);
-            result += "  ON " + fixed_condition;
-            result += make_newline(indent);
+            if (join.type != Join::Type::CROSS) {
+              result += make_newline(indent);
+              result += "  ON " + fixed_condition;
+              result += make_newline(indent);
+            } else {
+              result += make_newline(indent);
+            }
             break;
         }
         }

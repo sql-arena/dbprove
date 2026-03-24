@@ -76,6 +76,7 @@ add_subdirectory("clickhouse")
 add_subdirectory("snowflake")
 add_subdirectory("mariadb")
 add_subdirectory("sqlite")
+add_subdirectory("trino")
 
 # Make sure boilerplate compiles. These are unmapped in Engine.h
 add_subdirectory("boilerplate")
@@ -94,6 +95,7 @@ target_link_libraries(${_targetName}
         dbprove::sql::sqlite
         dbprove::sql::snowflake
         dbprove::sql::mariadb
+        dbprove::sql::trino
 )
 
 target_link_libraries(${_targetName}

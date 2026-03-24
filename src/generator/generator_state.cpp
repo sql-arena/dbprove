@@ -228,6 +228,11 @@ namespace generator
             throw std::runtime_error("Dataset not found: " + std::string(dataset_name));
         }
 
+        if (engine_.type() == sql::Engine::Type::Trino && dataset_name == "tpch") {
+            PLOGI << "Using Trino built-in TPC-H catalog for dataset '" << dataset_name << "'. Skipping local dataset generation.";
+            return;
+        }
+
         const auto& tables = available_datasets().at(dataset_name);
         if (tables.empty()) {
             return;

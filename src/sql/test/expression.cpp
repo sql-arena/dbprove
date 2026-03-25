@@ -84,6 +84,14 @@ TEST_CASE("Clean Expression Preserves Spaces Around BETWEEN", "[expression]") {
   CHECK(cleaned.find("BETWEEN'1995-01-01'") == std::string::npos);
 }
 
+TEST_CASE("Clean Expression Preserves Scientific Notation Literals", "[expression]") {
+  const std::string expression = "sum_22 * 1.0E-4";
+  const auto cleaned = sql::cleanExpression(expression);
+
+  CHECK(cleaned.find("1.0E-4") != std::string::npos);
+  CHECK(cleaned.find("1.0E - 4") == std::string::npos);
+}
+
 TEST_CASE("Clean Expression Handles DuckDB Scalar Subquery Error Wrapper", "[expression]") {
   const std::string expression =
     R"(CASE  WHEN ((#1 > 1)) THEN ("error"('More than one row returned by a subquery used as an expression - scalar subqueries can only return a single row. Use "SET scalar_subquery_error_on_multiple_rows=false" to revert to previous behavior of returning a random row.')) ELSE #0 END)";

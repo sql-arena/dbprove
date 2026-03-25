@@ -35,7 +35,10 @@ The explain parser uses a small balanced scanner rather than a pile of one-off r
 - distinguishing real function-call syntax from infix operators before rewriting Trino helper functions such as `and(...)`
 - relying on the shared expression cleaner to preserve infix operator keywords such as `BETWEEN` in executable subtree SQL
 - honoring aliased `TableScan` outputs by inserting canonical projections when Trino exports renamed leaf symbols directly from scan nodes
-- substituting assigned and child-output aliases back into executable expressions
+- substituting assigned and child-output aliases back into executable expressions, including alias chains defined inside a single Trino node
+- turning Trino mark-style `SemiJoin` outputs into canonical joins that still expose the boolean marker column needed by parent filters
+- preserving `AssignUniqueId` outputs as explicit canonical projections so later grouping keys can reference the generated symbol
+- replacing typed `Values` placeholders such as `null::double` with safe executable literals for actual-row gathering
 
 This matters for actual-row gathering: the canonical plan needs executable subtree SQL, not just pretty printed planner text.
 
@@ -49,6 +52,7 @@ Operator families currently handled for TPC-H PLAN theorem coverage include:
 - exchange flow: `LocalExchange`, `RemoteSource`, `RemoteMerge`
 
 Trino's JSON explain does not provide actual row counts in the same way as engines with `EXPLAIN ANALYZE` integrations, so canonical plans are built primarily from estimated row counts.
+The Trino driver now reconstructs executable subtree SQL well enough to gather actual row counts across the full TPC-H `PLAN` workload in the containerized setup used by this repo.
 
 ### Running with Docker
 

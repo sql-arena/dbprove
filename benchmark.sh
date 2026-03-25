@@ -29,12 +29,14 @@ RESET_FLAG=false
 ENGINE_PARAM=""
 GCS_ACCESS_VERIFIED=false
 DATABRICKS_ACCESS_VERIFIED=false
+THEOREM_PARAMS=()
 
 usage() {
-    echo "Usage: $0 [-v] [-r] -e <engine|ALL>"
+    echo "Usage: $0 [-v] [-r] [-T <theorem>]... -e <engine|ALL>"
     echo "  -v: Accepted for compatibility, but benchmark.sh no longer enables dbprove DEBUG logging"
     echo "  -r: Force restart of Docker-backed engines"
     echo "  -e: Engine to benchmark, or ALL to run every supported engine"
+    echo "  -T: Theorem to pass through to dbprove. Repeat to forward multiple theorems. Defaults to PLAN."
     echo "Supported dbprove engines: ${SUPPORTED_ENGINES[*]}"
     echo "Aliases: postgres/pg, clickhouse/ch, sqlserver, duck, mysql, presto"
     exit 1
@@ -413,7 +415,14 @@ run_engine() {
 
     echo "Running dbprove for $engine..."
     cd "$RUN_DIR"
-    local dbprove_args=("-T" "PLAN" "-e" "$engine")
+    local theorem_args=()
+    if [ "${#THEOREM_PARAMS[@]}" -eq 0 ]; then
+        theorem_args=("PLAN")
+    else
+        theorem_args=("${THEOREM_PARAMS[@]}")
+    fi
+
+    local dbprove_args=("-e" "$engine" "-T" "${theorem_args[@]}")
     "$DBPROVE_PATH" "${dbprove_args[@]}"
 
     echo "Benchmark completed for $engine."
@@ -421,7 +430,7 @@ run_engine() {
 
 source_env_if_present
 
-while getopts "vre:" opt; do
+while getopts "vre:T:" opt; do
     case "$opt" in
         v)
             echo "Note: benchmark.sh no longer forwards -v to dbprove; continuing with INFO-level output."
@@ -431,6 +440,9 @@ while getopts "vre:" opt; do
             ;;
         e)
             ENGINE_PARAM="$OPTARG"
+            ;;
+        T)
+            THEOREM_PARAMS+=("$OPTARG")
             ;;
         *)
             usage

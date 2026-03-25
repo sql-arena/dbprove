@@ -3,6 +3,8 @@
 #include "glyphs.h"
 #include "sql_exceptions.h"
 
+#include <algorithm>
+
 namespace sql::explain
 {
     Join::Join(const Type type, const Strategy join_strategy, const std::string& condition,
@@ -185,10 +187,36 @@ std::string renderJoinTreeSql(const Join& join, const size_t indent) {
 
     const auto& fixed_condition = join.conditionForSql(true);
     switch (join.type) {
-        case Join::Type::LEFT_SEMI_INNER:
         case Join::Type::LEFT_SEMI_OUTER:
-        case Join::Type::RIGHT_SEMI_INNER:
         case Join::Type::RIGHT_SEMI_OUTER: {
+            std::vector<std::string> synthetic_outputs;
+            for (const auto& output : join.columns_output) {
+              const auto found = std::ranges::find(outer_child->columns_output, output);
+              if (found == outer_child->columns_output.end()) {
+                synthetic_outputs.push_back(output);
+              }
+            }
+            if (synthetic_outputs.empty()) {
+              throw ExplainException("Semi outer join expected at least one synthetic output column");
+            }
+
+            result = make_newline(indent);
+            result += "(SELECT *";
+            for (const auto& output : synthetic_outputs) {
+              result += ", EXISTS (SELECT 1 FROM";
+              result += inner_child->treeSQL(indent + 1);
+              result += make_newline(indent);
+              result += "WHERE " + fixed_condition;
+              result += make_newline(indent);
+              result += "LIMIT 1";
+              result += ") AS " + output;
+            }
+            result += make_newline(indent);
+            result += "FROM " + outer_child->treeSQL(indent + 1);
+            break;
+        }
+        case Join::Type::LEFT_SEMI_INNER:
+        case Join::Type::RIGHT_SEMI_INNER: {
             result += make_newline(indent);
             result += "WHERE EXISTS (SELECT 1 FROM";
             result += inner_child->treeSQL(indent + 1);

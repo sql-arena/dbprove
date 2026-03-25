@@ -177,6 +177,21 @@ struct TrinoExpressionParser {
     return i;
   }
 
+  static bool isTypeModifierContents(const std::string_view text) {
+    if (text.empty()) {
+      return false;
+    }
+
+    for (const auto c : text) {
+      if (std::isdigit(static_cast<unsigned char>(c)) != 0 || c == ',' ||
+          std::isspace(static_cast<unsigned char>(c)) != 0) {
+        continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
   static std::optional<char> previousNonWhitespaceChar(const std::string_view text, size_t index) {
     while (index > 0) {
       --index;
@@ -301,7 +316,8 @@ struct TrinoExpressionParser {
       }
       if (type_end < expression.size() && expression[type_end] == '(') {
         const auto close = findMatchingParen(expression, type_end);
-        if (close.has_value()) {
+        if (close.has_value() &&
+            isTypeModifierContents(expression.substr(type_end + 1, *close - type_end - 1))) {
           type_end = *close + 1;
         }
       }
@@ -553,9 +569,11 @@ bool isPatternTypedLiteral(const std::string_view type_name) {
 
 bool isReservedOutputSymbol(const std::string_view symbol) {
   static const std::set<std::string, std::less<>> reserved = {
+    "exists",
     "false",
     "null",
     "true",
+    "unique",
   };
 
   return reserved.contains(to_lower(trim_string(symbol)));
@@ -593,6 +611,39 @@ std::string cleanTrinoExpression(std::string expression) {
   expression = TrinoExpressionParser::replaceOutsideStrings(expression, "$", "");
   expression = TrinoExpressionParser::renameFunctions(expression);
   return cleanExpression(trim_string(expression));
+}
+
+std::string placeholderLiteralForType(const std::string_view raw_type) {
+  const auto upper = to_upper(trim_string(raw_type));
+  if (upper == "BOOLEAN") {
+    return "false";
+  }
+  if (upper == "DOUBLE" || upper == "REAL" || upper.starts_with("DECIMAL")) {
+    return "0.0";
+  }
+  if (upper == "BIGINT" || upper == "INTEGER" || upper == "INT" || upper == "SMALLINT" || upper == "TINYINT") {
+    return "0";
+  }
+  if (upper == "VARCHAR" || upper.starts_with("VARCHAR(") || upper == "CHAR" || upper.starts_with("CHAR(")) {
+    return "''";
+  }
+  return "null";
+}
+
+std::string normalizeValueExpression(std::string expression) {
+  const auto trimmed = trim_string(expression);
+  const auto cast_pos = trimmed.rfind("::");
+  if (cast_pos == std::string::npos) {
+    return cleanTrinoExpression(std::move(expression));
+  }
+
+  const auto value = trim_string(trimmed.substr(0, cast_pos));
+  const auto type_name = trim_string(trimmed.substr(cast_pos + 2));
+  if (to_lower(value) != "null" || type_name.empty()) {
+    return cleanTrinoExpression(std::move(expression));
+  }
+
+  return placeholderLiteralForType(type_name);
 }
 
 double parseEstimateValue(const json& value) {
@@ -693,6 +744,21 @@ std::map<std::string, std::string> parseAssignments(const json& node_json) {
       assignments[lhs] = rhs;
     }
   }
+
+  for (size_t pass = 0; pass < assignments.size(); ++pass) {
+    bool changed = false;
+    for (auto& [lhs, rhs] : assignments) {
+      const auto resolved = TrinoExpressionParser::replaceIdentifiers(rhs, assignments);
+      if (resolved != rhs) {
+        rhs = resolved;
+        changed = true;
+      }
+    }
+    if (!changed) {
+      break;
+    }
+  }
+
   return assignments;
 }
 
@@ -713,6 +779,113 @@ std::string resolveNodeExpression(const json& node_json, std::string expression)
 std::string resolveJoinExpression(const json& node_json, std::string expression) {
   expression = cleanTrinoExpression(std::move(expression));
   return TrinoExpressionParser::replaceIdentifiers(expression, childOutputAliases(node_json));
+}
+
+std::string combineConjuncts(std::string lhs, std::string rhs) {
+  lhs = trim_string(std::move(lhs));
+  rhs = trim_string(std::move(rhs));
+  if (lhs.empty()) {
+    return rhs;
+  }
+  if (rhs.empty()) {
+    return lhs;
+  }
+  return "(" + lhs + ") AND (" + rhs + ")";
+}
+
+std::optional<std::string> parseNegatedMarkerPredicate(std::string expression) {
+  expression = trim_string(strip_enclosing(trim_string(expression), '(', ')'));
+  const auto upper = to_upper(expression);
+  if (!upper.starts_with("NOT ")) {
+    return std::nullopt;
+  }
+
+  auto marker = trim_string(expression.substr(4));
+  marker = trim_string(strip_enclosing(marker, '(', ')'));
+  const auto marker_upper = to_upper(marker);
+  if (marker_upper.starts_with("COALESCE(") && marker.size() > std::string("COALESCE()").size() && marker.back() == ')') {
+    const auto args = TrinoExpressionParser::splitTopLevel(marker.substr(9, marker.size() - 10), ',');
+    if (args.size() == 2 && to_lower(trim_string(args[1])) == "false") {
+      marker = trim_string(args[0]);
+    }
+  }
+
+  if (marker.empty()) {
+    return std::nullopt;
+  }
+
+  for (const auto c : marker) {
+    if (!TrinoExpressionParser::isIdentifierChar(c)) {
+      return std::nullopt;
+    }
+  }
+
+  return normalizeOutputSymbol(marker);
+}
+
+bool markerIsProjectedAsTrue(const Node& node, const std::string& marker_name) {
+  const Node* current = &node;
+  while (current != nullptr) {
+    if (current->type == NodeType::PROJECTION) {
+      const auto& projection = reinterpret_cast<const Projection&>(*current);
+      const auto& projected_columns =
+        projection.synthetic_columns_projected.empty() ? projection.columns_projected : projection.synthetic_columns_projected;
+      for (const auto& column : projected_columns) {
+        if (column.alias == marker_name && to_lower(trim_string(column.name)) == "true") {
+          return true;
+        }
+      }
+    }
+
+    if (current->childCount() != 1) {
+      break;
+    }
+    current = current->firstChild();
+  }
+
+  return false;
+}
+
+std::optional<Join::Type> antiJoinRewriteType(
+  const Node& child,
+  const std::string& filter_expression,
+  const std::vector<std::string>& projected_outputs) {
+  if (child.type != NodeType::JOIN) {
+    return std::nullopt;
+  }
+
+  const auto& join = reinterpret_cast<const Join&>(child);
+  if (join.type != Join::Type::LEFT_SEMI_OUTER &&
+      join.type != Join::Type::RIGHT_SEMI_OUTER &&
+      join.type != Join::Type::LEFT_OUTER) {
+    return std::nullopt;
+  }
+
+  const auto marker = parseNegatedMarkerPredicate(filter_expression);
+  if (!marker.has_value()) {
+    return std::nullopt;
+  }
+
+  if (std::ranges::find(projected_outputs, *marker) != projected_outputs.end()) {
+    return std::nullopt;
+  }
+  if (std::ranges::find(child.columns_output, *marker) == child.columns_output.end()) {
+    return std::nullopt;
+  }
+
+  if (join.type == Join::Type::LEFT_SEMI_OUTER) {
+    return Join::Type::LEFT_ANTI;
+  }
+  if (join.type == Join::Type::RIGHT_SEMI_OUTER) {
+    return Join::Type::RIGHT_ANTI;
+  }
+  if (join.type == Join::Type::LEFT_OUTER &&
+      join.firstChild() != nullptr &&
+      markerIsProjectedAsTrue(*join.firstChild(), *marker)) {
+    return Join::Type::LEFT_ANTI;
+  }
+
+  return std::nullopt;
 }
 
 std::vector<Column> parseProjectionColumns(const json& node_json) {
@@ -894,7 +1067,7 @@ std::vector<Column> parseValuesColumns(const json& node_json) {
 
   columns.reserve(outputs.size());
   for (size_t i = 0; i < outputs.size(); ++i) {
-    columns.emplace_back(cleanTrinoExpression(values[i]), outputs[i]);
+    columns.emplace_back(normalizeValueExpression(values[i]), outputs[i]);
   }
   return columns;
 }
@@ -928,6 +1101,27 @@ bool projectionMatchesOutputs(const std::vector<Column>& projection_columns, con
     }
   }
   return true;
+}
+
+std::vector<Column> projectionColumnsForSyntheticOutputs(
+  const Node& child,
+  const std::vector<std::string>& outputs,
+  const std::map<std::string, std::string>& synthetic_assignments) {
+  std::vector<Column> projection_columns;
+  projection_columns.reserve(outputs.size());
+
+  for (const auto& output : outputs) {
+    const auto found = synthetic_assignments.find(output);
+    if (found != synthetic_assignments.end()) {
+      projection_columns.emplace_back(found->second, output);
+      continue;
+    }
+
+    const auto present_in_child = std::ranges::find(child.columns_output, output) != child.columns_output.end();
+    projection_columns.emplace_back(output, present_in_child ? "" : output);
+  }
+
+  return projection_columns;
 }
 
 std::unique_ptr<Node> attachChild(std::unique_ptr<Node> parent, std::unique_ptr<Node> child) {
@@ -1007,7 +1201,23 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
   }
 
   if (name == "AssignUniqueId" || name == "PartialSort") {
-    return take_first_child();
+    auto child = take_first_child();
+    if (name == "PartialSort") {
+      return child;
+    }
+
+    const auto outputs = outputNames(node_json);
+    if (!child || outputs.empty() || child->columns_output == outputs) {
+      return child;
+    }
+
+    auto projection = makeProjection(projectionColumnsForSyntheticOutputs(
+      *child,
+      outputs,
+      {{outputs.back(), "row_number() OVER ()"}}));
+    applyNodeMetadata(*projection, node_json);
+    projection->addChild(std::move(child));
+    return projection;
   }
 
   if (name == "Output") {
@@ -1113,6 +1323,24 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
   if (name == "FilterProject") {
     auto child = take_first_child();
     const auto filter = trim_string(descriptorString(node_json, "filterPredicate"));
+    const auto outputs = outputNames(node_json);
+
+    if (child && !filter.empty()) {
+      const auto resolved_filter = resolveNodeExpression(node_json, filter);
+      if (const auto anti_type = antiJoinRewriteType(*child, resolved_filter, outputs); anti_type.has_value()) {
+        auto* semi_join = reinterpret_cast<Join*>(child.get());
+        auto anti_join = std::make_unique<Join>(*anti_type, semi_join->strategy, semi_join->condition);
+        applyNodeMetadata(*anti_join, node_json);
+        if (std::isnan(anti_join->rows_estimated) || std::isinf(anti_join->rows_estimated)) {
+          anti_join->rows_estimated = semi_join->rows_estimated;
+        }
+        while (child->childCount() > 0) {
+          anti_join->addSharedChild(child->takeChild(0));
+        }
+        return anti_join;
+      }
+    }
+
     if (!filter.empty()) {
       auto selection = std::make_unique<Selection>(resolveNodeExpression(node_json, filter));
       applyNodeMetadata(*selection, node_json);
@@ -1121,7 +1349,6 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
     }
 
     const auto projection_columns = parseProjectionColumns(node_json);
-    const auto outputs = outputNames(node_json);
     if (!projection_columns.empty() && !projectionMatchesOutputs(projection_columns, outputs)) {
       auto projection = makeProjection(projection_columns);
       applyNodeMetadata(*projection, node_json);
@@ -1160,7 +1387,9 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
   if (name == "InnerJoin" || name == "LeftJoin" || name == "RightJoin" || name == "CrossJoin" || name == "SemiJoin") {
     auto join_type = Join::Type::INNER;
     auto join_strategy = Join::Strategy::HASH;
-    auto condition = resolveJoinExpression(node_json, descriptorString(node_json, "criteria"));
+    auto condition = combineConjuncts(
+      resolveJoinExpression(node_json, descriptorString(node_json, "criteria")),
+      resolveJoinExpression(node_json, descriptorString(node_json, "filter")));
 
     if (name == "LeftJoin") {
       join_type = Join::Type::LEFT_OUTER;
@@ -1171,10 +1400,28 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
       join_strategy = Join::Strategy::LOOP;
       condition.clear();
     } else if (name == "SemiJoin") {
-      join_type = Join::Type::LEFT_SEMI_INNER;
+      const auto outputs = outputNames(node_json);
+      const auto left_outputs = built_children.empty() ? std::vector<std::string>{} : built_children.front()->columns_output;
+      join_type = outputs.size() > left_outputs.size() ? Join::Type::LEFT_SEMI_OUTER : Join::Type::LEFT_SEMI_INNER;
     }
 
     auto join = std::make_unique<Join>(join_type, join_strategy, condition);
+    if (name == "LeftJoin" && built_children.size() == 2) {
+      auto left_child = take_first_child();
+      auto right_child = take_first_child();
+      join->addChild(std::move(right_child));
+      join->addChild(std::move(left_child));
+      applyNodeMetadata(*join, node_json);
+      return join;
+    }
+    if (name == "SemiJoin" && built_children.size() == 2) {
+      auto source_child = take_first_child();
+      auto filtering_child = take_first_child();
+      join->addChild(std::move(filtering_child));
+      join->addChild(std::move(source_child));
+      applyNodeMetadata(*join, node_json);
+      return join;
+    }
     return attach_children(std::move(join));
   }
 

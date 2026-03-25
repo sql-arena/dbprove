@@ -217,6 +217,7 @@ const std::map<std::string_view, std::string_view>& EngineDialect::ansiFunctions
                                                                  {"MAX", ""},
                                                                  {"MIN", ""},
                                                                  {"AVG", ""},
+                                                                 {"BOOL_OR", ""},
                                                                  {"COUNT", ""},
                                                                  {"COUNT_BIG", ""},
                                                                  {"BLOOM", ""},
@@ -325,8 +326,22 @@ std::vector<sql::Token> tokenize(const std::string& expr, const EngineDialect* d
     }
 
     std::string literal;
-    while (i < expr.size() && (std::isalnum(expr[i]) || valid_literal.contains(expr[i]))) {
-      literal += expr[i++];
+    while (i < expr.size()) {
+      if (std::isalnum(expr[i]) || valid_literal.contains(expr[i])) {
+        literal += expr[i++];
+        continue;
+      }
+      const bool exponent_sign =
+        (expr[i] == '+' || expr[i] == '-') &&
+        !literal.empty() &&
+        (literal.back() == 'E' || literal.back() == 'e') &&
+        i + 1 < expr.size() &&
+        std::isdigit(static_cast<unsigned char>(expr[i + 1])) != 0;
+      if (exponent_sign) {
+        literal += expr[i++];
+        continue;
+      }
+      break;
     }
 
     auto upper_literal = to_upper(literal);
@@ -361,7 +376,7 @@ std::vector<sql::Token> tokenize(const std::string& expr, const EngineDialect* d
                                                                    {"TOYEAR", "YEAR"},
                                                                    // ANY is IN to normal people
                                                                    {"ANY", "IN"}};
-    if (dialect->functions().contains(upper_literal)) {
+    if (dialect->functions().contains(upper_literal) && nextNonWhitespaceChar(expr, i) == '(') {
       upper_literal = translate(upper_literal, t);
       upper_literal = translate(upper_literal, dialect->functions());
       auto functionVariant = (upper_literal == "COUNT DISTINCT")

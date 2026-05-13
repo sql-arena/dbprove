@@ -192,6 +192,7 @@ int main(int argc, char** argv) {
     if (!proof_output_stream.is_open()) {
       throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
     }
+    PLOGI << "Writing proof CSV to: " << fs::absolute(proof_file).string();
     csv_output_stream = &proof_output_stream;
   } else {
     PLOGI << "Artifact mode enabled: skipping engine version check and proof CSV output";

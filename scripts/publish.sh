@@ -12,6 +12,23 @@ PUBLISHER="$1"
 RESULTS_REPO="../dbprove-results"
 SOURCE_DIR="run/proof"
 
+map_engine_dir() {
+    local engine_name="$1"
+    local engine_name_lower
+    engine_name_lower=$(printf '%s' "$engine_name" | tr '[:upper:]' '[:lower:]')
+    case "$engine_name_lower" in
+        clickhouse) echo "ClickHouse" ;;
+        databricks) echo "Databricks" ;;
+        datafusion) echo "DataFusion" ;;
+        duckdb) echo "DuckDB" ;;
+        mysql|mariadb) echo "MySQL" ;;
+        postgresql|postgres|pg) echo "PostgreSQL" ;;
+        sqlserver|mssql|"sql server") echo "SQL Server" ;;
+        trino|presto) echo "Trino" ;;
+        *) echo "$engine_name" ;;
+    esac
+}
+
 if [ ! -d "$RESULTS_REPO" ]; then
     echo "Error: Target repository '$RESULTS_REPO' not found in the parent directory."
     exit 1
@@ -28,8 +45,9 @@ echo "Publishing as '$PUBLISHER'..."
 for engine_path in "$SOURCE_DIR"/*; do
     [ -d "$engine_path" ] || continue
     engine_name=$(basename "$engine_path")
+    results_engine_name=$(map_engine_dir "$engine_name")
     
-    echo "Processing engine: $engine_name"
+    echo "Processing engine: $engine_name -> $results_engine_name"
     
     # Iterate through version folders
     for version_path in "$engine_path"/*; do
@@ -39,17 +57,17 @@ for engine_path in "$SOURCE_DIR"/*; do
         echo "  Version: $version"
         
         # Target engine directory in the results repo
-        engine_dir="$RESULTS_REPO/engine/$engine_name"
+        engine_dir="$RESULTS_REPO/engine/$results_engine_name"
         if [ ! -d "$engine_dir" ]; then
             # Try case-insensitive match
-            matched_dir=$(find "$RESULTS_REPO/engine" -maxdepth 1 -iname "$engine_name" -type d | head -n 1)
+            matched_dir=$(find "$RESULTS_REPO/engine" -maxdepth 1 -iname "$results_engine_name" -type d | head -n 1)
             if [ -n "$matched_dir" ]; then
                 engine_dir="$matched_dir"
             fi
         fi
 
         if [ ! -d "$engine_dir" ]; then
-            echo "    Warning: Engine directory '$engine_name' not found in $RESULTS_REPO/engine/. Skipping."
+            echo "    Engine directory '$results_engine_name' not found in $RESULTS_REPO/engine/. Creating it."
             mkdir -p "$engine_dir"
         fi
 

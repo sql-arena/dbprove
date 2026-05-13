@@ -43,3 +43,11 @@ services:
       - "8080:8080"
     volumes:
       - ../run/mount/trino:/data/trino
+
+  datafusion:
+    build: ./datafusion
+    image: dbprove-datafusion:latest
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../run/mount/datafusion:/workspace

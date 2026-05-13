@@ -1,0 +1,20 @@
+[package]
+name = "datafusion-plan-json"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+datafusion = { version = "53.1.0", default-features = false, features = [
+  "parquet",
+  "sql",
+  "unicode_expressions",
+  "regex_expressions",
+  "string_expressions",
+  "crypto_expressions",
+  "encoding_expressions",
+  "datetime_expressions"
+] }
+datafusion-proto = { version = "53.1.0", features = ["json"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

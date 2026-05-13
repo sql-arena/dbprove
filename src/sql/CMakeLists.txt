@@ -70,6 +70,7 @@ add_subdirectory("odbc")
 add_subdirectory("postgresql")
 add_subdirectory("utopia")
 add_subdirectory("duckdb")
+add_subdirectory("datafusion")
 add_subdirectory("databricks")
 add_subdirectory("yellowbrick")
 add_subdirectory("clickhouse")
@@ -89,6 +90,7 @@ target_link_libraries(${_targetName}
         dbprove::sql::postgres
         dbprove::sql::utopia
         dbprove::sql::duckdb
+        dbprove::sql::datafusion
         dbprove::sql::databricks
         dbprove::sql::yellowbrick
         dbprove::sql::clickhouse

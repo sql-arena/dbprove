@@ -6,4 +6,5 @@ target_sources(${_targetName}
         null_stream.h
         log_formatter.h
         file_utility.h
+        json_utility.h
 )

@@ -10,6 +10,7 @@ scratchpad/
 proof/
 logs/
 table_data/
+artifacts/
 
 
 .DS_Store
@@ -59,3 +60,8 @@ vcpkg_installed/
 .vs/
 out/
 run//scratchpad/
+
+# Local DataFusion helper/build artifacts
+docker/datafusion/__pycache__/
+docker/datafusion/plan_json/target/
+docker/datafusion/tpch/

@@ -2,6 +2,7 @@ project(test_connectivity LANGUAGES CXX)
 enable_testing()
 add_executable(test_connectivity
         connection.cpp
+        datafusion_tpch_theorem.cpp
         expression.cpp
         explain.cpp
         fixture.cpp
@@ -13,10 +14,16 @@ target_link_libraries(test_connectivity
         PRIVATE
         Catch2::Catch2WithMain
         dbprove::sql
+        dbprove::theorem
         dbprove::sql::utopia
         dbprove::sql::postgres
         dbprove::sql::databricks
         dbprove::sql::clickhouse
+)
+
+target_include_directories(test_connectivity
+        PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/generator/include
 )
 
 target_embed_files(test_connectivity SQL_FILES

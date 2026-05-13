@@ -8,6 +8,7 @@ target_sources(${_targetName}
         PRIVATE
         pretty.cpp
         file_utility.cpp
+        json_utility.cpp
 )
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(${_targetName}

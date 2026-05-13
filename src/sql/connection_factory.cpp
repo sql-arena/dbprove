@@ -1,5 +1,6 @@
 #include "connection_factory.h"
 #include "duckdb/connection.h"
+#include "datafusion/connection.h"
 #include "postgresql/connection.h"
 #include "utopia/connection.h"
 #include "mssql/connection.h"
@@ -37,6 +38,8 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       return std::make_unique<clickhouse::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
     case Engine::Type::DuckDB:
       return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_, artifacts_path_);
+    case Engine::Type::DataFusion:
+      return std::make_unique<datafusion::Connection>(std::get<CredentialNone>(credential_), engine_, artifacts_path_);
     case Engine::Type::Databricks:
       return std::make_unique<databricks::Connection>(std::get<CredentialAccessToken>(credential_), engine_, artifacts_path_);
     case Engine::Type::MariaDB:

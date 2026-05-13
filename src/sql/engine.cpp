@@ -22,6 +22,8 @@ Engine::Engine(const std::string_view name) {
                                                                {"sql server", Type::SQLServer},
                                                                {"duckdb", Type::DuckDB},
                                                                {"duck", Type::DuckDB},
+                                                               {"datafusion", Type::DataFusion},
+                                                               {"df", Type::DataFusion},
                                                                {"utopia", Type::Utopia},
                                                                {"databricks", Type::Databricks},
                                                                {"utopia", Type::Utopia},
@@ -64,6 +66,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
       return "dbprove";
     case Type::DuckDB:
       return "duck.db";
+    case Type::DataFusion:
+      return "tpch";
     case Type::SQLite:
       return "sqlite.db";
     case Type::Postgres:
@@ -102,6 +106,7 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       break;
     case Type::ClickHouse:
     case Type::DuckDB:
+    case Type::DataFusion:
     case Type::SQLite:
     case Type::SQLServer:
     case Type::Trino:
@@ -138,6 +143,7 @@ uint16_t Engine::defaultPort(const uint16_t port) const {
     case Type::Trino:
       return 8080;
     case Type::DuckDB:
+    case Type::DataFusion:
     case Type::SQLite:
       return 42; // Dummy port, Duck is localhost
     default:
@@ -164,6 +170,7 @@ std::string Engine::defaultUsername(std::optional<std::string> username) const {
     case Type::Trino:
       return getEnvVar("TRINO_USER").value_or("trino");
     case Type::Utopia:
+    case Type::DataFusion:
     case Type::SQLite:
       return "";
     case Type::Oracle:
@@ -236,6 +243,8 @@ Credential Engine::parseCredentials(const std::string& host, const uint16_t port
     }
     case Type::Utopia:
       return sql::CredentialNone();
+    case Type::DataFusion:
+      return sql::CredentialNone();
     case Type::DuckDB:
     case Type::SQLite:
       return sql::CredentialFile(database);
@@ -256,6 +265,7 @@ std::string Engine::name() const {
                                                                    {Type::SQLite, "SQLite"},
                                                                    {Type::Utopia, "Utopia"},
                                                                    {Type::DuckDB, "DuckDB"},
+                                                                   {Type::DataFusion, "DataFusion"},
                                                                    {Type::Databricks, "Databricks"},
                                                                    {Type::Yellowbrick, "Yellowbrick"},
                                                                    {Type::SQLServer, "SQL Server"},
@@ -280,6 +290,8 @@ std::string Engine::internalName() const {
       return "oracle";
     case Type::DuckDB:
       return "duckdb";
+    case Type::DataFusion:
+      return "datafusion";
     case Type::Utopia:
       return "utopia";
     case Type::Databricks:
@@ -298,6 +310,7 @@ bool Engine::needsLocalFile() const {
   switch (type_) {
     case Type::Databricks:
     case Type::Trino:
+    case Type::DataFusion:
       return false;
     default:
       return true;

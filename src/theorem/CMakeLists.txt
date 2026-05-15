@@ -11,6 +11,7 @@ target_include_directories(${_targetName} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURR
 target_sources(${_targetName}
         PRIVATE
         plan/prove.cpp
+        ee/prove.cpp
         cli/prove.cpp
         runner.cpp
         proof.cpp
@@ -26,6 +27,7 @@ target_sources(${_targetName}
         query.h
         init.h
         cli/prover.h
+        ee/prover.h
         plan/prover.h
 )
 

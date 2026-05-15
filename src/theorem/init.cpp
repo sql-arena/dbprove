@@ -4,6 +4,7 @@
 
 #include "theorem.h"
 #include "plan/prover.h"
+#include "ee/prover.h"
 #include "cli/prover.h"
 
 namespace dbprove::theorem::test { void init(); }
@@ -16,6 +17,7 @@ std::string all_categories_string_;
 
 void init() {
   plan::init();
+  ee::init();
   cli::init();
   test::init();
 }

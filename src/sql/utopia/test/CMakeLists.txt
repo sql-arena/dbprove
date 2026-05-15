@@ -7,6 +7,7 @@ add_executable(test_utopia connection.cpp
 target_link_libraries(test_utopia 
     PRIVATE 
         Catch2::Catch2WithMain 
+        dbprove::sql
         dbprove::sql::utopia
 )
 #include(CTest)

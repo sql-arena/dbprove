@@ -63,7 +63,7 @@ void Runner::serial(const std::span<Query>& queries, const size_t iterations) co
   const auto connection = factory_.create();
   for (size_t i = 0; i < iterations; ++i) {
     for (auto& query : queries) {
-      auto qs = query.start();
+      auto& qs = query.start();
       connection->execute(query.textTagged());
       query.stop(qs);
       query.summariseThread();
@@ -81,7 +81,7 @@ void Runner::parallelApart(const size_t threadCount, std::span<Query>& queries) 
     const auto connection = factory_.create();
 
     for (auto& query : queries) {
-      auto qs = query.start();
+      auto& qs = query.start();
       connection->execute(query.textTagged());
       query.stop(qs);
       query.summariseThread();
@@ -101,7 +101,7 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
     }
     auto& query = queries[index];
 
-    auto qs = query.start();
+    auto& qs = query.start();
     connection->execute(query.textTagged());
     query.stop(qs);
     query.summariseThread();
@@ -114,11 +114,12 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
 void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   const auto connection = factory_.create();
   for (auto& query : queries) {
-    DataQuery(query).render(proof);
-    auto qs = query.start();
+    proof.data.push_back(std::make_unique<DataQuery>(query));
+    auto& qs = query.start();
     validateExpectedRowCount(*connection, query, proof, expectedRowCountFor(query, proof, queries.size()));
     auto explain = connection->explain(query.textTagged(), proof.theorem.name);
     query.stop(qs);
+    query.summariseThread();
     proof.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
   }
   connection->close();

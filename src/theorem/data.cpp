@@ -1,6 +1,9 @@
 #include "theorem.h"
 #include <dbprove/ux/ux.h>
 #include "query.h"
+#include <algorithm>
+#include <chrono>
+#include <numeric>
 #include <string>
 #include <sstream>
 
@@ -67,5 +70,30 @@ void DataQuery::render(Proof& proof) {
   ux::Header(out, "Query", 10);
   out << query.text() << std::endl;
   proof.writeCsv("SQL", query.text(), Unit::Query);
+
+  const auto& stats = query.stats();
+  if (stats.empty()) {
+    return;
+  }
+
+  const auto [min_it, max_it] = std::minmax_element(stats.begin(), stats.end(), [](const QueryStats& lhs, const QueryStats& rhs) {
+    return lhs.duration < rhs.duration;
+  });
+
+  const auto total_duration = std::accumulate(stats.begin(), stats.end(), std::chrono::microseconds::zero(),
+                                              [](const std::chrono::microseconds total, const QueryStats& stat) {
+                                                return total + stat.duration;
+                                              });
+  const auto avg_duration = total_duration / static_cast<int64_t>(stats.size());
+
+  out << "Runs: " << stats.size()
+      << ", avg: " << avg_duration.count() << " us"
+      << ", min: " << min_it->duration.count() << " us"
+      << ", max: " << max_it->duration.count() << " us" << std::endl;
+
+  proof.writeCsv("RuntimeRuns", std::to_string(stats.size()), Unit::COUNT);
+  proof.writeCsv("RuntimeAvg", std::to_string(avg_duration.count()), Unit::Microseconds);
+  proof.writeCsv("RuntimeMin", std::to_string(min_it->duration.count()), Unit::Microseconds);
+  proof.writeCsv("RuntimeMax", std::to_string(max_it->duration.count()), Unit::Microseconds);
 }
 }

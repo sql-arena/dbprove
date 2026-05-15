@@ -75,6 +75,7 @@ public:
   const std::string& textTagged() const { return text_tagged_; }
   const std::optional<sql::RowCount>& expectedRowCount() const { return expected_row_count_; }
   void setExpectedRowCount(const std::optional<sql::RowCount> expected_row_count) { expected_row_count_ = expected_row_count; }
+  const std::vector<QueryStats>& stats() const { return stats_; }
 
   QueryStats& start() {
     thread_stats_.push_back({});
@@ -94,6 +95,7 @@ public:
     for (auto& s : thread_stats_) {
       stats_.emplace_back(std::move(s));
     }
+    thread_stats_.clear();
   }
 };
 }

@@ -14,6 +14,7 @@ target_sources(${_targetName}
 target_link_libraries(${_targetName}
         PRIVATE
         dbprove::sql::core
+        dbprove::sql::driver
 )
 
 # TODO: Find packages specific to driver and link them (public linking) to the library

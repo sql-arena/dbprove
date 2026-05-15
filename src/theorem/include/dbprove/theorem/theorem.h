@@ -117,6 +117,7 @@ public:
 enum class Unit {
   Rows,
   COUNT,
+  Microseconds,
   Query,
   Magnitude,
   Plan

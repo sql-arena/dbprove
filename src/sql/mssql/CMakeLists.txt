@@ -30,7 +30,7 @@ target_link_libraries(${_targetName}
     if (DBPROVE_ENABLE_TESTING)
         find_package(unofficial-vincentlaucsb-csv-parser CONFIG REQUIRED)
         add_executable(test_mssql_bulk_load test/test_bulk_load.cpp)
-        target_link_libraries(test_mssql_bulk_load PRIVATE ${_targetName} dbprove::common unofficial::vincentlaucsb-csv-parser::csv)
+        target_link_libraries(test_mssql_bulk_load PRIVATE ${_targetName} dbprove::sql dbprove::common unofficial::vincentlaucsb-csv-parser::csv)
         target_include_directories(test_mssql_bulk_load PRIVATE ../include)
     endif()
 
@@ -76,6 +76,5 @@ elseif (UNIX)
     endif ()
     target_link_libraries(${_targetName} PRIVATE dl)
 endif ()
-
 
 

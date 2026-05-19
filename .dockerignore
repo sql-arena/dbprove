@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+proof
+run
+table_data
+out
+extern/vcpkg/buildtrees
+extern/vcpkg/downloads
+extern/vcpkg/packages
+extern/vcpkg_installed
+docker/datafusion/plan_json/target
+__pycache__
+*.pyc

@@ -9,7 +9,8 @@ ENV VCPKG_FORCE_SYSTEM_BINARIES=1
 ENV VCPKG_MAX_CONCURRENCY=4
 ENV CMAKE_BUILD_PARALLEL_LEVEL=4
 
-RUN apt-get update \
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         autoconf \
         autoconf-archive \
@@ -63,24 +64,18 @@ RUN /src/extern/vcpkg/bootstrap-vcpkg.sh -disableMetrics \
        -DVCPKG_OVERLAY_TRIPLETS=/src/overlay-triplets \
     && cmake --build /src/out/build/ubuntu-arm64-release-prebuilt-duckdb --target dbprove -j4
 
-
-FROM ubuntu:24.04
+FROM build AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LD_LIBRARY_PATH=/opt/dbprove/vcpkg_installed/lib:/opt/dbprove/vcpkg_installed/lib64
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash ca-certificates tini \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=build /src/out/build/ubuntu-arm64-release-prebuilt-duckdb/src/dbprove/dbprove /opt/dbprove/bin/dbprove
-COPY --from=build /src/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb/arm64-linux-release /opt/dbprove/vcpkg_installed
-COPY docker/datafusion/tpch /opt/tpch
-COPY docker/duckdb/entrypoint.sh /usr/local/bin/duckdb-entrypoint.sh
-
-RUN chmod +x /usr/local/bin/duckdb-entrypoint.sh \
-    && mkdir -p /repo
+RUN mkdir -p /opt/dbprove/bin /opt/dbprove/vcpkg_installed /opt/tpch /repo \
+    && cp /src/out/build/ubuntu-arm64-release-prebuilt-duckdb/src/dbprove/dbprove /opt/dbprove/bin/dbprove \
+    && cp -R /src/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb/arm64-linux-release/. /opt/dbprove/vcpkg_installed/ \
+    && cp -R /src/docker/datafusion/tpch/. /opt/tpch/ \
+    && cp /src/docker/duckdb/entrypoint.sh /usr/local/bin/duckdb-entrypoint.sh \
+    && chmod +x /usr/local/bin/duckdb-entrypoint.sh
 
 WORKDIR /repo
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/duckdb-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/duckdb-entrypoint.sh"]

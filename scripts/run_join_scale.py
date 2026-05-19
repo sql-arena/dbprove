@@ -45,7 +45,6 @@ WARMUP_TIMEOUT_SECONDS = 1800
 ENGINE_RUN_TIMEOUT_SECONDS = max(QUERY_TIMEOUT_SECONDS * len(SCALES) * 12, 600)
 ENGINE_COLUMNS = ["DuckDB", "DataFusion", "Trino"]
 DOCKER_COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
-DUCKDB_ARTIFACT_SCRIPT = ROOT / "scripts" / "build_duckdb_ubuntu_prebuilt_artifact.sh"
 DUCKDB_IMAGE = "dbprove-duckdb-bench:latest"
 
 ENGINES = [
@@ -346,22 +345,32 @@ def kill_latent_containers() -> None:
 
 def start_container_service(engine: dict[str, str | bool]) -> int:
     if engine["arg"] == "duckdb":
-        artifact_result = subprocess.run(
-            [str(DUCKDB_ARTIFACT_SCRIPT)],
+        build_result = subprocess.run(
+            [
+                "docker",
+                "build",
+                "--network=host",
+                "--progress=plain",
+                "-f",
+                str(ROOT / "docker" / "duckdb" / "Dockerfile"),
+                "-t",
+                DUCKDB_IMAGE,
+                str(ROOT),
+            ],
             cwd=ROOT,
             capture_output=True,
             text=True,
             timeout=WARMUP_TIMEOUT_SECONDS,
         )
-        if artifact_result.returncode != 0:
-            print("Failed to prepare Ubuntu DuckDB dbprove artifact.", file=sys.stderr)
-            if artifact_result.stdout:
+        if build_result.returncode != 0:
+            print("Failed to build DuckDB benchmark image.", file=sys.stderr)
+            if build_result.stdout:
                 print("\nstdout tail:\n", file=sys.stderr)
-                print(artifact_result.stdout[-4000:], file=sys.stderr)
-            if artifact_result.stderr:
+                print(build_result.stdout[-4000:], file=sys.stderr)
+            if build_result.stderr:
                 print("\nstderr tail:\n", file=sys.stderr)
-                print(artifact_result.stderr[-4000:], file=sys.stderr)
-            return artifact_result.returncode
+                print(build_result.stderr[-4000:], file=sys.stderr)
+            return build_result.returncode
         return 0
 
     build_service = engine.get("compose_build_service")

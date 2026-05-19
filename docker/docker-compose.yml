@@ -39,15 +39,22 @@ services:
   trino:
     build: ./trino
     image: dbprove-trino:latest
+    mem_limit: 2g
     ports:
       - "8080:8080"
+    tmpfs:
+      - /mnt/tpch-tmpfs:size=1g,uid=1000,gid=1000,mode=755
     volumes:
       - ../run/mount/trino:/data/trino
+      - ./datafusion/tpch:/opt/tpch-source:ro
 
   datafusion:
     build: ./datafusion
     image: dbprove-datafusion:latest
+    mem_limit: 2g
     stdin_open: true
     tty: true
+    tmpfs:
+      - /mnt/tpch-tmpfs:size=1g
     volumes:
       - ../run/mount/datafusion:/workspace

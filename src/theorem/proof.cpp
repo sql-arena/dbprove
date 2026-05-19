@@ -70,9 +70,13 @@ Proof& Proof::ensureSchema(const std::string& schema) {
 }
 
 void Proof::render() {
+  if (rendered_) {
+    return;
+  }
   for (const auto& d : data) {
     d->render(*this);
   }
+  rendered_ = true;
 }
 
 std::ostream& Proof::console() const {
@@ -81,6 +85,18 @@ std::ostream& Proof::console() const {
 
 bool Proof::artifactMode() const {
   return state.artifact_mode;
+}
+
+std::optional<uint32_t> Proof::queryTimeoutSeconds() const {
+  return state.query_timeout_seconds;
+}
+
+size_t Proof::timingRuns() const {
+  return state.timing_runs;
+}
+
+const std::optional<std::string>& Proof::parquetDir() const {
+  return state.parquet_dir;
 }
 
 

@@ -124,6 +124,14 @@ public:
    */
   virtual std::vector<SqlTypeMeta> describeColumnTypes(std::string_view table);
 
+  virtual void setQueryTimeout(std::optional<uint32_t> timeout_seconds) {
+    query_timeout_seconds_ = timeout_seconds;
+  }
+
+  [[nodiscard]] std::optional<uint32_t> queryTimeoutSeconds() const {
+    return query_timeout_seconds_;
+  }
+
 
   const Credential credential;
 
@@ -149,6 +157,7 @@ public:
 
 protected:
   const std::optional<std::string> artifacts_path_;
+  std::optional<uint32_t> query_timeout_seconds_;
   static void validateSourcePaths(const std::vector<std::filesystem::path>& source_paths);
 };
 }

@@ -6,7 +6,7 @@
 
 #include <iostream>
 #include <curl/curl.h>
-#include <duckdb/common/exception.hpp>
+#include <duckdb.hpp>
 #include <nlohmann/json.hpp>
 #include <regex>
 #include <array>

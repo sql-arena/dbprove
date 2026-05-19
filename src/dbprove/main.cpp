@@ -91,9 +91,12 @@ int main(int argc, char** argv) {
   std::optional<std::string> host = std::nullopt;
   std::optional<std::string> token = std::nullopt;
   std::optional<std::string> artifacts_path = std::nullopt;
+  std::optional<std::string> parquet_dir = std::nullopt;
   std::vector<std::string> all_theorems;
   std::string engine_arg;
   uint32_t port;
+  uint32_t query_timeout_seconds = 0;
+  uint32_t timing_runs = 3;
   bool verbose = false;
 
   app.set_help_flag("-?", "--help");
@@ -118,8 +121,14 @@ int main(int argc, char** argv) {
   CLI::Option* artifacts_opt = app.add_option("-a,--artifacts",
                                              artifacts_path, "Path to store/load explain artifacts")
                                    ->expected(0, 1);
+  app.add_option("--parquet-dir",
+                 parquet_dir, "Directory containing parquet benchmark files such as orders.parquet and lineitem.parquet");
   app.add_option("-T,--theorem",
                  all_theorems, "Which theorems to prove")->delimiter(',');
+  app.add_option("--query-timeout",
+                 query_timeout_seconds, "Query timeout in seconds (0 disables timeout)")->default_val(0);
+  app.add_option("--timing-runs",
+                 timing_runs, "Number of measured executions per query theorem")->default_val(3);
 
   CLI11_PARSE(app, argc, argv);
 
@@ -203,7 +212,10 @@ int main(int argc, char** argv) {
   }
 
   auto input_state = theorem::RunCtx{engine, credentials, generator_state,
-                                     std::cout, *csv_output_stream, artifacts_path};
+                                     std::cout, *csv_output_stream, artifacts_path,
+                                     query_timeout_seconds > 0 ? std::optional<uint32_t>(query_timeout_seconds) : std::nullopt,
+                                     timing_runs,
+                                     parquet_dir};
 
-  theorem::prove(theorems, input_state);
+  return theorem::prove(theorems, input_state) ? 0 : 1;
 }

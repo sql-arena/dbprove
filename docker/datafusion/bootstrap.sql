@@ -27,8 +27,8 @@ LOCATION '/opt/tpch/sf1/partsupp.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS tpch.orders
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/orders.parquet';
+LOCATION '/mnt/tpch-tmpfs/orders.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS tpch.lineitem
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/lineitem.parquet';
+LOCATION '/mnt/tpch-tmpfs/lineitem.parquet';

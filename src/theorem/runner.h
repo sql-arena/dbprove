@@ -48,5 +48,14 @@ public:
 
   void serialExplain(Query&& query, Proof& state)  const;;
 
+  /**
+   * Execute queries, validate the row count, and record timing without running EXPLAIN.
+   * @param queries To run
+   * @param proof To update
+   */
+  void serialMeasure(std::span<Query>& queries, Proof& proof, size_t iterations = 1) const;
+
+  void serialMeasure(Query&& query, Proof& state, size_t iterations = 1) const;
+
 };
 }

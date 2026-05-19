@@ -178,7 +178,10 @@ SqlVariant jsonValueToVariant(const ordered_json& value) {
   return SqlVariant(value.dump());
 }
 
-[[noreturn]] void throwForCommandError(const Credential& credential, std::string_view statement, const std::string& output) {
+[[noreturn]] void throwForCommandError(const Credential& credential, std::string_view statement, int exit_code, const std::string& output) {
+  if (exit_code == 137) {
+    throw std::runtime_error("DataFusion container exited with code 137 (likely out of memory)");
+  }
   const auto lowered = to_lower(output);
   if (lowered.contains("error during planning")) {
     if (lowered.contains("unsupported") || lowered.contains("not implemented")) {
@@ -262,14 +265,14 @@ const ConnectionBase::TypeMap& Connection::typeMap() const {
 void Connection::execute(std::string_view statement) {
   const auto result = impl_->runCli(statement);
   if (result.exit_code != 0) {
-    throwForCommandError(credential, statement, result.output);
+    throwForCommandError(credential, statement, result.exit_code, result.output);
   }
 }
 
 std::unique_ptr<ResultBase> Connection::fetchJsonQuery(std::string_view statement) {
   const auto result = impl_->runCli(statement);
   if (result.exit_code != 0) {
-    throwForCommandError(credential, statement, result.output);
+    throwForCommandError(credential, statement, result.exit_code, result.output);
   }
 
   ordered_json payload;
@@ -343,7 +346,7 @@ void Connection::close() {
 json Connection::fetchPhysicalPlanJson(std::string_view statement) const {
   const auto result = impl_->runPhysicalPlanHelper(statement);
   if (result.exit_code != 0) {
-    throwForCommandError(credential, statement, result.output);
+    throwForCommandError(credential, statement, result.exit_code, result.output);
   }
 
   try {

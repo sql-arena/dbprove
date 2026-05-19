@@ -19,6 +19,7 @@ class Query {
   std::string text_;
   std::string text_tagged_;
   std::optional<sql::RowCount> expected_row_count_;
+  std::optional<std::vector<sql::SqlVariant>> expected_row_values_;
   std::mutex stats_mutex_;
   std::vector<QueryStats> stats_;
   static thread_local std::vector<QueryStats> thread_stats_;
@@ -74,7 +75,11 @@ public:
   const std::string& text() const { return text_; }
   const std::string& textTagged() const { return text_tagged_; }
   const std::optional<sql::RowCount>& expectedRowCount() const { return expected_row_count_; }
+  const std::optional<std::vector<sql::SqlVariant>>& expectedRowValues() const { return expected_row_values_; }
   void setExpectedRowCount(const std::optional<sql::RowCount> expected_row_count) { expected_row_count_ = expected_row_count; }
+  void setExpectedRowValues(std::optional<std::vector<sql::SqlVariant>> expected_row_values) {
+    expected_row_values_ = std::move(expected_row_values);
+  }
   const std::vector<QueryStats>& stats() const { return stats_; }
 
   QueryStats& start() {

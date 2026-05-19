@@ -3,6 +3,8 @@
 #include "query.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <iomanip>
 #include <numeric>
 #include <string>
 #include <sstream>
@@ -85,15 +87,30 @@ void DataQuery::render(Proof& proof) {
                                                 return total + stat.duration;
                                               });
   const auto avg_duration = total_duration / static_cast<int64_t>(stats.size());
+  const auto min_duration = min_it->duration;
+
+  const double mean_us = static_cast<double>(avg_duration.count());
+  const double variance_us = std::accumulate(stats.begin(), stats.end(), 0.0,
+                                             [mean_us](const double total, const QueryStats& stat) {
+                                               const double delta = static_cast<double>(stat.duration.count()) - mean_us;
+                                               return total + (delta * delta);
+                                             }) / static_cast<double>(stats.size());
+  const double stddev_us = std::sqrt(variance_us);
 
   out << "Runs: " << stats.size()
+      << ", best: " << min_duration.count() << " us"
       << ", avg: " << avg_duration.count() << " us"
-      << ", min: " << min_it->duration.count() << " us"
+      << ", stddev: " << std::llround(stddev_us) << " us"
+      << ", min: " << min_duration.count() << " us"
       << ", max: " << max_it->duration.count() << " us" << std::endl;
 
   proof.writeCsv("RuntimeRuns", std::to_string(stats.size()), Unit::COUNT);
+  proof.writeCsv("RuntimeBest", std::to_string(min_duration.count()), Unit::Microseconds);
   proof.writeCsv("RuntimeAvg", std::to_string(avg_duration.count()), Unit::Microseconds);
   proof.writeCsv("RuntimeMin", std::to_string(min_it->duration.count()), Unit::Microseconds);
   proof.writeCsv("RuntimeMax", std::to_string(max_it->duration.count()), Unit::Microseconds);
+  std::ostringstream stddev_stream;
+  stddev_stream << std::fixed << std::setprecision(2) << stddev_us;
+  proof.writeCsv("RuntimeStdDev", stddev_stream.str(), Unit::Microseconds);
 }
 }

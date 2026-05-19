@@ -9,6 +9,7 @@
 #include <optional>
 #include <plog/Log.h>
 #include <regex>
+#include <chrono>
 
 namespace sql::trino {
 using json = nlohmann::json;
@@ -67,6 +68,7 @@ std::string jsonScalarAsString(const json& value) {
 }
 
 class Connection::Pimpl {
+  Connection& connection;
   const CredentialPassword credential_;
   bool closed_ = false;
 
@@ -79,8 +81,9 @@ class Connection::Pimpl {
   }
 
 public:
-  explicit Pimpl(CredentialPassword credential)
-    : credential_(std::move(credential)) {
+  explicit Pimpl(Connection& connection, CredentialPassword credential)
+    : connection(connection)
+    , credential_(std::move(credential)) {
     ensureCurl();
   }
 
@@ -145,7 +148,21 @@ public:
     throw InvalidException(message);
   }
 
-  json httpRequest(std::string_view url, std::optional<std::string_view> body = std::nullopt) const {
+  [[nodiscard]] long requestTimeoutSeconds(const std::optional<std::chrono::steady_clock::time_point>& deadline) const {
+    if (!deadline.has_value()) {
+      return 300L;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= *deadline) {
+      return 1L;
+    }
+    const auto remaining = std::chrono::duration_cast<std::chrono::seconds>(*deadline - now).count();
+    return std::max<long>(1L, static_cast<long>(remaining));
+  }
+
+  json httpRequest(std::string_view url,
+                   std::optional<std::string_view> body = std::nullopt,
+                   std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) const {
     ensureOpen();
 
     auto* curl = curl_easy_init();
@@ -173,7 +190,7 @@ public:
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, requestTimeoutSeconds(deadline));
 
     const auto res = curl_easy_perform(curl);
     long status_code = 0;
@@ -193,6 +210,45 @@ public:
     } catch (const std::exception& e) {
       throw ProtocolException("Failed to parse Trino JSON response: " + std::string(e.what()));
     }
+  }
+
+  void cancelQuery(std::string_view next_uri) const {
+    ensureOpen();
+
+    auto* curl = curl_easy_init();
+    if (!curl) {
+      return;
+    }
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, ("X-Trino-User: " + credential_.username).c_str());
+    headers = curl_slist_append(headers, ("X-Trino-Catalog: " + credential_.database).c_str());
+    headers = curl_slist_append(headers, ("X-Trino-Schema: " + currentSchema()).c_str());
+
+    std::string response_body;
+    curl_easy_setopt(curl, CURLOPT_URL, std::string(next_uri).c_str());
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+
+    const auto res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+      PLOGW << "Failed to cancel Trino query via " << next_uri << ": " << curl_easy_strerror(res);
+    }
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+  }
+
+  [[noreturn]] void throwTimeout(std::optional<std::string_view> cancel_uri, const uint32_t timeout_seconds) const {
+    if (cancel_uri.has_value() && !cancel_uri->empty()) {
+      cancelQuery(*cancel_uri);
+    }
+    throw std::runtime_error("Query timed out after " + std::to_string(timeout_seconds) + " seconds");
   }
 
   SqlVariant jsonValueToVariant(const json& value, const std::string& raw_type) const {
@@ -233,10 +289,24 @@ public:
 
   TrinoQueryResult runStatement(std::string_view statement) const {
     const auto rewritten = rewriteStatement(statement);
-    json page = httpRequest(baseUrl() + "/v1/statement", rewritten);
+    const auto timeout_seconds = connection.queryTimeoutSeconds();
+    const auto deadline = timeout_seconds.has_value()
+                            ? std::optional(std::chrono::steady_clock::now() + std::chrono::seconds(*timeout_seconds))
+                            : std::nullopt;
+
+    json page = httpRequest(baseUrl() + "/v1/statement", rewritten, deadline);
 
     TrinoQueryResult result;
     while (true) {
+      std::optional<std::string> next_uri_to_cancel;
+      if (page.contains("nextUri") && !page["nextUri"].is_null()) {
+        next_uri_to_cancel = page["nextUri"].get<std::string>();
+      }
+
+      if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+        throwTimeout(next_uri_to_cancel, *timeout_seconds);
+      }
+
       if (page.contains("error")) {
         throwForError(page["error"], statement);
       }
@@ -264,7 +334,16 @@ public:
       if (!page.contains("nextUri") || page["nextUri"].is_null()) {
         break;
       }
-      page = httpRequest(page["nextUri"].get<std::string>());
+      const auto next_uri = page["nextUri"].get<std::string>();
+      try {
+        page = httpRequest(next_uri, std::nullopt, deadline);
+      } catch (const ConnectionException& e) {
+        if (timeout_seconds.has_value() &&
+            std::string_view(e.what()).find("Timeout was reached") != std::string_view::npos) {
+          throwTimeout(next_uri, *timeout_seconds);
+        }
+        throw;
+      }
     }
 
     return result;
@@ -281,7 +360,7 @@ public:
 
 Connection::Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path)
   : ConnectionBase(credential, engine, std::move(artifacts_path))
-  , impl_(std::make_unique<Pimpl>(credential)) {
+  , impl_(std::make_unique<Pimpl>(*this, credential)) {
 }
 
 Connection::~Connection() = default;

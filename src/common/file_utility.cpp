@@ -1,7 +1,31 @@
 #include "include/dbprove/common/file_utility.h"
 
+#include <optional>
+
 namespace dbprove::common {
 using namespace std::filesystem;
+
+namespace {
+bool looks_like_project_root(const path& candidate) {
+  return exists(candidate / "docker" / "docker-compose.yml")
+         && exists(candidate / "src" / "dbprove" / "main.cpp");
+}
+
+std::optional<path> discover_project_root_from(path start) {
+  auto current = std::move(start);
+  while (!current.empty()) {
+    if (looks_like_project_root(current)) {
+      return current;
+    }
+    const auto parent = current.parent_path();
+    if (parent == current) {
+      break;
+    }
+    current = parent;
+  }
+  return std::nullopt;
+}
+}
 
 path make_directory(const std::string& directory) {
   const auto currentWorkingDir = current_path();
@@ -35,7 +59,15 @@ path make_directory(const std::string& directory) {
   return directoryToMake;
 }
 std::filesystem::path get_project_root() {
+  if (const auto from_cwd = discover_project_root_from(current_path()); from_cwd.has_value()) {
+    return *from_cwd;
+  }
+
   const std::filesystem::path current_file{__FILE__};
+  if (const auto from_source_path = discover_project_root_from(current_file.parent_path().parent_path().parent_path());
+      from_source_path.has_value()) {
+    return *from_source_path;
+  }
   return current_file.parent_path().parent_path().parent_path();
 }
 }

@@ -8,9 +8,32 @@
 #include <plog/Log.h>
 
 namespace dbprove::theorem {
+namespace {
+std::string_view classifyRunStatus(const std::string_view message) {
+  if (message.find("Query timed out after") != std::string_view::npos) {
+    return "TIMEOUT";
+  }
+  return "ERROR";
+}
+}
+
 void run_theorem(const Theorem& theorem, RunCtx& state) {
   state.proofs.push_back(std::make_unique<Proof>(theorem, state));
-  theorem.func(*state.proofs.back());
+  auto& proof = *state.proofs.back();
+  try {
+    theorem.func(proof);
+    proof.writeCsv("RunStatus", "OK", Unit::Status);
+  } catch (const std::exception& e) {
+    proof.render();
+    proof.writeCsv("RunStatus", std::string(classifyRunStatus(e.what())), Unit::Status);
+    proof.writeCsv("ErrorMessage", e.what(), Unit::Text);
+    throw;
+  } catch (...) {
+    proof.render();
+    proof.writeCsv("RunStatus", "ERROR", Unit::Status);
+    proof.writeCsv("ErrorMessage", "Unknown non-std exception", Unit::Text);
+    throw;
+  }
 }
 
 void writeVersion(RunCtx& input_state) {
@@ -33,13 +56,23 @@ void writeVersion(RunCtx& input_state) {
   PLOGI << "The Version of the engine is: " << version;
 }
 
-void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
+bool prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
   writeVersion(input_state);
+  auto all_succeeded = true;
 
   for (const auto& theorem : theorems) {
     ux::PreAmpleTheorem(input_state.console, theorem->name);
-    run_theorem(*theorem, input_state);
+    try {
+      run_theorem(*theorem, input_state);
+    } catch (const std::exception& e) {
+      all_succeeded = false;
+      PLOGE << "Theorem '" << theorem->name << "' failed: " << e.what();
+    } catch (...) {
+      all_succeeded = false;
+      PLOGE << "Theorem '" << theorem->name << "' failed with unknown non-std exception";
+    }
   }
+  return all_succeeded;
 }
 
 std::vector<const Theorem*> parse(const std::vector<std::string>& theorems) {

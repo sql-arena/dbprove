@@ -24,8 +24,31 @@ std::optional<sql::RowCount> expectedRowCountFor(const Query& query, const Proof
   return std::nullopt;
 }
 
-void validateExpectedRowCount(sql::ConnectionBase& connection, const Query& query, const Proof& proof,
-                              const std::optional<sql::RowCount> expected_row_count) {
+void validateExpectedRowValues(const Query& query, const sql::RowBase& row) {
+  if (!query.expectedRowValues().has_value()) {
+    return;
+  }
+  const auto& expected_values = *query.expectedRowValues();
+  if (row.columnCount() != expected_values.size()) {
+    throw std::runtime_error("Expected " + std::to_string(expected_values.size())
+                             + " columns in theorem result row but got "
+                             + std::to_string(row.columnCount()) + " for query: " + query.text());
+  }
+
+  for (size_t column_index = 0; column_index < expected_values.size(); ++column_index) {
+    const auto actual = row[column_index].asString();
+    const auto expected = expected_values[column_index].asString();
+    if (actual != expected) {
+      throw std::runtime_error("Unexpected scalar result at column " + std::to_string(column_index)
+                               + " for query: " + query.text()
+                               + ". Expected '" + expected + "' but got '" + actual + "'");
+    }
+  }
+}
+
+void validateExpectedRowCount(const Query& query, const Proof& proof,
+                              const std::optional<sql::RowCount> expected_row_count,
+                              const sql::RowCount actual_row_count) {
   if (!expected_row_count.has_value()) {
     return;
   }
@@ -33,10 +56,6 @@ void validateExpectedRowCount(sql::ConnectionBase& connection, const Query& quer
     PLOGI << "Artifact mode: skipping row count validation for theorem '" << proof.theorem.name << "'";
     return;
   }
-
-  auto result = connection.fetchAll(query.textTagged());
-  result->drain();
-  const auto actual_row_count = result->rowCount();
   if (actual_row_count == *expected_row_count) {
     return;
   }
@@ -44,6 +63,23 @@ void validateExpectedRowCount(sql::ConnectionBase& connection, const Query& quer
   PLOGE << "Theorem '" << proof.theorem.name << "' expected " << *expected_row_count
         << " rows, but query returned " << actual_row_count;
   throw sql::UnexpectedRowCountException(*expected_row_count, actual_row_count, query.text());
+}
+
+sql::RowCount executeMeasuredQuery(sql::ConnectionBase& connection, Query& query) {
+  auto& qs = query.start();
+  if (query.expectedRowValues().has_value()) {
+    auto row = connection.fetchRow(query.textTagged());
+    query.stop(qs);
+    query.summariseThread();
+    validateExpectedRowValues(query, *row);
+    return 1;
+  }
+
+  auto result = connection.fetchAll(query.textTagged());
+  result->drain();
+  query.stop(qs);
+  query.summariseThread();
+  return result->rowCount();
 }
 }
 
@@ -113,14 +149,35 @@ void Runner::parallelTogether(size_t threadCount, std::span<Query>& queries) con
 
 void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
   const auto connection = factory_.create();
+  connection->setQueryTimeout(proof.queryTimeoutSeconds());
   for (auto& query : queries) {
     proof.data.push_back(std::make_unique<DataQuery>(query));
-    auto& qs = query.start();
-    validateExpectedRowCount(*connection, query, proof, expectedRowCountFor(query, proof, queries.size()));
+    if (!proof.artifactMode()) {
+      auto& qs = query.start();
+      auto result = connection->fetchAll(query.textTagged());
+      result->drain();
+      query.stop(qs);
+      query.summariseThread();
+      validateExpectedRowCount(query, proof, expectedRowCountFor(query, proof, queries.size()), result->rowCount());
+    }
     auto explain = connection->explain(query.textTagged(), proof.theorem.name);
-    query.stop(qs);
-    query.summariseThread();
     proof.data.push_back(std::make_unique<DataExplain>(std::move(explain)));
+  }
+  connection->close();
+  proof.render();
+}
+
+void Runner::serialMeasure(std::span<Query>& queries, Proof& proof, const size_t iterations) const {
+  const auto connection = factory_.create();
+  connection->setQueryTimeout(proof.queryTimeoutSeconds());
+  for (auto& query : queries) {
+    proof.data.push_back(std::make_unique<DataQuery>(query));
+    if (!proof.artifactMode()) {
+      for (size_t iteration = 0; iteration < iterations; ++iteration) {
+        const auto row_count = executeMeasuredQuery(*connection, query);
+        validateExpectedRowCount(query, proof, expectedRowCountFor(query, proof, queries.size()), row_count);
+      }
+    }
   }
   connection->close();
   proof.render();
@@ -135,5 +192,16 @@ void Runner::serialExplain(Query&& query, Proof& state) const
   queries.push_back(std::move(query));
   auto span = std::span(queries);
   serialExplain(span, state);
+}
+
+void Runner::serialMeasure(Query&& query, Proof& state, const size_t iterations) const
+{
+  if (!query.expectedRowCount().has_value() && state.theorem.expectedRowCount().has_value()) {
+    query.setExpectedRowCount(state.theorem.expectedRowCount());
+  }
+  std::vector<Query> queries;
+  queries.push_back(std::move(query));
+  auto span = std::span(queries);
+  serialMeasure(span, state, iterations);
 }
 }

@@ -120,7 +120,9 @@ enum class Unit {
   Microseconds,
   Query,
   Magnitude,
-  Plan
+  Plan,
+  Status,
+  Text
 };
 
 constexpr inline std::string_view to_string(const Unit unit) { return magic_enum::enum_name(unit); }
@@ -150,6 +152,9 @@ public:
   void render();
   [[nodiscard]] std::ostream& console() const;
   [[nodiscard]] bool artifactMode() const;
+  [[nodiscard]] std::optional<uint32_t> queryTimeoutSeconds() const;
+  [[nodiscard]] size_t timingRuns() const;
+  [[nodiscard]] const std::optional<std::string>& parquetDir() const;
   /**
    * Write data into the csv stream for later merging and processing
    * @param key Unique name (in the context of the  theorem) of the measurement
@@ -161,6 +166,7 @@ public:
 
 private:
   RunCtx& state;
+  bool rendered_ = false;
 };
 
 
@@ -232,11 +238,17 @@ public:
   std::ostream& console;
   std::ostream& csv;
   bool artifact_mode = false;
+  std::optional<uint32_t> query_timeout_seconds;
+  size_t timing_runs = 3;
+  std::optional<std::string> parquet_dir;
   std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(const std::vector<std::string_view>& values) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-         std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt);
+         std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt,
+         std::optional<uint32_t> query_timeout_seconds = std::nullopt,
+         size_t timing_runs = 3,
+         std::optional<std::string> parquet_dir = std::nullopt);
 
   ~RunCtx();
 };
@@ -259,5 +271,5 @@ std::vector<const Theorem*> parse(const std::vector<std::string>& theorems);
  * @param theorems Theorems per parse call
  * @param input_state Caller supplied state with all the info needed to run
  */
-void prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state);
+bool prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state);
 }

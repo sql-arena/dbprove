@@ -1,7 +1,9 @@
 #pragma once
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "sql_type.h"
@@ -29,33 +31,30 @@ public:
   template <typename T>
   T asSqlType(const size_t index) const {
     const auto v = get(index);
+    if constexpr (std::is_same_v<T, SqlInt>) {
+      if (v.is<SqlSmallInt>()) {
+        return SqlInt(v.get<SqlSmallInt>().get());
+      }
+      if (v.is<SqlInt>()) {
+        return v.get<SqlInt>();
+      }
+      if (v.is<SqlBigInt>()) {
+        const auto i8 = v.get<SqlBigInt>().get();
+        if (i8 < std::numeric_limits<int32_t>::min()) {
+          throw std::runtime_error("Value is too small  to fit in an int32");
+        }
+        if (i8 > std::numeric_limits<int32_t>::max()) {
+          throw std::runtime_error("Value is too large  to fit in an int32");
+        }
+        return SqlInt(static_cast<int32_t>(i8));
+      }
+
+      throw std::runtime_error("Attempting to access non integer as SqlInt at index " + std::to_string(index));
+    }
     if (!v.is<T>()) {
       throw std::runtime_error("Invalid type access at index " + std::to_string(index));
     }
-    return get(index).get<T>();
-  }
-
-  template <>
-  SqlInt asSqlType(const size_t index) const {
-    const auto v = get(index);
-    if (v.is<SqlSmallInt>()) {
-      return SqlInt(v.get<SqlSmallInt>().get());
-    }
-    if (v.is<SqlInt>()) {
-      return v.get<SqlInt>();
-    }
-    if (v.is<SqlBigInt>()) {
-      const auto i8 = v.get<SqlBigInt>().get();
-      if (i8 < std::numeric_limits<int32_t>::min()) {
-        throw std::runtime_error("Value is too small  to fit in an int32");
-      }
-      if (i8 > std::numeric_limits<int32_t>::max()) {
-        throw std::runtime_error("Value is too large  to fit in an int32");
-      }
-      return SqlInt(static_cast<int32_t>(i8));
-    }
-
-    throw std::runtime_error("Attempting to access non integer as SqlInt at index " + std::to_string(index));
+    return v.get<T>();
   }
 
   [[nodiscard]] SqlVariant asVariant(const size_t index) const {

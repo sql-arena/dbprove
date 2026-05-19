@@ -2,6 +2,8 @@
 #include "node_type.h"
 #include <dbprove/sql/sql.h>
 #include <dbprove/common/tree_node.h>
+#include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -30,8 +32,8 @@ protected:
 
 public:
   const NodeType type;
-  double rows_estimated = NAN;
-  double rows_actual = NAN;
+  double rows_estimated = std::numeric_limits<double>::quiet_NaN();
+  double rows_actual = std::numeric_limits<double>::quiet_NaN();
   double cost;
   std::vector<std::string> columns_input;
   std::vector<std::string> columns_output;

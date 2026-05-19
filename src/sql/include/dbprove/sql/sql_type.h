@@ -1,9 +1,10 @@
 #pragma once
 #include <cstdint>
-#include <utility>
-#include <variant>
 #include <string>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
+#include <variant>
 #include <magic_enum/magic_enum.hpp>
 
 namespace sql {
@@ -318,12 +319,10 @@ public:
   /// @brief Get the value of the templated type
   template <typename T>
   T get() const {
+    if constexpr (std::is_same_v<T, SqlBigInt>) {
+      return SqlBigInt(asInt8());
+    }
     return std::get<T>(data);
-  }
-
-  template <>
-  SqlBigInt get() const {
-    return SqlBigInt(asInt8());
   }
 
 

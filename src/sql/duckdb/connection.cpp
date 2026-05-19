@@ -3,17 +3,20 @@
 #include "result_holder.h"
 #include "sql_exceptions.h"
 #include <dbprove/sql/sql.h>
-#include <duckdb/common/exception.hpp>
-#include <duckdb/main/connection.hpp>
-#include <duckdb/main/database.hpp>
-#include <duckdb/main/query_result.hpp>
+#include <duckdb.hpp>
 #include <nlohmann/json.hpp>
+#include <chrono>
 #include <memory>
+#include <future>
 #include <regex>
 #include <scan_materialised.h>
 #include <stdexcept>
 
 namespace sql::duckdb {
+namespace {
+constexpr std::string_view kDuckDbMemoryLimitSql = "SET memory_limit = '2GB'";
+}
+
 void handleDuckError(::duckdb::QueryResult* result) {
   if (!result->HasError()) {
     return;
@@ -126,6 +129,8 @@ public:
       // Open a database connection using the file path from credential
       db = std::make_unique<::duckdb::DuckDB>(credential.path);
       db_connection = std::make_unique<::duckdb::Connection>(*db);
+      auto memory_limit_result = db_connection->Query(std::string(kDuckDbMemoryLimitSql));
+      handleDuckError(memory_limit_result.get());
     } catch (const ::duckdb::IOException& e) {
       throw ConnectionException(credential, std::string(e.what()));
     } catch (const ::duckdb::Exception& e) {
@@ -145,25 +150,39 @@ public:
 
   [[nodiscard]] std::unique_ptr<::duckdb::QueryResult> execute(const std::string_view statement) const {
     check_connection();
-    try {
-      const auto mapped_statement = connection.mapTypes(statement);
-      auto result = db_connection->Query(std::string(mapped_statement));
+    auto do_execute = [this, statement]() {
+      try {
+        const auto mapped_statement = connection.mapTypes(statement);
+        auto result = db_connection->Query(std::string(mapped_statement));
 
-      handleDuckError(result.get());
-      return result;
-    } catch (const ::duckdb::ConnectionException& e) {
-      throw ConnectionException(credential, std::string(e.what()));
-    } catch (const ::duckdb::CatalogException& e) {
-      throw std::runtime_error("DuckDB catalog error (table might not exist): " + std::string(e.what()));
-    } catch (const ::duckdb::ParserException& e) {
-      throw SyntaxException("DuckDB SQL parsing error: " + std::string(e.what()));
-    } catch (const ::duckdb::BinderException& e) {
-      throw std::runtime_error("DuckDB binding error (column mismatch): " + std::string(e.what()));
-    } catch (const ::duckdb::IOException& e) {
-      throw std::runtime_error("DuckDB I/O error accessing file: " + std::string(e.what()));
-    } catch (const ::duckdb::TransactionException& e) {
-      throw TransactionException("DuckDB transaction error: " + std::string(e.what()));
+        handleDuckError(result.get());
+        return result;
+      } catch (const ::duckdb::ConnectionException& e) {
+        throw ConnectionException(credential, std::string(e.what()));
+      } catch (const ::duckdb::CatalogException& e) {
+        throw std::runtime_error("DuckDB catalog error (table might not exist): " + std::string(e.what()));
+      } catch (const ::duckdb::ParserException& e) {
+        throw SyntaxException("DuckDB SQL parsing error: " + std::string(e.what()));
+      } catch (const ::duckdb::BinderException& e) {
+        throw std::runtime_error("DuckDB binding error (column mismatch): " + std::string(e.what()));
+      } catch (const ::duckdb::IOException& e) {
+        throw std::runtime_error("DuckDB I/O error accessing file: " + std::string(e.what()));
+      } catch (const ::duckdb::TransactionException& e) {
+        throw TransactionException("DuckDB transaction error: " + std::string(e.what()));
+      }
+    };
+
+    if (!connection.queryTimeoutSeconds().has_value()) {
+      return do_execute();
     }
+
+    auto future = std::async(std::launch::async, do_execute);
+    const auto timeout = std::chrono::seconds(*connection.queryTimeoutSeconds());
+    if (future.wait_for(timeout) == std::future_status::timeout) {
+      db_connection->Interrupt();
+      throw std::runtime_error("Query timed out after " + std::to_string(*connection.queryTimeoutSeconds()) + " seconds");
+    }
+    return future.get();
   }
 };
 

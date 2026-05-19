@@ -6,6 +6,7 @@ message(STATUS "System name      : ${CMAKE_SYSTEM_NAME}")
 message(STATUS "Triplet          : ${VCPKG_TARGET_TRIPLET}")
 
 option(DBPROVE_ENABLE_TESTING "Enable testing" ${PROJECT_IS_TOP_LEVEL})
+option(DBPROVE_DUCKDB_ONLY "Build dbprove with only the DuckDB SQL driver enabled" OFF)
 
 
 set(CMAKE_CXX_STANDARD 23)
@@ -20,7 +21,7 @@ foreach (lang IN ITEMS C CXX)
 endforeach ()
 
 include(PrintLibData)
-include(cmake/EmbedSQL.cmake)
+include(EmbedSql)
 
 find_package(plog CONFIG REQUIRED)
 
@@ -30,7 +31,5 @@ if (CMAKE_GENERATOR MATCHES "Visual Studio")
 endif ()
 
 add_subdirectory(src)
-
-
 
 

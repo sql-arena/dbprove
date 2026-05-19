@@ -1,7 +1,7 @@
 #pragma once
 #include "row.h"
 #include <dbprove/sql/sql.h>
-#include <duckdb/main/query_result.hpp>
+#include <duckdb.hpp>
 
 
 namespace sql::duckdb {

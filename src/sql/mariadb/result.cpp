@@ -4,7 +4,7 @@
 
 #include "row.h"
 #include "sql_exceptions.h"
-#include <duckdb/common/exception.hpp>
+#include <duckdb.hpp>
 #include <mysql/mysql.h>
 
 

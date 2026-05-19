@@ -14,11 +14,13 @@
         "VCPKG_MANIFEST_DIR": "${sourceDir}",
         "VCPKG_MANIFEST_MODE": "ON",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/overlay-triplets"
       },
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays"
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/extern/vcpkg_overlays",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/overlay-triplets"
       }
     },
     {
@@ -29,8 +31,57 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "cacheVariables": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_osx_arm",
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
         "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "osx-arm-release",
+      "inherits": [
+        "vendor-vcpkg"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_osx_arm",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ubuntu-arm64-release",
+      "inherits": [
+        "vendor-vcpkg"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux-release",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_ubuntu_arm64",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ubuntu-arm64-release-prebuilt-duckdb",
+      "inherits": [
+        "vendor-vcpkg"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "DBPROVE_ENABLE_TESTING": "OFF",
+        "DBPROVE_DUCKDB_ONLY": "ON",
+        "VCPKG_TARGET_TRIPLET": "arm64-linux-release",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/docker/duckdb",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/vcpkg_overlays",
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "environment": {
+        "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/vcpkg_overlays",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/overlay-triplets"
       }
     },
     {
@@ -138,9 +189,24 @@
       "configurePreset": "msvc_x64_vcpkg_vendor_debug"
     },
     {
+      "name": "build_ubuntu_arm64_release",
+      "displayName": "Ubuntu ARM64 Release",
+      "configurePreset": "ubuntu-arm64-release"
+    },
+    {
+      "name": "build_ubuntu_arm64_release_prebuilt_duckdb",
+      "displayName": "Ubuntu ARM64 Release Prebuilt DuckDB",
+      "configurePreset": "ubuntu-arm64-release-prebuilt-duckdb"
+    },
+    {
       "name": "build_osx_arm_debug",
       "displayName": "Default",
       "configurePreset": "osx-arm-base"
+    },
+    {
+      "name": "build_osx_arm_release",
+      "displayName": "macOS ARM Release",
+      "configurePreset": "osx-arm-release"
     },
     {
       "name": "build_msvc_vendor_release",

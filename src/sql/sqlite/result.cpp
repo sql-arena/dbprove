@@ -4,7 +4,7 @@
 
 #include "sql_exceptions.h"
 #include <clickhouse/columns/column.h>
-#include <duckdb/common/exception.hpp>
+#include <duckdb.hpp>
 
 namespace sql::sqlite {
 class Result::Pimpl {

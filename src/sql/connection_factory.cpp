@@ -1,21 +1,24 @@
 #include "connection_factory.h"
 #include "duckdb/connection.h"
+#ifndef DBPROVE_DUCKDB_ONLY
 #include "datafusion/connection.h"
-#include "postgresql/connection.h"
-#include "utopia/connection.h"
-#include "mssql/connection.h"
-#include "databricks/connection.h"
-#include "yellowbrick/connection.h"
 #include "clickhouse/connection.h"
+#include "databricks/connection.h"
 #include "mariadb/connection.h"
-#include "sqlite/connection.h"
+#include "mssql/connection.h"
+#include "postgresql/connection.h"
 #include "trino/connection.h"
+#include "sqlite/connection.h"
+#include "utopia/connection.h"
+#include "yellowbrick/connection.h"
+#endif
 
 namespace sql {
 std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
   connectionCount_.fetch_add(1);
   const auto type = engine_.type();
   switch (type) {
+#ifndef DBPROVE_DUCKDB_ONLY
     case Engine::Type::Utopia:
       return std::make_unique<utopia::Connection>(credential_, engine_, artifacts_path_);
     case Engine::Type::Postgres:
@@ -36,8 +39,10 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
         throw std::invalid_argument("ClickHouse engine requires a password credential");
       }
       return std::make_unique<clickhouse::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
+#endif
     case Engine::Type::DuckDB:
       return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_, artifacts_path_);
+#ifndef DBPROVE_DUCKDB_ONLY
     case Engine::Type::DataFusion:
       return std::make_unique<datafusion::Connection>(std::get<CredentialNone>(credential_), engine_, artifacts_path_);
     case Engine::Type::Databricks:
@@ -54,6 +59,7 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
         throw std::invalid_argument("Trino engine requires a password credential");
       }
       return std::make_unique<trino::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
+#endif
     default:
       throw std::invalid_argument("Unsupported engine type: " + engine_.name());
   }

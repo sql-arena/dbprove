@@ -1,5 +1,5 @@
 #pragma once
-#include <duckdb/main/query_result.hpp>
+#include <duckdb.hpp>
 
 
 namespace sql::duckdb {

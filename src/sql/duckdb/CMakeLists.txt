@@ -14,6 +14,22 @@ else()
     find_package(DuckDB CONFIG REQUIRED)
 endif()
 
+set(_duckdb_link_targets
+        duckdb_static
+        duckdb_generated_extension_loader
+)
+foreach(_duckdb_optional_target
+        core_functions_extension
+        parquet_extension
+        icu_extension
+        json_extension
+        autocomplete_extension
+        jemalloc_extension
+)
+    if(TARGET ${_duckdb_optional_target})
+        list(APPEND _duckdb_link_targets ${_duckdb_optional_target})
+    endif()
+endforeach()
 
 target_sources(${_targetName} PRIVATE
         result.cpp
@@ -24,12 +40,22 @@ target_sources(${_targetName} PRIVATE
 
 target_link_libraries(${_targetName}
         PRIVATE
-        duckdb_static
-        duckdb_generated_extension_loader
-        core_functions_extension
-        parquet_extension
         dbprove::sql::driver
-        dbprove::sql::core)
+        dbprove::sql::core
+)
+
+if (UNIX AND NOT APPLE)
+    string(JOIN "," _duckdb_link_group ${_duckdb_link_targets})
+    target_link_libraries(${_targetName}
+            PRIVATE
+            "$<LINK_GROUP:RESCAN,${_duckdb_link_group}>"
+    )
+else ()
+    target_link_libraries(${_targetName}
+            PRIVATE
+            ${_duckdb_link_targets}
+    )
+endif ()
 
 
 print_target_info(duckdb_static)

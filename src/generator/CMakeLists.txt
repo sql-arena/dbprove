@@ -55,4 +55,6 @@ target_embed_files(${_targetName} SQL_FILES
         tpch/ddl/supplier.ddl
 )
 
-add_subdirectory("test")
+if (DBPROVE_ENABLE_TESTING)
+    add_subdirectory("test")
+endif ()

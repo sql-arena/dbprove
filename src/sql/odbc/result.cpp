@@ -4,7 +4,7 @@
 
 #include "row.h"
 #include "sql_exceptions.h"
-#include <duckdb/common/exception.hpp>
+#include <duckdb.hpp>
 #ifdef _WIN32
 #include <windows.h>
 #else

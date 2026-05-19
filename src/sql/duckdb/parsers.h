@@ -4,8 +4,7 @@
 #include <string>
 
 #include "dbprove/sql/sql_type.h"
-#include <duckdb/common/hugeint.hpp>
-#include <duckdb/common/types/hugeint.hpp>
+#include <duckdb.hpp>
 
 namespace sql::duckdb {
 template <typename T>

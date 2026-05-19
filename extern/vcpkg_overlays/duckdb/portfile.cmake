@@ -8,6 +8,10 @@ vcpkg_from_github(
         fix-profiling-utils-activetimer.patch
 )
 
+# The benchmark runtime image only needs release artifacts, and the debug build
+# is the main memory/time hotspot on arm64-linux container builds.
+set(VCPKG_BUILD_TYPE release)
+
 # Remove vendored dependencies which are not properly namespaced
 file(REMOVE_RECURSE
     "${SOURCE_PATH}/third_party/catch"

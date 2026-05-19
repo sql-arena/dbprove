@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cassert>
 #include <memory>
 #include <queue>
@@ -176,7 +177,7 @@ public:
 
   TreeNode()
     : parent_(static_cast<T*>(this))
-    , id_(currentId_++) {
+    , id_(currentId_.fetch_add(1, std::memory_order_relaxed)) {
   }
 
   TreeNode(const TreeNode&) = delete;

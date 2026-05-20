@@ -66,7 +66,8 @@ void RunCtx::writeCsv(const std::vector<std::string_view>& values) const {
 RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
                std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path,
                std::optional<uint32_t> query_timeout_seconds, const size_t timing_runs,
-               std::optional<std::string> parquet_dir)
+               std::optional<std::string> parquet_dir,
+               const bool write_csv_header)
   : writer(std::make_unique<CsvWriter>(csv))
   , engine(engine)
   , credentials(credentials)
@@ -78,15 +79,17 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
   , query_timeout_seconds(query_timeout_seconds)
   , timing_runs(timing_runs)
   , parquet_dir(std::move(parquet_dir)) {
-  writeCsv(std::vector<std::string_view>{"ENGINE",
-                                         "ID",
-                                         "CATEGORIES",
-                                         "TAGS",
-                                         "THEOREM",
-                                         "THEOREM_DESCRIPTION",
-                                         "PROOF_NAME",
-                                         "PROOF_VALUE",
-                                         "PROOF_UNIT"});
+  if (write_csv_header) {
+    writeCsv(std::vector<std::string_view>{"ENGINE",
+                                           "ID",
+                                           "CATEGORIES",
+                                           "TAGS",
+                                           "THEOREM",
+                                           "THEOREM_DESCRIPTION",
+                                           "PROOF_NAME",
+                                           "PROOF_VALUE",
+                                           "PROOF_UNIT"});
+  }
 }
 
 RunCtx::~RunCtx() = default;

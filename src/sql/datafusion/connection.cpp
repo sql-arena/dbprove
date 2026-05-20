@@ -3,6 +3,7 @@
 #include "result.h"
 #include "sql_exceptions.h"
 
+#include <dbprove/common/file_utility.h>
 #include <dbprove/common/string.h>
 #include <nlohmann/json.hpp>
 
@@ -51,6 +52,10 @@ std::string shellQuote(std::string_view value) {
   }
   quoted += "'";
   return quoted;
+}
+
+std::filesystem::path joinScaleParquetDir() {
+  return dbprove::common::get_project_root() / "run" / "materialized" / "join_scale";
 }
 
 class TemporarySqlFile {
@@ -232,8 +237,11 @@ public:
   CommandResult runCli(std::string_view sql) const {
     ensureOpen();
     TemporarySqlFile query_file(sql);
-    const auto mounted = query_file.path().string() + ":/tmp/query.sql:ro";
-    const std::string command = "docker run --rm -v " + shellQuote(mounted) + " " +
+    const auto query_mount = query_file.path().string() + ":/tmp/query.sql:ro";
+    const auto parquet_mount = joinScaleParquetDir().string() + ":/opt/join-scale-source:ro";
+    const std::string command = "docker run --rm --memory 6g --tmpfs /mnt/tpch-tmpfs:size=4g"
+                                " -v " + shellQuote(query_mount) +
+                                " -v " + shellQuote(parquet_mount) + " " +
                                 shellQuote(dockerImage()) +
                                 " -q --format json -b 1000000 -f /tmp/query.sql";
     return runCommand(command);
@@ -242,8 +250,11 @@ public:
   CommandResult runPhysicalPlanHelper(std::string_view sql) const {
     ensureOpen();
     TemporarySqlFile query_file(sql);
-    const auto mounted = query_file.path().string() + ":/tmp/query.sql:ro";
-    const std::string command = "docker run --rm -v " + shellQuote(mounted) +
+    const auto query_mount = query_file.path().string() + ":/tmp/query.sql:ro";
+    const auto parquet_mount = joinScaleParquetDir().string() + ":/opt/join-scale-source:ro";
+    const std::string command = "docker run --rm --memory 6g --tmpfs /mnt/tpch-tmpfs:size=4g"
+                                " -v " + shellQuote(query_mount) +
+                                " -v " + shellQuote(parquet_mount) +
                                 " --entrypoint datafusion-plan-json " + shellQuote(dockerImage()) +
                                 " --sql-file /tmp/query.sql";
     return runCommand(command);

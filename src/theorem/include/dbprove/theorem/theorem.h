@@ -6,12 +6,17 @@
 #include <memory>
 #include <functional>
 #include <optional>
+#include <ostream>
 
 #include "dbprove/sql/connection_factory.h"
 #include "dbprove/sql/sql_type.h"
 #include <magic_enum/magic_enum.hpp>
 
 namespace dbprove::theorem {
+namespace ee {
+void prepareJoinScaleArtifacts(std::ostream& console, const std::optional<std::string>& source_parquet_dir);
+}
+
 class Proof;
 class RunCtx;
 class Theorem;
@@ -248,7 +253,8 @@ public:
          std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt,
          std::optional<uint32_t> query_timeout_seconds = std::nullopt,
          size_t timing_runs = 3,
-         std::optional<std::string> parquet_dir = std::nullopt);
+         std::optional<std::string> parquet_dir = std::nullopt,
+         bool write_csv_header = true);
 
   ~RunCtx();
 };

@@ -23,6 +23,7 @@ PROOF_ROOT = ROOT / "proof"
 QUERY_ROOT = PROOF_ROOT / "join_scale_queries"
 PLOT_PATH = PROOF_ROOT / "join_scale_runtime.webp"
 PARQUET_SOURCE_DIR = ROOT / "docker" / "datafusion" / "tpch" / "sf1"
+JOIN_SCALE_PARQUET_DIR = ROOT / "run" / "materialized" / "join_scale"
 
 
 def default_dbprove_path() -> Path:
@@ -38,9 +39,9 @@ def default_dbprove_path() -> Path:
 
 
 DBPROVE = default_dbprove_path()
-SCALES = list(range(1, 21))
-QUERY_TIMEOUT_SECONDS = 30
-TIMING_RUNS = 3
+SCALES = [1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20]
+QUERY_TIMEOUT_SECONDS = 60
+TIMING_RUNS = 1
 WARMUP_TIMEOUT_SECONDS = 1800
 ENGINE_RUN_TIMEOUT_SECONDS = max(QUERY_TIMEOUT_SECONDS * len(SCALES) * 12, 600)
 ENGINE_COLUMNS = ["DuckDB", "DataFusion", "Trino"]
@@ -52,6 +53,30 @@ ENGINES = [
     {"arg": "datafusion", "name": "DataFusion", "warmup": False, "compose_build_service": "datafusion"},
     {"arg": "trino", "name": "Trino", "warmup": True, "compose_build_service": "trino", "compose_service": "trino"},
 ]
+
+
+def prepare_join_scale_artifacts() -> int:
+    cmd = [
+        str(DBPROVE),
+        "--prepare-ee-join-scale",
+        "--parquet-dir",
+        str(PARQUET_SOURCE_DIR),
+    ]
+    print("Preparing EE join-scale parquet artifacts on host...", file=sys.stderr)
+    proc = subprocess.run(
+        cmd,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=WARMUP_TIMEOUT_SECONDS,
+    )
+    if proc.stdout:
+        print(proc.stdout, file=sys.stderr, end="" if proc.stdout.endswith("\n") else "\n")
+    if proc.returncode != 0:
+        print("Failed to prepare EE join-scale parquet artifacts.", file=sys.stderr)
+        if proc.stderr:
+            print(proc.stderr[-4000:], file=sys.stderr)
+    return proc.returncode
 
 
 def theorem_names(scales: list[int]) -> list[str]:
@@ -305,6 +330,17 @@ def compose_cmd(*args: str) -> list[str]:
     return ["docker", "compose", "-f", str(DOCKER_COMPOSE_FILE), *args]
 
 
+def docker_image_exists(image: str) -> bool:
+    result = subprocess.run(
+        ["docker", "image", "inspect", image],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result.returncode == 0
+
+
 def kill_latent_containers() -> None:
     subprocess.run(
         compose_cmd("down", "--remove-orphans"),
@@ -424,8 +460,18 @@ def wait_for_engine_ready(engine: dict[str, str | bool]) -> int:
         try:
             with urlopen("http://localhost:8080/v1/info", timeout=2) as response:
                 if response.status == 200:
-                    return 0
-                last_error = f"http {response.status}"
+                    marker = subprocess.run(
+                        compose_cmd("exec", "-T", "trino", "sh", "-lc", "test -f /tmp/trino-bootstrap-ready"),
+                        cwd=ROOT,
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    if marker.returncode == 0:
+                        return 0
+                    last_error = "bootstrap marker not present yet"
+                else:
+                    last_error = f"http {response.status}"
         except URLError as exc:
             last_error = str(exc.reason)
         except Exception as exc:
@@ -441,7 +487,7 @@ def stop_container_service(engine: dict[str, str | bool]) -> None:
     if not isinstance(service, str):
         return
     subprocess.run(
-        compose_cmd("stop", service),
+        compose_cmd("down", "--remove-orphans"),
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -449,44 +495,72 @@ def stop_container_service(engine: dict[str, str | bool]) -> None:
     )
 
 
-def warm_engine(engine: dict[str, str | bool]) -> int:
+def warm_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
     if not engine["warmup"]:
         return 0
-    warmup_cmd = dbprove_command(engine, ["-e", str(engine["arg"]), "-T", "TPCH-Q01"])
-    print(f"Warming {engine['name']} TPCH dataset before timed join runs...", file=sys.stderr)
+    print(f"Warming {engine['name']} before timed join runs...", file=sys.stderr)
 
-    attempts = 1 if engine["arg"] != "trino" else 6
-    for attempt in range(1, attempts + 1):
-        try:
-            warmup = subprocess.run(warmup_cmd, cwd=ROOT, capture_output=True, text=True, timeout=WARMUP_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            print(f"{engine['name']} warmup exceeded {WARMUP_TIMEOUT_SECONDS}s.", file=sys.stderr)
-            return 124
-
-        if warmup.returncode == 0:
-            return 0
-
-        trino_initializing = (
-            engine["arg"] == "trino"
-            and "Trino server is still initializing" in warmup.stdout
+    if engine["arg"] == "trino":
+        warmup_cmd = compose_cmd(
+            "exec",
+            "-T",
+            "trino",
+            "/usr/bin/trino",
+            "--server",
+            "http://127.0.0.1:8080",
+            "--catalog",
+            "tpch",
+            "--schema",
+            "sf1",
+            "--execute",
+            "SELECT 1 FROM tpch.sf1.lineitem_25x LIMIT 1",
         )
-        if trino_initializing and attempt < attempts:
-            time.sleep(5)
-            continue
+        attempts = 6
+        for attempt in range(1, attempts + 1):
+            try:
+                warmup = subprocess.run(warmup_cmd, cwd=ROOT, capture_output=True, text=True, timeout=WARMUP_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                print(f"{engine['name']} warmup exceeded {WARMUP_TIMEOUT_SECONDS}s.", file=sys.stderr)
+                return 124
+            if warmup.returncode == 0:
+                return 0
+            if attempt < attempts:
+                time.sleep(5)
+                continue
+            print(f"{engine['name']} warmup failed.", file=sys.stderr)
+            if warmup.stdout:
+                print("\nstdout tail:\n", file=sys.stderr)
+                print(warmup.stdout[-4000:], file=sys.stderr)
+            if warmup.stderr:
+                print("\nstderr tail:\n", file=sys.stderr)
+                print(warmup.stderr[-4000:], file=sys.stderr)
+            return warmup.returncode
+        return 1
 
-        print(f"{engine['name']} warmup failed.", file=sys.stderr)
-        if warmup.stdout:
-            print("\nstdout tail:\n", file=sys.stderr)
-            print(warmup.stdout[-4000:], file=sys.stderr)
-        if warmup.stderr:
-            print("\nstderr tail:\n", file=sys.stderr)
-            print(warmup.stderr[-4000:], file=sys.stderr)
-        return warmup.returncode
+    warmup_cmd = dbprove_command(engine, ["-e", str(engine["arg"]), "-T", "TPCH-Q01"])
+    try:
+        warmup = subprocess.run(warmup_cmd, cwd=ROOT, capture_output=True, text=True, timeout=WARMUP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        print(f"{engine['name']} warmup exceeded {WARMUP_TIMEOUT_SECONDS}s.", file=sys.stderr)
+        return 124
 
-    return 1
+    if warmup.returncode == 0:
+        return 0
+
+    print(f"{engine['name']} warmup failed.", file=sys.stderr)
+    if warmup.stdout:
+        print("\nstdout tail:\n", file=sys.stderr)
+        print(warmup.stdout[-4000:], file=sys.stderr)
+    if warmup.stderr:
+        print("\nstderr tail:\n", file=sys.stderr)
+        print(warmup.stderr[-4000:], file=sys.stderr)
+    return warmup.returncode
 
 
 def run_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
+    if engine["arg"] == "trino":
+        return run_trino_engine(engine, scales)
+
     try:
         rc = start_container_service(engine)
         if rc != 0:
@@ -496,7 +570,7 @@ def run_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
         if rc != 0:
             return rc
 
-        rc = warm_engine(engine)
+        rc = warm_engine(engine, scales)
         if rc != 0:
             return rc
 
@@ -553,16 +627,102 @@ def run_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
         stop_container_service(engine)
 
 
+def run_trino_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
+    proof_csv = latest_proof_csv(str(engine["name"]))
+    if proof_csv and proof_csv.exists():
+        proof_csv.unlink()
+
+    requested_theorems = theorem_names(scales)
+    exit_code = 0
+
+    print(f"\n## {engine['name']}")
+    print("| Theorem | Status | Wall (s) | Best (ms) | StdDev (ms) | Runs |")
+    print("| --- | --- | ---: | ---: | ---: | ---: |")
+
+    for theorem in requested_theorems:
+        try:
+            rc = start_container_service(engine)
+            if rc != 0:
+                exit_code = rc
+                print(f"| {theorem} | START_FAILED | - | - | - | - |")
+                continue
+
+            rc = wait_for_engine_ready(engine)
+            if rc != 0:
+                exit_code = rc
+                print(f"| {theorem} | NOT_READY | - | - | - | - |")
+                continue
+
+            rc = warm_engine(engine, scales)
+            if rc != 0:
+                exit_code = rc
+                print(f"| {theorem} | WARMUP_FAILED | - | - | - | - |")
+                continue
+
+            cmd = dbprove_command(engine, [
+                "-e",
+                str(engine["arg"]),
+                "-T",
+                theorem,
+                "--query-timeout",
+                str(QUERY_TIMEOUT_SECONDS),
+                "--timing-runs",
+                str(TIMING_RUNS),
+                "--append-proof-csv",
+            ])
+
+            start = time.time()
+            try:
+                proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=ENGINE_RUN_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                elapsed = time.time() - start
+                print(f"| {theorem} | TIMEOUT | {elapsed:.2f} | - | - | - |")
+                exit_code = 124
+                continue
+
+            rows = parse_proof_rows(latest_proof_csv(str(engine["name"])), [theorem])
+            row = rows.get(theorem)
+            if row is None:
+                print(f"| {theorem} | NOT_RUN | - | - | - | - |")
+                if proc.returncode != 0:
+                    exit_code = proc.returncode
+                continue
+
+            status = row.get("RunStatus", "UNKNOWN")
+            if status == "OK" and {"RuntimeBest", "RuntimeStdDev", "RuntimeRuns"} <= row.keys():
+                best_ms = int(row["RuntimeBest"]) / 1000.0
+                stddev_ms = float(row["RuntimeStdDev"]) / 1000.0
+                print(f"| {theorem} | OK | - | {best_ms:.2f} | {stddev_ms:.2f} | {row['RuntimeRuns']} |")
+            else:
+                print(f"| {theorem} | {status} | - | - | - | - |")
+
+            if proc.returncode != 0:
+                exit_code = proc.returncode
+                if proc.stderr:
+                    print("\nstderr tail:\n")
+                    print(proc.stderr[-4000:])
+        finally:
+            stop_container_service(engine)
+
+    return exit_code
+
+
 def dbprove_command(engine: dict[str, str | bool], args: list[str]) -> list[str]:
     if engine["arg"] == "duckdb":
-        args = [*args, "--parquet-dir", "/mnt/tpch-tmpfs"]
+        args = [*args, "--parquet-dir", "/mnt/tpch-tmpfs/join_scale"]
         command = shlex.join(["/opt/dbprove/bin/dbprove", *args])
         return [
             "docker",
             "run",
             "--rm",
+            "--memory",
+            "6g",
+            "-v",
+            f"{ROOT}:/repo",
+            "-v",
+            f"{JOIN_SCALE_PARQUET_DIR}:/opt/join-scale-source:ro",
             "--tmpfs",
-            "/mnt/tpch-tmpfs:size=1g",
+            "/mnt/tpch-tmpfs:size=4g",
             DUCKDB_IMAGE,
             "bash",
             "-lc",
@@ -579,8 +739,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("engines", nargs="*")
     parser.add_argument("--report-only", action="store_true")
-    parser.add_argument("--query-timeout", type=int, default=30)
-    parser.add_argument("--timing-runs", type=int, default=3)
+    parser.add_argument("--query-timeout", type=int, default=60)
+    parser.add_argument("--timing-runs", type=int, default=1)
     parser.add_argument("--max-scale", type=int, default=max(SCALES))
     args, _ = parser.parse_known_args(sys.argv[1:])
 
@@ -601,6 +761,10 @@ def main() -> int:
         return render_report(scales)
 
     kill_latent_containers()
+
+    prepare_rc = prepare_join_scale_artifacts()
+    if prepare_rc != 0:
+        return prepare_rc
 
     requested_engines = set(args.engines)
     engines = [engine for engine in ENGINES if not requested_engines or engine["arg"] in requested_engines]

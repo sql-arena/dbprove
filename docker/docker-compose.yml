@@ -1,4 +1,9 @@
 services:
+  nessie:
+    image: ghcr.io/projectnessie/nessie:latest
+    ports:
+      - "19120:19120"
+
   postgresql:
     build: ./postgresql
     image: dbprove-postgresql:latest
@@ -39,22 +44,25 @@ services:
   trino:
     build: ./trino
     image: dbprove-trino:latest
-    mem_limit: 2g
+    mem_limit: 6g
+    depends_on:
+      - nessie
     ports:
       - "8080:8080"
     tmpfs:
-      - /mnt/tpch-tmpfs:size=1g,uid=1000,gid=1000,mode=755
+      - /mnt/tpch-tmpfs:size=4g,uid=1000,gid=1000,mode=755
     volumes:
       - ../run/mount/trino:/data/trino
-      - ./datafusion/tpch:/opt/tpch-source:ro
+      - ../run/materialized/join_scale:/opt/join-scale-source:ro
 
   datafusion:
     build: ./datafusion
     image: dbprove-datafusion:latest
-    mem_limit: 2g
+    mem_limit: 6g
     stdin_open: true
     tty: true
     tmpfs:
-      - /mnt/tpch-tmpfs:size=1g
+      - /mnt/tpch-tmpfs:size=4g
     volumes:
       - ../run/mount/datafusion:/workspace
+      - ../run/materialized/join_scale:/opt/join-scale-source:ro

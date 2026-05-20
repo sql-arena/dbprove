@@ -98,6 +98,8 @@ int main(int argc, char** argv) {
   uint32_t query_timeout_seconds = 0;
   uint32_t timing_runs = 3;
   bool verbose = false;
+  bool prepare_ee_join_scale = false;
+  bool append_proof_csv = false;
 
   app.set_help_flag("-?", "--help");
   app.add_option(
@@ -123,6 +125,12 @@ int main(int argc, char** argv) {
                                    ->expected(0, 1);
   app.add_option("--parquet-dir",
                  parquet_dir, "Directory containing parquet benchmark files such as orders.parquet and lineitem.parquet");
+  app.add_flag("--prepare-ee-join-scale",
+               prepare_ee_join_scale,
+               "Materialize EE join-scale parquet inputs on the host using in-process DuckDB");
+  app.add_flag("--append-proof-csv",
+               append_proof_csv,
+               "Append proof rows to an existing proof CSV instead of overwriting it");
   app.add_option("-T,--theorem",
                  all_theorems, "Which theorems to prove")->delimiter(',');
   app.add_option("--query-timeout",
@@ -145,6 +153,11 @@ int main(int argc, char** argv) {
       plog::init<plog::DBProveFormatter>(plog::debug, plog::streamStdOut);
   } else {
       plog::init<plog::DBProveFormatter>(plog::info, plog::streamStdOut);
+  }
+
+  if (prepare_ee_join_scale) {
+    theorem::ee::prepareJoinScaleArtifacts(std::cout, parquet_dir);
+    return 0;
   }
 
   const sql::Engine engine(engine_arg);
@@ -193,15 +206,22 @@ int main(int argc, char** argv) {
   std::ofstream proof_output_stream;
   NullStream null_output_stream;
   std::ostream* csv_output_stream = &null_output_stream;
+  bool write_csv_header = true;
   if (!artifact_mode) {
     const auto proof_base_directory = common::make_directory("proof");
     const auto proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
     const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
-    proof_output_stream.open(proof_file);
+    if (append_proof_csv) {
+      write_csv_header = !fs::exists(proof_file) || fs::file_size(proof_file) == 0;
+      proof_output_stream.open(proof_file, std::ios::out | std::ios::app);
+    } else {
+      proof_output_stream.open(proof_file, std::ios::out | std::ios::trunc);
+    }
     if (!proof_output_stream.is_open()) {
       throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
     }
-    PLOGI << "Writing proof CSV to: " << fs::absolute(proof_file).string();
+    PLOGI << (append_proof_csv ? "Appending proof CSV to: " : "Writing proof CSV to: ")
+          << fs::absolute(proof_file).string();
     csv_output_stream = &proof_output_stream;
   } else {
     PLOGI << "Artifact mode enabled: skipping engine version check and proof CSV output";
@@ -215,7 +235,8 @@ int main(int argc, char** argv) {
                                      std::cout, *csv_output_stream, artifacts_path,
                                      query_timeout_seconds > 0 ? std::optional<uint32_t>(query_timeout_seconds) : std::nullopt,
                                      timing_runs,
-                                     parquet_dir};
+                                     parquet_dir,
+                                     write_csv_header};
 
   return theorem::prove(theorems, input_state) ? 0 : 1;
 }

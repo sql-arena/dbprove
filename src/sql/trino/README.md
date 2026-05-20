@@ -6,13 +6,23 @@ Connector for Trino (formerly PrestoSQL).
 
 This driver talks to Trino over the HTTP `/v1/statement` API using `libcurl`.
 
-For local theorem runs, `dbprove` uses Trino's built-in `tpch` catalog instead of bulk-loading CSV data into a writable catalog. The driver rewrites the repo's canonical TPC-H SQL into the Trino form expected by that catalog:
+For the current benchmark harness, local theorem runs do **not** use Trino's
+old built-in `tpch` connector anymore. The active join-scale path uses:
+
+- Trino `481`
+- the `Iceberg` connector
+- a `Nessie` catalog
+- parquet files staged into local tmpfs inside the Trino container
+
+The driver still rewrites repo SQL into Trino's dialect where needed:
 
 - `tpch.<table>` references are rewritten to `sf1.<table>` when the configured catalog is `tpch`
 - `LEFT(x, n)` is rewritten to `SUBSTRING(x, 1, n)`
 - bare ISO date strings like `'1998-10-01'` are rewritten to `DATE '1998-10-01'`
 
-That lets the existing theorem SQL run unchanged from the caller's point of view while still targeting Trino's built-in TPC-H source.
+That keeps the theorem SQL mostly engine-agnostic from the caller's point of
+view even though the backing catalog is now Iceberg/Nessie instead of the
+built-in sample TPC-H source.
 
 ## Explain Support
 
@@ -59,9 +69,16 @@ The Trino driver now reconstructs executable subtree SQL well enough to gather a
 To start a Trino instance for testing:
 ```bash
 cd docker
-docker-compose up -d trino
+docker compose up -d trino
 ```
 
 The Web UI is available at `http://localhost:8080`.
 
-The image overrides the built-in `tpch` catalog to use standard TPC-H column names (`l_shipdate`, `o_orderkey`, and so on), matching the theorem SQL in this repo.
+For the join-scale benchmark, container startup now:
+
+- copies the host materialized parquet tree into `/mnt/tpch-tmpfs/join_scale`
+- bootstraps Iceberg tables through Nessie
+- writes `/tmp/trino-bootstrap-ready` when the benchmark catalog is ready
+
+The benchmark runner waits for both the HTTP health endpoint and that bootstrap
+marker before treating Trino as ready.

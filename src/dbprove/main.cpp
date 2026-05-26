@@ -207,22 +207,15 @@ int main(int argc, char** argv) {
   NullStream null_output_stream;
   std::ostream* csv_output_stream = &null_output_stream;
   bool write_csv_header = true;
+  std::optional<fs::path> proof_directory = std::nullopt;
   if (!artifact_mode) {
     const auto proof_base_directory = common::make_directory("proof");
-    const auto proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
-    const std::string proof_file = proof_directory.string() + "/" + engine.name() + "_proof.csv";
+    proof_directory = common::make_directory(proof_base_directory.string() + "/" + engine.name() + "/" + engine_version);
     if (append_proof_csv) {
-      write_csv_header = !fs::exists(proof_file) || fs::file_size(proof_file) == 0;
-      proof_output_stream.open(proof_file, std::ios::out | std::ios::app);
-    } else {
-      proof_output_stream.open(proof_file, std::ios::out | std::ios::trunc);
+      PLOGW << "--append-proof-csv is deprecated and ignored; proofs are now written to one theorem-named CSV per proof";
     }
-    if (!proof_output_stream.is_open()) {
-      throw std::runtime_error("Failed to open proof file for CSV dumping: " + proof_file);
-    }
-    PLOGI << (append_proof_csv ? "Appending proof CSV to: " : "Writing proof CSV to: ")
-          << fs::absolute(proof_file).string();
-    csv_output_stream = &proof_output_stream;
+    PLOGI << "Writing theorem proof CSV files to: "
+          << fs::absolute(*proof_directory).string();
   } else {
     PLOGI << "Artifact mode enabled: skipping engine version check and proof CSV output";
   }
@@ -236,7 +229,8 @@ int main(int argc, char** argv) {
                                      query_timeout_seconds > 0 ? std::optional<uint32_t>(query_timeout_seconds) : std::nullopt,
                                      timing_runs,
                                      parquet_dir,
-                                     write_csv_header};
+                                     write_csv_header,
+                                     proof_directory};
 
   return theorem::prove(theorems, input_state) ? 0 : 1;
 }

@@ -8,7 +8,7 @@ For the current `EE-JOIN-SCALE-*` benchmark work, the important containers are:
 - `datafusion/`
 - `trino/`
 
-Those are the engines used by `scripts/run_join_scale.py`.
+Those are the engines used by `scripts/run_scale.py`.
 
 ## Current Benchmarking Model
 
@@ -266,7 +266,7 @@ benchmark flow:
 
 ## Notes For Future Updates
 
-- Keep this README aligned with `scripts/run_join_scale.py`.
+- Keep this README aligned with `scripts/run_scale.py`.
 - If the DuckDB image flow changes again, update the “DuckDB” section here
   immediately.
 - If a container stops being part of the benchmark path, say so here explicitly

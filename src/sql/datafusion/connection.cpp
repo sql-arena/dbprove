@@ -1,12 +1,5 @@
 #include "connection.h"
 
-#include "result.h"
-#include "sql_exceptions.h"
-
-#include <dbprove/common/file_utility.h>
-#include <dbprove/common/string.h>
-#include <nlohmann/json.hpp>
-
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -17,10 +10,20 @@
 #include <optional>
 #include <regex>
 #include <sstream>
+#include <string_view>
+
+#include "result.h"
+#include "sql_exceptions.h"
+#include <dbprove/common/file_utility.h>
+#include <dbprove/common/string.h>
+#include <nlohmann/json.hpp>
 #ifdef _WIN32
 #include <process.h>
 #else
+#include <signal.h>
+#include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace sql::datafusion {
@@ -54,47 +57,171 @@ std::string shellQuote(std::string_view value) {
   return quoted;
 }
 
-std::filesystem::path joinScaleParquetDir() {
-  return dbprove::common::get_project_root() / "run" / "materialized" / "join_scale";
+std::filesystem::path datafusionWorkspaceDir() {
+  return dbprove::common::get_project_root() / "run" / "mount" / "datafusion";
 }
 
-class TemporarySqlFile {
-  std::filesystem::path path_;
+std::filesystem::path dockerComposeFile() {
+  return dbprove::common::get_project_root() / "docker" / "docker-compose.yml";
+}
+
+constexpr std::string_view kComposeProjectName = "dbprove-scale";
+
+std::string composeExecPrefix() {
+  return "docker compose -p " + shellQuote(kComposeProjectName)
+         + " -f " + shellQuote(dockerComposeFile().string());
+}
+
+std::string readTextFile(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open()) {
+    throw std::runtime_error("Failed to open file: " + path.string());
+  }
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+std::string normalizeCliStatement(std::string_view sql);
+std::string describeExitCode(int exit_code);
+
+#ifndef _WIN32
+class PersistentCliSession {
+  pid_t pid_ = -1;
+  FILE* input_ = nullptr;
+  FILE* output_ = nullptr;
+
+  static std::string sessionCommand() {
+    return composeExecPrefix() +
+           " exec -T datafusion sh -lc " +
+           shellQuote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
+                      "-r /workspace/datafusion-bootstrap.sql");
+  }
+
+  static std::string trimLine(std::string line) {
+    while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+      line.pop_back();
+    }
+    return line;
+  }
+
+  static std::string describeWaitStatus(const int status) {
+    if (WIFSIGNALED(status)) {
+      return "Persistent DataFusion session terminated by signal "
+             + std::to_string(WTERMSIG(status)) + " before producing JSON output";
+    }
+    if (WIFEXITED(status)) {
+      return describeExitCode(WEXITSTATUS(status));
+    }
+    return "Persistent DataFusion session ended before producing JSON output";
+  }
 
 public:
-  explicit TemporarySqlFile(std::string_view sql) {
-    const auto temp_dir = std::filesystem::temp_directory_path();
-    const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-
-    for (size_t attempt = 0; attempt < 32; ++attempt) {
-      auto candidate = temp_dir / ("dbprove-datafusion-" + std::to_string(now) + "-" +
-                                   std::to_string(std::rand()) + "-" + std::to_string(attempt) + ".sql");
-      if (std::filesystem::exists(candidate)) {
-        continue;
-      }
-
-      std::ofstream out(candidate, std::ios::binary | std::ios::trunc);
-      if (!out.is_open()) {
-        continue;
-      }
-      out << sql;
-      out.close();
-      path_ = std::move(candidate);
-      return;
+  PersistentCliSession() {
+    int stdin_pipe[2];
+    int stdout_pipe[2];
+    if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0) {
+      throw std::runtime_error("Failed to create pipes for persistent DataFusion session");
     }
 
-    throw std::runtime_error("Failed to create temporary SQL file for DataFusion");
+    pid_ = fork();
+    if (pid_ < 0) {
+      ::close(stdin_pipe[0]);
+      ::close(stdin_pipe[1]);
+      ::close(stdout_pipe[0]);
+      ::close(stdout_pipe[1]);
+      throw std::runtime_error("Failed to fork persistent DataFusion session");
+    }
+
+    if (pid_ == 0) {
+      dup2(stdin_pipe[0], STDIN_FILENO);
+      dup2(stdout_pipe[1], STDOUT_FILENO);
+      dup2(stdout_pipe[1], STDERR_FILENO);
+      ::close(stdin_pipe[0]);
+      ::close(stdin_pipe[1]);
+      ::close(stdout_pipe[0]);
+      ::close(stdout_pipe[1]);
+      execl("/bin/sh", "sh", "-lc", sessionCommand().c_str(), static_cast<char*>(nullptr));
+      _exit(127);
+    }
+
+    ::close(stdin_pipe[0]);
+    ::close(stdout_pipe[1]);
+    input_ = fdopen(stdin_pipe[1], "w");
+    output_ = fdopen(stdout_pipe[0], "r");
+    if (input_ == nullptr || output_ == nullptr) {
+      close();
+      throw std::runtime_error("Failed to open stdio streams for persistent DataFusion session");
+    }
   }
 
-  ~TemporarySqlFile() {
-    std::error_code ec;
-    std::filesystem::remove(path_, ec);
+  ~PersistentCliSession() {
+    close();
   }
 
-  const std::filesystem::path& path() const {
-    return path_;
+  void close() {
+    if (input_ != nullptr) {
+      fputs("\\q\n", input_);
+      fflush(input_);
+      fclose(input_);
+      input_ = nullptr;
+    }
+    if (output_ != nullptr) {
+      fclose(output_);
+      output_ = nullptr;
+    }
+    if (pid_ > 0) {
+      int status = 0;
+      if (waitpid(pid_, &status, WNOHANG) == 0) {
+        kill(pid_, SIGTERM);
+        waitpid(pid_, &status, 0);
+      }
+      pid_ = -1;
+    }
+  }
+
+  std::string runJsonQuery(std::string_view sql) {
+    if (input_ == nullptr || output_ == nullptr) {
+      throw std::runtime_error("Persistent DataFusion session is not open");
+    }
+
+    const std::string statement = normalizeCliStatement(sql);
+    if (fwrite(statement.data(), 1, statement.size(), input_) != statement.size()) {
+      throw std::runtime_error("Failed to write query to persistent DataFusion session");
+    }
+    fflush(input_);
+
+    std::array<char, 65536> buffer{};
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), output_) != nullptr) {
+      std::string line = trimLine(buffer.data());
+      if (line.empty()) {
+        continue;
+      }
+      if (line == trimLine(std::string(statement))) {
+        continue;
+      }
+      const auto trimmed = trim_string(line);
+      if (!trimmed.empty() && (trimmed.front() == '[' || trimmed.front() == '{')) {
+        return line;
+      }
+      if (trimmed.starts_with("Error") || trimmed.starts_with("error")) {
+        throw std::runtime_error(line);
+      }
+    }
+
+    if (pid_ > 0) {
+      int status = 0;
+      const auto waited = waitpid(pid_, &status, WNOHANG);
+      if (waited == pid_) {
+        pid_ = -1;
+        throw std::runtime_error(describeWaitStatus(status));
+      }
+    }
+
+    throw std::runtime_error("Persistent DataFusion session ended before producing JSON output");
   }
 };
+#endif
 
 CommandResult runCommand(std::string_view command) {
   FILE* pipe = dbprove_popen((std::string(command) + " 2>&1").c_str(), "r");
@@ -117,11 +244,108 @@ CommandResult runCommand(std::string_view command) {
   return CommandResult{exit_code, output};
 }
 
+#ifndef _WIN32
+CommandResult runCommandWithInput(std::string_view command, std::string_view input) {
+  int stdin_pipe[2];
+  int stdout_pipe[2];
+  if (pipe(stdin_pipe) != 0 || pipe(stdout_pipe) != 0) {
+    throw std::runtime_error("Failed to create pipes for process input");
+  }
+
+  const pid_t pid = fork();
+  if (pid < 0) {
+    close(stdin_pipe[0]);
+    close(stdin_pipe[1]);
+    close(stdout_pipe[0]);
+    close(stdout_pipe[1]);
+    throw std::runtime_error("Failed to fork process for command input");
+  }
+
+  if (pid == 0) {
+    dup2(stdin_pipe[0], STDIN_FILENO);
+    dup2(stdout_pipe[1], STDOUT_FILENO);
+    dup2(stdout_pipe[1], STDERR_FILENO);
+    close(stdin_pipe[0]);
+    close(stdin_pipe[1]);
+    close(stdout_pipe[0]);
+    close(stdout_pipe[1]);
+    execl("/bin/sh", "sh", "-lc", std::string(command).c_str(), static_cast<char*>(nullptr));
+    _exit(127);
+  }
+
+  close(stdin_pipe[0]);
+  close(stdout_pipe[1]);
+  if (!input.empty()) {
+    const auto* data = input.data();
+    size_t remaining = input.size();
+    while (remaining > 0) {
+      const auto written = write(stdin_pipe[1], data, remaining);
+      if (written < 0) {
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        kill(pid, SIGTERM);
+        waitpid(pid, nullptr, 0);
+        throw std::runtime_error("Failed to write stdin to child process");
+      }
+      data += written;
+      remaining -= static_cast<size_t>(written);
+    }
+  }
+  close(stdin_pipe[1]);
+
+  std::array<char, 4096> buffer{};
+  std::string output;
+  ssize_t bytes_read = 0;
+  while ((bytes_read = read(stdout_pipe[0], buffer.data(), buffer.size())) > 0) {
+    output.append(buffer.data(), static_cast<size_t>(bytes_read));
+  }
+  close(stdout_pipe[0]);
+
+  int status = 0;
+  waitpid(pid, &status, 0);
+  const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : status;
+  return CommandResult{exit_code, output};
+}
+#endif
+
 std::string trimOutput(std::string output) {
   while (!output.empty() && std::isspace(static_cast<unsigned char>(output.back())) != 0) {
     output.pop_back();
   }
   return output;
+}
+
+std::string normalizeCliStatement(std::string_view sql) {
+  std::string normalized(sql);
+  while (!normalized.empty() && std::isspace(static_cast<unsigned char>(normalized.back())) != 0) {
+    normalized.pop_back();
+  }
+  if (normalized.empty() || normalized.back() != ';') {
+    normalized.push_back(';');
+  }
+  normalized.push_back('\n');
+  return normalized;
+}
+
+std::string describeExitCode(const int exit_code) {
+  switch (exit_code) {
+    case 126:
+      return "DataFusion CLI exited with code 126 (command invoked cannot execute)";
+    case 127:
+      return "DataFusion CLI exited with code 127 (command not found or failed to launch)";
+    case 130:
+      return "DataFusion CLI exited with code 130 (interrupted by SIGINT)";
+    case 137:
+      return "Out of memory (DataFusion CLI exited with code 137, likely cgroup kill during query execution)";
+    case 143:
+      return "DataFusion CLI exited with code 143 (terminated by SIGTERM)";
+    default:
+      if (exit_code >= 128) {
+        return "DataFusion CLI exited with code " + std::to_string(exit_code)
+               + " (likely terminated by signal " + std::to_string(exit_code - 128) + ")";
+      }
+      return "DataFusion CLI exited with code " + std::to_string(exit_code);
+  }
 }
 
 SqlTypeKind inferType(const SqlVariant& value) {
@@ -183,9 +407,13 @@ SqlVariant jsonValueToVariant(const ordered_json& value) {
   return SqlVariant(value.dump());
 }
 
-[[noreturn]] void throwForCommandError(const Credential& credential, std::string_view statement, int exit_code, const std::string& output) {
+[[noreturn]] void throwForCommandError(const Credential& credential, std::string_view statement, int exit_code,
+                                       const std::string& output) {
+  if (exit_code != 0 && output.empty()) {
+    throw std::runtime_error(describeExitCode(exit_code));
+  }
   if (exit_code == 137) {
-    throw std::runtime_error("DataFusion container exited with code 137 (likely out of memory)");
+    throw std::runtime_error(describeExitCode(exit_code));
   }
   const auto lowered = to_lower(output);
   if (lowered.contains("error during planning")) {
@@ -205,24 +433,19 @@ SqlVariant jsonValueToVariant(const ordered_json& value) {
   }
   throw ConnectionException(credential, output);
 }
-}
+}  // namespace
 
 class Connection::Pimpl {
   CredentialNone credential_;
-  std::string image_name_;
   bool closed_ = false;
+#ifndef _WIN32
+  std::unique_ptr<PersistentCliSession> session_;
+#endif
 
-  [[nodiscard]] std::string dockerImage() const {
-    return image_name_;
-  }
+  static std::string bootstrapSqlPath() { return "/workspace/datafusion-bootstrap.sql"; }
 
-public:
-  explicit Pimpl(CredentialNone credential)
-    : credential_(std::move(credential))
-    , image_name_(std::getenv("DBPROVE_DATAFUSION_IMAGE") != nullptr
-                    ? std::getenv("DBPROVE_DATAFUSION_IMAGE")
-                    : "dbprove-datafusion:latest") {
-  }
+ public:
+  explicit Pimpl(CredentialNone credential) : credential_(std::move(credential)) {}
 
   void ensureOpen() const {
     if (closed_) {
@@ -232,39 +455,75 @@ public:
 
   void close() {
     closed_ = true;
+#ifndef _WIN32
+    if (session_) {
+      session_->close();
+      session_.reset();
+    }
+#endif
   }
 
-  CommandResult runCli(std::string_view sql) const {
-    ensureOpen();
-    TemporarySqlFile query_file(sql);
-    const auto query_mount = query_file.path().string() + ":/tmp/query.sql:ro";
-    const auto parquet_mount = joinScaleParquetDir().string() + ":/opt/join-scale-source:ro";
-    const std::string command = "docker run --rm --memory 6g --tmpfs /mnt/tpch-tmpfs:size=4g"
-                                " -v " + shellQuote(query_mount) +
-                                " -v " + shellQuote(parquet_mount) + " " +
-                                shellQuote(dockerImage()) +
-                                " -q --format json -b 1000000 -f /tmp/query.sql";
+#ifndef _WIN32
+  PersistentCliSession& session() {
+    if (!session_) {
+      session_ = std::make_unique<PersistentCliSession>();
+    }
+    return *session_;
+  }
+#endif
+
+  CommandResult runOneShotCli(std::string_view sql, bool quiet) const {
+    const std::string quiet_flag = quiet ? " --quiet" : "";
+    const std::string command = composeExecPrefix() +
+                                " exec -T datafusion sh -lc " +
+                                shellQuote("exec /opt/datafusion-cli/bin/datafusion-cli --data-path /workspace "
+                                           "--mem-pool-type fair -m 2g -d 4g -r " +
+                                           shellQuote(bootstrapSqlPath()) + quiet_flag + " --format json -b 1000000");
+#ifdef _WIN32
     return runCommand(command);
+#else
+    return runCommandWithInput(command, normalizeCliStatement(sql));
+#endif
+  }
+
+  CommandResult runCli(std::string_view sql, bool quiet = true) const {
+    ensureOpen();
+    return runOneShotCli(sql, quiet);
   }
 
   CommandResult runPhysicalPlanHelper(std::string_view sql) const {
     ensureOpen();
-    TemporarySqlFile query_file(sql);
-    const auto query_mount = query_file.path().string() + ":/tmp/query.sql:ro";
-    const auto parquet_mount = joinScaleParquetDir().string() + ":/opt/join-scale-source:ro";
-    const std::string command = "docker run --rm --memory 6g --tmpfs /mnt/tpch-tmpfs:size=4g"
-                                " -v " + shellQuote(query_mount) +
-                                " -v " + shellQuote(parquet_mount) +
-                                " --entrypoint datafusion-plan-json " + shellQuote(dockerImage()) +
-                                " --sql-file /tmp/query.sql";
+    const auto bootstrap_path = datafusionWorkspaceDir() / "datafusion-bootstrap.sql";
+    const std::string command = composeExecPrefix() +
+                                " exec -T datafusion sh -lc " +
+                                shellQuote(
+                                    "export TMPDIR=/workspace/datafusion-spill; "
+                                    "exec /opt/datafusion-plan-json/bin/datafusion-plan-json --bootstrap-file " +
+                                    shellQuote("/workspace/" + bootstrap_path.filename().string()) + " --sql-stdin");
+#ifdef _WIN32
     return runCommand(command);
+#else
+    return runCommandWithInput(command, normalizeCliStatement(sql));
+#endif
+  }
+
+  std::string runPersistentJsonQuery(std::string_view sql) {
+    ensureOpen();
+#ifdef _WIN32
+    const auto result = runCli(sql);
+    if (result.exit_code != 0) {
+      throwForCommandError(credential_, sql, result.exit_code, result.output);
+    }
+    return trimOutput(result.output);
+#else
+    return session().runJsonQuery(sql);
+#endif
   }
 };
 
-Connection::Connection(const CredentialNone& credential, const Engine& engine, std::optional<std::string> artifacts_path)
-  : ConnectionBase(credential, engine, std::move(artifacts_path))
-  , impl_(std::make_unique<Pimpl>(credential)) {
-}
+Connection::Connection(const CredentialNone& credential, const Engine& engine,
+                       std::optional<std::string> artifacts_path)
+    : ConnectionBase(credential, engine, std::move(artifacts_path)), impl_(std::make_unique<Pimpl>(credential)) {}
 
 Connection::~Connection() = default;
 
@@ -274,23 +533,18 @@ const ConnectionBase::TypeMap& Connection::typeMap() const {
 }
 
 void Connection::execute(std::string_view statement) {
-  const auto result = impl_->runCli(statement);
+  const auto result = impl_->runCli(statement, true);
   if (result.exit_code != 0) {
     throwForCommandError(credential, statement, result.exit_code, result.output);
   }
 }
 
 std::unique_ptr<ResultBase> Connection::fetchJsonQuery(std::string_view statement) {
-  const auto result = impl_->runCli(statement);
-  if (result.exit_code != 0) {
-    throwForCommandError(credential, statement, result.exit_code, result.output);
-  }
-
   ordered_json payload;
   try {
-    payload = ordered_json::parse(trimOutput(result.output));
+    payload = ordered_json::parse(trimOutput(impl_->runPersistentJsonQuery(statement)));
   } catch (const std::exception& e) {
-    throw ProtocolException("Failed to parse DataFusion JSON output: " + std::string(e.what()) + "\n" + result.output);
+    throw ProtocolException("Failed to parse DataFusion JSON output: " + std::string(e.what()));
   }
 
   if (!payload.is_array()) {
@@ -328,13 +582,12 @@ std::unique_ptr<ResultBase> Connection::fetchJsonQuery(std::string_view statemen
   return std::make_unique<Result>(std::move(rows), std::move(column_types));
 }
 
-std::unique_ptr<ResultBase> Connection::fetchAll(std::string_view statement) {
-  return fetchJsonQuery(statement);
-}
+std::unique_ptr<ResultBase> Connection::fetchAll(std::string_view statement) { return fetchJsonQuery(statement); }
 
 void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
   validateSourcePaths(source_paths);
-  throw NotImplementedException("The DataFusion driver uses a pre-mounted dataset container and does not implement bulk load");
+  throw NotImplementedException(
+      "The DataFusion driver uses a pre-mounted dataset container and does not implement bulk load");
 }
 
 void Connection::analyse(std::string_view table_name) {
@@ -342,17 +595,11 @@ void Connection::analyse(std::string_view table_name) {
   execute(statement);
 }
 
-bool Connection::shouldSkipDatasetTuning(std::string_view dataset) {
-  return dataset == "tpch";
-}
+bool Connection::shouldSkipDatasetTuning(std::string_view dataset) { return dataset == "tpch"; }
 
-std::string Connection::version() {
-  return fetchScalar("SELECT version()").asString();
-}
+std::string Connection::version() { return fetchScalar("SELECT version()").asString(); }
 
-void Connection::close() {
-  impl_->close();
-}
+void Connection::close() { impl_->close(); }
 
 json Connection::fetchPhysicalPlanJson(std::string_view statement) const {
   const auto result = impl_->runPhysicalPlanHelper(statement);
@@ -363,8 +610,9 @@ json Connection::fetchPhysicalPlanJson(std::string_view statement) const {
   try {
     return json::parse(trimOutput(result.output));
   } catch (const std::exception& e) {
-    throw ProtocolException("Failed to parse DataFusion physical plan JSON: " + std::string(e.what()) + "\n" + result.output);
+    throw ProtocolException("Failed to parse DataFusion physical plan JSON: " + std::string(e.what()) + "\n" +
+                            result.output);
   }
 }
 
-}
+}  // namespace sql::datafusion

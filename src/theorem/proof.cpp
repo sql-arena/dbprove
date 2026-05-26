@@ -103,8 +103,10 @@ const std::optional<std::string>& Proof::parquetDir() const {
 void Proof::writeCsv(const std::string& key, std::string value, const Unit unit) const {
   static std::atomic<uint64_t> counter{1};
 
-  state.writeCsv(std::vector<std::string_view>{state.engine.name(),
-                                               std::to_string(++counter),
+  const auto id = std::to_string(++counter);
+  state.writeCsv(theorem.name,
+                 std::vector<std::string_view>{state.engine.name(),
+                                               id,
                                                theorem.categories_to_string(),
                                                theorem.tags_to_string(),
                                                theorem.name,

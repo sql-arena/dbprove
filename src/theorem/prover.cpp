@@ -44,7 +44,8 @@ void writeVersion(RunCtx& input_state) {
   PLOGI << "Reading Version...";
   const std::string version = input_state.factory.create()->version();
 
-  input_state.writeCsv(std::vector<std::string_view>{input_state.engine.name(),
+  input_state.writeCsv("CONFIG-VERSION",
+                       std::vector<std::string_view>{input_state.engine.name(),
                                                      "0",
                                                      allCategoriesAsString(),
                                                      "CONFIG",

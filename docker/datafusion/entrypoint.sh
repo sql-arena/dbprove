@@ -1,8 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p /mnt/tpch-tmpfs
-mkdir -p /mnt/tpch-tmpfs/join_scale
-cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+bootstrap_sql="/workspace/datafusion-bootstrap.sql"
+ready_marker="/tmp/datafusion-bootstrap-ready"
 
-exec datafusion-cli --data-path /workspace -m 2g -f /opt/datafusion/bootstrap.sql "$@"
+prepare_tmpfs() {
+  rm -f "${ready_marker}"
+  rm -rf /mnt/tpch-tmpfs/join_scale
+  mkdir -p /mnt/tpch-tmpfs/join_scale /workspace/datafusion-spill
+  cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+}
+
+write_bootstrap_sql() {
+  : > "${bootstrap_sql}"
+
+  cat >> "${bootstrap_sql}" <<'SQL'
+CREATE SCHEMA IF NOT EXISTS tpch;
+
+CREATE EXTERNAL TABLE IF NOT EXISTS tpch.lineitem_25x (
+  l_orderkey BIGINT,
+  l_suppkey BIGINT,
+  l_linenumber BIGINT,
+  lineitem_replica_id BIGINT
+)
+STORED AS PARQUET
+LOCATION '/mnt/tpch-tmpfs/join_scale/lineitem_25x/lineitem_25x.parquet';
+
+SQL
+
+  for parquet_dir in /mnt/tpch-tmpfs/join_scale/orders_scale_*; do
+    [[ -d "${parquet_dir}" ]] || continue
+    table_name="$(basename "${parquet_dir}")"
+    cat >> "${bootstrap_sql}" <<SQL
+CREATE EXTERNAL TABLE IF NOT EXISTS tpch.${table_name} (
+  join_key BIGINT,
+  o_orderkey BIGINT,
+  orders_replica_id BIGINT,
+  o_custkey BIGINT,
+  o_orderstatus VARCHAR,
+  o_totalprice DECIMAL(15,2),
+  o_orderdate DATE,
+  o_orderpriority VARCHAR,
+  o_clerk VARCHAR,
+  o_shippriority BIGINT,
+  o_comment VARCHAR
+)
+STORED AS PARQUET
+LOCATION '/mnt/tpch-tmpfs/join_scale/${table_name}/${table_name}.parquet';
+
+SQL
+  done
+}
+
+prepare_tmpfs
+write_bootstrap_sql
+touch "${ready_marker}"
+mkdir -p /workspace/datafusion-spill
+export TMPDIR=/workspace/datafusion-spill
+
+exec tail -f /dev/null

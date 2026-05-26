@@ -44,7 +44,7 @@ services:
   trino:
     build: ./trino
     image: dbprove-trino:latest
-    mem_limit: 6g
+    mem_limit: 7g
     depends_on:
       - nessie
     ports:
@@ -58,9 +58,7 @@ services:
   datafusion:
     build: ./datafusion
     image: dbprove-datafusion:latest
-    mem_limit: 6g
-    stdin_open: true
-    tty: true
+    mem_limit: 7g
     tmpfs:
       - /mnt/tpch-tmpfs:size=4g
     volumes:

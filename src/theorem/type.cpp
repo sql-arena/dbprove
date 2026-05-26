@@ -26,11 +26,6 @@ Tag::Tag(std::string name)
   if (this->name.find_first_of("|,\n") != std::string::npos) {
     throw std::runtime_error("Tag name cannot contain '|', newlines or ',' as that is needed for CSV rendering");
   }
-  for (const char c : this->name) {
-    if (std::islower(static_cast<unsigned char>(c))) {
-      throw std::runtime_error("Tag name must be uppercase: " + this->name);
-    }
-  }
 }
 
 Category typeEnum(const std::string& type_name) {

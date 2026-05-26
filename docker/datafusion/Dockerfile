@@ -18,7 +18,6 @@ RUN apt-get update \
 COPY --from=builder /opt/datafusion-cli /opt/datafusion-cli
 COPY --from=builder /opt/datafusion-plan-json /opt/datafusion-plan-json
 COPY tpch /opt/tpch
-COPY bootstrap.sql /opt/datafusion/bootstrap.sql
 COPY entrypoint.sh /usr/local/bin/datafusion-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/datafusion-entrypoint.sh \

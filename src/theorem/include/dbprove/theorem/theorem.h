@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <ostream>
+#include <filesystem>
 
 #include "dbprove/sql/connection_factory.h"
 #include "dbprove/sql/sql_type.h"
@@ -232,8 +233,12 @@ private:
  * It is also where the proofs are kept for returning to caller
  */
 class RunCtx {
+public:
   class CsvWriter;
-  std::unique_ptr<CsvWriter> writer;
+private:
+  std::unique_ptr<CsvWriter> legacy_writer;
+  std::filesystem::path proof_directory_path_;
+  bool write_csv_header_ = true;
 
 public:
   const sql::Engine& engine;
@@ -248,13 +253,14 @@ public:
   std::optional<std::string> parquet_dir;
   std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
-  void writeCsv(const std::vector<std::string_view>& values) const;
+  void writeCsv(std::string_view proof_name, const std::vector<std::string_view>& values) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
          std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt,
          std::optional<uint32_t> query_timeout_seconds = std::nullopt,
          size_t timing_runs = 3,
          std::optional<std::string> parquet_dir = std::nullopt,
-         bool write_csv_header = true);
+         bool write_csv_header = true,
+         std::optional<std::filesystem::path> proof_directory = std::nullopt);
 
   ~RunCtx();
 };

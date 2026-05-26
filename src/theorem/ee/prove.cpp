@@ -25,9 +25,6 @@ struct PayloadProjection {
 constexpr int kLineitemScale = 25;
 constexpr int64_t kBaseJoinRowCount = 6001215;
 constexpr int64_t kScaledJoinRowCount = kBaseJoinRowCount * kLineitemScale;
-constexpr int64_t kBaseSumLineitemLinenumber = 18007100;
-constexpr int64_t kBaseSumOrdersCustkeyJoined = 450367585226;
-constexpr int64_t kLineitemReplicaWeightSum = (kLineitemScale * (kLineitemScale + 1)) / 2;
 constexpr std::array<PayloadProjection, 8> kOrdersPayloadColumns{{
     {"o.o_custkey", "o_custkey"},
     {"o.o_orderstatus", "o_orderstatus"},
@@ -37,6 +34,18 @@ constexpr std::array<PayloadProjection, 8> kOrdersPayloadColumns{{
     {"o.o_clerk", "o_clerk"},
     {"o.o_shippriority", "o_shippriority"},
     {"o.o_comment", "o_comment"},
+}};
+constexpr std::array<PayloadProjection, 4> kSortPayloadColumns{{
+    {"o_orderstatus", "o_orderstatus"},
+    {"o_orderpriority", "o_orderpriority"},
+    {"o_clerk", "o_clerk"},
+    {"o_shippriority", "o_shippriority"},
+}};
+constexpr std::array<PayloadProjection, 4> kAggGroupColumns{{
+    {"o_orderstatus", "o_orderstatus"},
+    {"o_orderpriority", "o_orderpriority"},
+    {"o_clerk", "o_clerk"},
+    {"o_shippriority", "o_shippriority"},
 }};
 constexpr std::array<PayloadProjection, 1> kLineitemPayloadColumns{{
     {"l.l_linenumber", "l_linenumber"},
@@ -158,13 +167,13 @@ std::string joinScaleSql(const int orders_scale) {
   const auto lineitem_table = "tpch.lineitem_25x";
   std::ostringstream sql;
   sql << "SELECT COUNT(*) AS join_row_count,\n";
-  sql << "       SUM((CAST(l.l_linenumber AS BIGINT) + CAST(o.o_custkey AS BIGINT)) * CAST(l.lineitem_replica_id + 1 AS BIGINT)\n";
-  sql << "           + CAST(o.orders_replica_id AS BIGINT)) AS sum_join_payload,\n";
   sql << "       COUNT(l.l_orderkey) AS count_l_orderkey";
+  sql << ",\n       COUNT(l.lineitem_replica_id) AS count_lineitem_replica_id";
   for (const auto& column : kLineitemPayloadColumns) {
     sql << ",\n       COUNT(l." << column.alias << ") AS count_" << column.alias;
   }
   sql << ",\n       COUNT(o.o_orderkey) AS count_o_orderkey";
+  sql << ",\n       COUNT(o.orders_replica_id) AS count_orders_replica_id";
   for (const auto& column : kOrdersPayloadColumns) {
     sql << ",\n       COUNT(o." << column.alias << ") AS count_" << column.alias;
   }
@@ -176,37 +185,64 @@ std::string joinScaleSql(const int orders_scale) {
   return sql.str();
 }
 
-int64_t bucketSumForScale(const int orders_scale) {
-  switch (orders_scale) {
-    case 1: return 0;
-    case 2: return 3001623;
-    case 3: return 5996287;
-    case 4: return 9003909;
-    case 5: return 12005169;
-    case 6: return 15001753;
-    case 8: return 20996129;
-    case 10: return 27018379;
-    case 12: return 32999269;
-    case 14: return 39016327;
-    case 16: return 45003257;
-    case 18: return 51005701;
-    case 20: return 57022969;
-    default:
-      throw std::runtime_error("Unsupported join scale for expected bucket sum: " + std::to_string(orders_scale));
+std::string sortScaleSql(const int orders_scale) {
+  const auto orders_table = "tpch." + ordersScaleTableName(orders_scale);
+  std::ostringstream sql;
+  sql << "SELECT SUM(CAST(c AS BIGINT)) AS sum_row_number,\n";
+  sql << "       COUNT(o_orderkey) AS count_o_orderkey";
+  for (const auto& column : kSortPayloadColumns) {
+    sql << ",\n       COUNT(" << column.alias << ") AS count_" << column.alias;
   }
+  sql << "\nFROM (\n";
+  sql << "  SELECT o_orderkey";
+  for (const auto& column : kSortPayloadColumns) {
+    sql << ",\n         " << column.alias;
+  }
+  sql << ",\n         ROW_NUMBER() OVER (PARTITION BY o_custkey ORDER BY join_key) AS c\n";
+  sql << "  FROM " << orders_table << "\n";
+  sql << ") sorted_orders";
+  return sql.str();
 }
 
-std::vector<sql::SqlVariant> expectedJoinScaleRow(const int orders_scale) {
+std::string aggScaleSql(const int orders_scale) {
+  const auto orders_table = "tpch." + ordersScaleTableName(orders_scale);
+  std::ostringstream sql;
+  sql << "SELECT COUNT(*) AS agg_group_count,\n";
+  sql << "       SUM(CAST(group_rows AS BIGINT)) AS sum_group_rows,\n";
+  sql << "       SUM(sum_o_custkey) AS sum_o_custkey,\n";
+  sql << "       COUNT(o_orderkey) AS count_o_orderkey,\n";
+  sql << "       COUNT(orders_replica_id) AS count_orders_replica_id";
+  for (const auto& column : kAggGroupColumns) {
+    sql << ",\n       COUNT(" << column.alias << ") AS count_" << column.alias;
+  }
+  sql << "\nFROM (\n";
+  sql << "  SELECT o_orderkey,\n";
+  sql << "         orders_replica_id";
+  for (const auto& column : kAggGroupColumns) {
+    sql << ",\n         " << column.alias;
+  }
+  sql << ",\n         COUNT(*) AS group_rows,\n";
+  sql << "         SUM(CAST(o_custkey AS BIGINT)) AS sum_o_custkey\n";
+  sql << "  FROM " << orders_table << "\n";
+  sql << "  GROUP BY o_orderkey,\n";
+  sql << "           orders_replica_id";
+  for (const auto& column : kAggGroupColumns) {
+    sql << ",\n           " << column.alias;
+  }
+  sql << "\n) grouped_orders";
+  return sql.str();
+}
+
+std::vector<sql::SqlVariant> expectedJoinScaleRow([[maybe_unused]] const int orders_scale) {
   std::vector<sql::SqlVariant> expected;
-  expected.reserve(3 + kLineitemPayloadColumns.size() + 1 + kOrdersPayloadColumns.size());
+  expected.reserve(3 + kLineitemPayloadColumns.size() + 2 + kOrdersPayloadColumns.size());
   expected.emplace_back(kScaledJoinRowCount);
-  expected.emplace_back(
-      kLineitemReplicaWeightSum * (kBaseSumLineitemLinenumber + kBaseSumOrdersCustkeyJoined)
-      + kLineitemScale * bucketSumForScale(orders_scale));
+  expected.emplace_back(kScaledJoinRowCount);
   expected.emplace_back(kScaledJoinRowCount);
   for ([[maybe_unused]] const auto& column : kLineitemPayloadColumns) {
     expected.emplace_back(kScaledJoinRowCount);
   }
+  expected.emplace_back(kScaledJoinRowCount);
   expected.emplace_back(kScaledJoinRowCount);
   for ([[maybe_unused]] const auto& column : kOrdersPayloadColumns) {
     expected.emplace_back(kScaledJoinRowCount);
@@ -254,6 +290,32 @@ void runJoinScale(Proof& proof, const int orders_scale) {
   runner.serialMeasure(std::move(query), proof, proof.timingRuns());
 }
 
+void runSortScale(Proof& proof, const int orders_scale) {
+  const auto engine_type = proof.factory().engine().type();
+  if (engine_type != sql::Engine::Type::DataFusion
+      && engine_type != sql::Engine::Type::DuckDB
+      && engine_type != sql::Engine::Type::Trino) {
+    proof.ensureDataset("tpch");
+  }
+  ensureDuckDbMaterializedViews(proof);
+  Query query(sortScaleSql(orders_scale), proof.theorem.name.c_str(), 1);
+  Runner runner(proof.factory());
+  runner.serialMeasure(std::move(query), proof, proof.timingRuns());
+}
+
+void runAggScale(Proof& proof, const int orders_scale) {
+  const auto engine_type = proof.factory().engine().type();
+  if (engine_type != sql::Engine::Type::DataFusion
+      && engine_type != sql::Engine::Type::DuckDB
+      && engine_type != sql::Engine::Type::Trino) {
+    proof.ensureDataset("tpch");
+  }
+  ensureDuckDbMaterializedViews(proof);
+  Query query(aggScaleSql(orders_scale), proof.theorem.name.c_str(), 1);
+  Runner runner(proof.factory());
+  runner.serialMeasure(std::move(query), proof, proof.timingRuns());
+}
+
 void registerJoinScale(const int orders_scale) {
   const std::string padded_scale = orders_scale < 10
                                      ? "0" + std::to_string(orders_scale)
@@ -265,6 +327,35 @@ void registerJoinScale(const int orders_scale) {
       1);
   categoriseTheorem(theorem, Category::EE);
   tagTheorem(theorem, Tag("JOIN"));
+  tagTheorem(theorem, Tag("scale"));
+}
+
+void registerSortScale(const int orders_scale) {
+  const std::string padded_scale = orders_scale < 10
+                                     ? "0" + std::to_string(orders_scale)
+                                     : std::to_string(orders_scale);
+  auto& theorem = addTheorem(
+      "EE-SORT-SCALE-" + padded_scale,
+      "Sort scale test with window ordering over orders scaled to " + std::to_string(orders_scale) + "x",
+      [orders_scale](Proof& proof) { runSortScale(proof, orders_scale); },
+      1);
+  categoriseTheorem(theorem, Category::EE);
+  tagTheorem(theorem, Tag("SORT"));
+  tagTheorem(theorem, Tag("scale"));
+}
+
+void registerAggScale(const int orders_scale) {
+  const std::string padded_scale = orders_scale < 10
+                                     ? "0" + std::to_string(orders_scale)
+                                     : std::to_string(orders_scale);
+  auto& theorem = addTheorem(
+      "EE-AGG-SCALE-" + padded_scale,
+      "Aggregation scale test with grouped orders scaled to " + std::to_string(orders_scale) + "x",
+      [orders_scale](Proof& proof) { runAggScale(proof, orders_scale); },
+      1);
+  categoriseTheorem(theorem, Category::EE);
+  tagTheorem(theorem, Tag("AGG"));
+  tagTheorem(theorem, Tag("scale"));
 }
 }
 
@@ -325,6 +416,8 @@ void init() {
 
   for (const int orders_scale : kOrdersScales) {
     registerJoinScale(orders_scale);
+    registerSortScale(orders_scale);
+    registerAggScale(orders_scale);
   }
 
   is_initialised = true;

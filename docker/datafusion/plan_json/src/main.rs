@@ -7,6 +7,7 @@ use serde_json::{json, Map, Value};
 use std::sync::Arc;
 use std::env;
 use std::fs;
+use std::io::{self, Read};
 
 const TPCH_TABLES: &[&str] = &[
   "region",
@@ -30,22 +31,40 @@ async fn register_tpch(ctx: &SessionContext) -> Result<()> {
   Ok(())
 }
 
-fn parse_args() -> Result<String> {
+fn split_sql_statements(sql: &str) -> Vec<String> {
+  sql.split(';')
+    .map(str::trim)
+    .filter(|statement| !statement.is_empty())
+    .map(|statement| statement.to_string())
+    .collect()
+}
+
+fn parse_args() -> Result<(Option<String>, String)> {
   let mut args = env::args().skip(1);
+  let mut bootstrap = None;
   let mut sql = None;
 
   while let Some(arg) = args.next() {
     match arg.as_str() {
       "--sql" => sql = args.next(),
+      "--bootstrap-file" => {
+        let path = args.next().ok_or_else(|| anyhow::anyhow!("missing value for --bootstrap-file"))?;
+        bootstrap = Some(fs::read_to_string(path)?);
+      }
       "--sql-file" => {
         let path = args.next().ok_or_else(|| anyhow::anyhow!("missing value for --sql-file"))?;
         sql = Some(fs::read_to_string(path)?);
+      }
+      "--sql-stdin" => {
+        let mut buffer = String::new();
+        io::stdin().read_to_string(&mut buffer)?;
+        sql = Some(buffer);
       }
       other => bail!("unsupported argument: {other}"),
     }
   }
 
-  sql.ok_or_else(|| anyhow::anyhow!("provide --sql or --sql-file"))
+  Ok((bootstrap, sql.ok_or_else(|| anyhow::anyhow!("provide --sql or --sql-file or --sql-stdin"))?))
 }
 
 fn precision_to_json(value: &Precision<usize>) -> Value {
@@ -141,9 +160,15 @@ fn annotate_node(wrapper: &mut Value, plan: &Arc<dyn ExecutionPlan>) -> Result<(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-  let sql = parse_args()?;
+  let (bootstrap_sql, sql) = parse_args()?;
   let ctx = SessionContext::new();
   register_tpch(&ctx).await?;
+
+  if let Some(bootstrap_sql) = bootstrap_sql {
+    for statement in split_sql_statements(&bootstrap_sql) {
+      ctx.sql(&statement).await?.collect().await?;
+    }
+  }
 
   let plan = ctx.sql(&sql).await?.create_physical_plan().await?;
   collect(plan.clone(), ctx.task_ctx()).await?;

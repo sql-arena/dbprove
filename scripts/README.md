@@ -1,34 +1,42 @@
 # Scripts
 
 This directory holds project utility scripts. The most important one for the
-current `EE-JOIN-SCALE-*` work is:
+current EE scale benchmarks is:
 
-- `run_join_scale.py`
-  - Runs the join-scale theorem suite against `duckdb`, `datafusion`, and
-    `trino`.
-  - Regenerates the proof-derived markdown table and `proof/join_scale_runtime.webp`.
+- `run_scale.py`
+  - Runs the `EE-JOIN-SCALE-*`, `EE-SORT-SCALE-*`, and `EE-AGG-SCALE-*`
+    theorem suites against `duckdb`, `datafusion`, and `trino`.
+  - Regenerates the proof-derived markdown tables and:
+    - `proof/join_scale_runtime.webp`
+    - `proof/sort_scale_runtime.webp`
+    - `proof/agg_scale_runtime.webp`
   - Uses `dbprove`'s own proof CSV output as the source of truth for runtime,
-    stddev, SQL text, and timeout/error reporting.
+    stddev, tags, SQL text, and timeout/error reporting.
 
-## Join-Scale Runner
+## Scale Runner
 
 Typical usage:
 
 ```bash
-python3 scripts/run_join_scale.py duckdb datafusion trino
+python3 scripts/run_scale.py duckdb datafusion trino
 ```
 
 Useful flags:
 
 ```bash
-python3 scripts/run_join_scale.py duckdb datafusion trino \
+python3 scripts/run_scale.py duckdb datafusion trino \
+  --suite all \
   --max-scale 20 \
   --query-timeout 60 \
   --timing-runs 2
 ```
 
 ```bash
-python3 scripts/run_join_scale.py --report-only
+python3 scripts/run_scale.py --report-only --suite all
+```
+
+```bash
+python3 scripts/run_scale.py trino --suite join --scales 1,2,3,4,5,6,8
 ```
 
 What it does:
@@ -38,10 +46,11 @@ What it does:
 - Cleans up latent benchmark containers before a new sweep.
 - Builds the DuckDB benchmark image directly from `docker/duckdb/Dockerfile`.
 - Starts the needed benchmark containers one engine at a time.
-- Runs the selected `EE-JOIN-SCALE-*` theorems through `dbprove`.
+- Runs the selected scale theorems through `dbprove`.
 - Parses `proof/*/*/*_proof.csv`.
-- Writes per-theorem SQL snapshots under `proof/join_scale_queries/`.
-- Renders the report plot to `proof/join_scale_runtime.webp`.
+- Discovers graphable suites by looking for proof rows tagged with `scale`.
+- Renders the report plots directly from the proof CSV rows rather than from
+  separate temporary run CSVs or SQL snapshot directories.
 
 Important behavior:
 
@@ -56,6 +65,9 @@ Important behavior:
 - Trino is treated specially: the runner restarts Trino between scales and uses
   `dbprove --append-proof-csv` so each per-scale run appends into the same
   proof file instead of overwriting earlier scales.
+- All scale theorems are tagged with:
+  - `scale`
+  - one of `JOIN`, `SORT`, or `AGG`
 - The active tuned scale ladder is:
   `1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20`.
 

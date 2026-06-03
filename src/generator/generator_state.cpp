@@ -197,6 +197,14 @@ namespace generator
                 continue;
             }
 
+            if (existing_rows && expected_rows == 0 && *existing_rows > 0) {
+                PLOGI << "Table: " << table_name << " already exists with " << *existing_rows
+                      << " rows; accepting existing contents because no expected row count was registered yet.";
+                table(table_name).row_count = *existing_rows;
+                ready_tables_.insert(std::string(table_name));
+                continue;
+            }
+
             // 3. Create schema if missing
             if (!existing_rows) {
                 PLOGI << "Table: " << table_name << " does not exist. Constructing it from DDL";
@@ -206,7 +214,7 @@ namespace generator
 
             // 4. Handle incorrect row count
             auto actual_rows = cn->tableRowCount(table_name).value_or(0);
-            if (actual_rows > 0 && actual_rows != expected_rows) {
+            if (actual_rows > 0 && expected_rows != 0 && actual_rows != expected_rows) {
                 PLOGW << "Table: " << table_name << " has " << actual_rows << " rows, but we expected " << expected_rows << ". Deleting and reloading...";
                 cn->execute("DELETE FROM " + std::string(table_name));
                 actual_rows = 0;
@@ -309,11 +317,16 @@ namespace generator
     sql::RowCount GeneratorState::load(const std::string_view table_name, sql::ConnectionBase& conn)
     {
         sql::checkTableName(table_name);
-        const auto& t = table(table_name);
+        auto& t = table(table_name);
         const auto expected_rows = t.row_count;
         
         PLOGI << "Loading table: " << table_name << "...";
         conn.bulkLoad(table_name, {t.path});
+
+        if (expected_rows == 0) {
+            PLOGI << "Table: " << table_name << " loaded with unknown expected row count; skipping full COUNT(*) verification.";
+            return 0;
+        }
 
         auto actual_rows = conn.tableRowCount(table_name).value_or(0);
         PLOGI << "Table: " << table_name << " loaded. Now has " << actual_rows << " rows";

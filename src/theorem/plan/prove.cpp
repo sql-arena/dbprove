@@ -5,8 +5,40 @@
 #include "init.h"
 #include "../query.h"
 #include <plog/Log.h>
+#include <array>
 
 using namespace dbprove::theorem;
+
+void dbprove_force_link_job_generators();
+
+namespace {
+
+constexpr std::pair<std::string_view, std::string_view> kJobQueries[] = {
+#include "job_query_registry.inc"
+};
+
+Proof& job_ensure_basics(Proof& proof) {
+  proof.ensureDataset("job");
+  return proof;
+}
+
+void run_job_query(Proof& proof, const std::string_view sql) {
+  const Runner runner(proof.factory());
+  runner.serialExplain(Query(sql, proof.theorem.name.c_str(), proof.theorem.expectedRowCount()), proof);
+}
+
+void register_job(std::string_view job_name, std::string_view sql) {
+  auto& theorem = addTheorem("JOB-" + std::string(job_name),
+                             "Join Order Benchmark " + std::string(job_name) + " Analysis",
+                             [sql](Proof& proof) {
+                               run_job_query(job_ensure_basics(proof), sql);
+                             });
+  categoriseTheorem(theorem, Category::PLAN);
+  tagTheorem(theorem, Tag("JOB"));
+  tagTheorem(theorem, Tag("IMDB"));
+}
+
+} // namespace
 
 Proof& tpch_ensure_basics(Proof& proof) {
   proof.ensureDataset("tpch");
@@ -127,6 +159,7 @@ void init() {
   if (is_initialised) {
     return;
   }
+  dbprove_force_link_job_generators();
   register_tpch(1, tpch_q01, 4);
   register_tpch(2, tpch_q02, 495);
   register_tpch(3, tpch_q03, 10);
@@ -149,6 +182,10 @@ void init() {
   register_tpch(20, tpch_q20, 158);
   register_tpch(21, tpch_q21, 396);
   register_tpch(22, tpch_q22, 7);
+
+  for (const auto& [job_name, sql] : kJobQueries) {
+    register_job(job_name, sql);
+  }
 
   is_initialised = true;
 }

@@ -25,6 +25,7 @@ target_sources(${_targetName}
         tpch/tpch_table_gen.cpp
         tpch/tpch_text.cpp
         tpch/tpch_phone.cpp
+        job/job.cpp
         test/simple_test_generator.cpp
         tpch/download_shims.cpp
         PRIVATE FILE_SET internal TYPE HEADERS FILES
@@ -53,6 +54,27 @@ target_embed_files(${_targetName} SQL_FILES
         tpch/ddl/partsupp.ddl
         tpch/ddl/region.ddl
         tpch/ddl/supplier.ddl
+        job/ddl/aka_name.sql
+        job/ddl/aka_title.sql
+        job/ddl/cast_info.sql
+        job/ddl/char_name.sql
+        job/ddl/comp_cast_type.sql
+        job/ddl/company_name.sql
+        job/ddl/company_type.sql
+        job/ddl/complete_cast.sql
+        job/ddl/info_type.sql
+        job/ddl/keyword.sql
+        job/ddl/kind_type.sql
+        job/ddl/link_type.sql
+        job/ddl/movie_companies.sql
+        job/ddl/movie_info.sql
+        job/ddl/movie_info_idx.sql
+        job/ddl/movie_keyword.sql
+        job/ddl/movie_link.sql
+        job/ddl/name.sql
+        job/ddl/person_info.sql
+        job/ddl/role_type.sql
+        job/ddl/title.sql
 )
 
 if (DBPROVE_ENABLE_TESTING)

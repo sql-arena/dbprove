@@ -13,6 +13,9 @@ GCS_BUCKET="sql-arena-data"
 GCS_PREFIX="tpc-h/"
 DATABRICKS_PLAN_CHECK_SCRIPT="$PROJECT_ROOT/scripts/dump_databricks_plan.mjs"
 DATABRICKS_AUTH_SCRIPT="$PROJECT_ROOT/scripts/authenticate_databricks.sh"
+MSSQL_CONTAINER_NAME="docker-mssql-1"
+MSSQL_SA_USERNAME="${MSSQL_SA_USERNAME:-sa}"
+MSSQL_SA_PASSWORD="${MSSQL_SA_PASSWORD:-YourStrong!Passw0rd}"
 
 SUPPORTED_ENGINES=(
     "postgresql"
@@ -301,6 +304,58 @@ ensure_docker_running() {
     fi
 }
 
+mssql_probe_cmd() {
+    local query="${1:-SET NOCOUNT ON; SELECT 1}"
+    printf "docker exec %s /opt/mssql-tools18/bin/sqlcmd -C -l 5 -t 5 -S localhost -U %q -P %q -Q %q >/dev/null 2>&1" \
+        "$MSSQL_CONTAINER_NAME" "$MSSQL_SA_USERNAME" "$MSSQL_SA_PASSWORD" "$query"
+}
+
+wait_for_mssql_healthy() {
+    local max_retries=90
+    local retry_count=0
+
+    while [ "$retry_count" -lt "$max_retries" ]; do
+        local status
+        status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$MSSQL_CONTAINER_NAME" 2>/dev/null || true)
+        if [ "$status" = "healthy" ]; then
+            return 0
+        fi
+        echo "Waiting for SQL Server container health to report healthy..."
+        sleep 2
+        retry_count=$((retry_count + 1))
+    done
+
+    echo "Error: SQL Server container did not become healthy after $((max_retries * 2)) seconds." >&2
+    return 1
+}
+
+wait_for_mssql_ready() {
+    wait_for_mssql_healthy
+
+    local max_retries=60
+    local retry_count=0
+    local stable_successes=0
+    local probe
+    probe=$(mssql_probe_cmd)
+
+    while [ "$retry_count" -lt "$max_retries" ]; do
+        if eval "$probe"; then
+            stable_successes=$((stable_successes + 1))
+            if [ "$stable_successes" -ge 3 ]; then
+                return 0
+            fi
+        else
+            stable_successes=0
+        fi
+        echo "Waiting for SQL Server to accept stable sqlcmd connections..."
+        sleep 2
+        retry_count=$((retry_count + 1))
+    done
+
+    echo "Error: SQL Server did not become queryable after $((max_retries * 2)) seconds." >&2
+    return 1
+}
+
 wait_for_engine() {
     case "$1" in
         postgresql)
@@ -310,10 +365,7 @@ wait_for_engine() {
             done
             ;;
         mssql)
-            until docker exec docker-mssql-1 /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -Q "SELECT 1" -C >/dev/null 2>&1; do
-                echo "Waiting for SQL Server to be ready..."
-                sleep 5
-            done
+            wait_for_mssql_ready
             ;;
         clickhouse)
             until docker exec docker-clickhouse-1 clickhouse-client --user default --password default -q "SELECT 1" >/dev/null 2>&1; do
@@ -324,6 +376,10 @@ wait_for_engine() {
         trino)
             until curl -fsS http://localhost:8080/v1/info 2>/dev/null | grep -q '"starting":false'; do
                 echo "Waiting for Trino to be ready..."
+                sleep 2
+            done
+            until docker exec docker-trino-1 test -f /tmp/trino-bootstrap-ready >/dev/null 2>&1; do
+                echo "Waiting for Trino bootstrap to finish..."
                 sleep 2
             done
             ;;

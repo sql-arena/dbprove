@@ -421,6 +421,49 @@ struct TrinoExpressionParser {
     return out;
   }
 
+  static std::string stripInlineTypeAnnotations(const std::string_view expression) {
+    std::string out;
+    out.reserve(expression.size());
+
+    ScanState state;
+    for (size_t i = 0; i < expression.size();) {
+      if (expression[i] == '\'') {
+        const auto end = readQuotedString(expression, i);
+        out += std::string(expression.substr(i, end - i));
+        i = end;
+        continue;
+      }
+
+      if (isTopLevel(state) && expression[i] == ':' && (i == 0 || expression[i - 1] != ':')) {
+        const auto prev = previousNonWhitespaceChar(expression, i);
+        size_t next = i + 1;
+        while (next < expression.size() && std::isspace(static_cast<unsigned char>(expression[next])) != 0) {
+          ++next;
+        }
+
+        if (prev.has_value() &&
+            (std::isalnum(static_cast<unsigned char>(*prev)) != 0 || *prev == ')' || *prev == '\'')) {
+          size_t end = next;
+          while (end < expression.size()) {
+            if (std::isspace(static_cast<unsigned char>(expression[end])) != 0 || expression[end] == ',' ||
+                expression[end] == ')' || expression[end] == ']' || expression[end] == '}') {
+              break;
+            }
+            ++end;
+          }
+          i = end;
+          continue;
+        }
+      }
+
+      out += expression[i];
+      advance(state, expression, i);
+      ++i;
+    }
+
+    return out;
+  }
+
   static std::string replaceOutsideStrings(const std::string_view expression, const std::string_view needle,
                                            const std::string_view replacement) {
     if (needle.empty()) {
@@ -572,6 +615,7 @@ std::string cleanTrinoExpression(std::string expression) {
   expression = TrinoExpressionParser::normalizeTypedLiterals(expression);
   expression = TrinoExpressionParser::replaceOutsideStrings(expression, "LikePattern ", "");
   expression = TrinoExpressionParser::stripQuotedLiteralTypePrefix(expression, "LikePattern");
+  expression = TrinoExpressionParser::stripInlineTypeAnnotations(expression);
   expression = TrinoExpressionParser::stripCatalogPrefixes(expression);
   expression = TrinoExpressionParser::replaceOutsideStrings(expression, "$operator$", "");
   expression = TrinoExpressionParser::replaceOutsideStrings(expression, "$", "");
@@ -1038,21 +1082,42 @@ std::vector<Column> parseValuesColumns(const json& node_json) {
 }
 
 std::string parseTableName(const std::string& raw_table) {
+  auto trimmed = trim_string(raw_table);
+  const auto snapshot_pos = trimmed.find('$');
+  if (snapshot_pos != std::string::npos) {
+    trimmed = trim_string(trimmed.substr(0, snapshot_pos));
+  }
+
   std::vector<std::string> parts;
   size_t start = 0;
-  for (size_t i = 0; i <= raw_table.size(); ++i) {
-    if (i == raw_table.size() || raw_table[i] == ':') {
-      parts.push_back(trim_string(std::string_view(raw_table).substr(start, i - start)));
+  for (size_t i = 0; i <= trimmed.size(); ++i) {
+    if (i == trimmed.size() || trimmed[i] == ':') {
+      const auto part = trim_string(std::string_view(trimmed).substr(start, i - start));
+      if (!part.empty()) {
+        parts.push_back(part);
+      }
       start = i + 1;
     }
   }
+
+  if (parts.size() == 2) {
+    const auto schema_table = splitTable(parts[1]);
+    if (!schema_table.schema_name.empty()) {
+      if (parts[0] == "tpch" && schema_table.schema_name == "sf1") {
+        return "tpch." + schema_table.table_name;
+      }
+      return schema_table.schema_name + "." + schema_table.table_name;
+    }
+  }
+
   if (parts.size() == 3) {
     if (parts[0] == "tpch" && parts[1] == "sf1") {
       return "tpch." + parts[2];
     }
     return parts[1] + "." + parts[2];
   }
-  return raw_table;
+
+  return trimmed;
 }
 
 bool projectionMatchesOutputs(const std::vector<Column>& projection_columns, const std::vector<std::string>& outputs) {
@@ -1346,7 +1411,7 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
     return group_by;
   }
 
-  if (name == "InnerJoin" || name == "LeftJoin" || name == "RightJoin" || name == "CrossJoin" || name == "SemiJoin") {
+  if (name == "InnerJoin" || name == "LeftJoin" || name == "RightJoin" || name == "FullJoin" || name == "CrossJoin" || name == "SemiJoin") {
     auto join_type = Join::Type::INNER;
     auto join_strategy = Join::Strategy::HASH;
     auto condition = combineConjuncts(resolveJoinExpression(node_json, descriptorString(node_json, "criteria")),
@@ -1356,6 +1421,8 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
       join_type = Join::Type::LEFT_OUTER;
     } else if (name == "RightJoin") {
       join_type = Join::Type::RIGHT_OUTER;
+    } else if (name == "FullJoin") {
+      join_type = Join::Type::FULL;
     } else if (name == "CrossJoin") {
       join_type = Join::Type::CROSS;
       join_strategy = Join::Strategy::LOOP;
@@ -1368,13 +1435,13 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
     }
 
     auto join = std::make_unique<Join>(join_type, join_strategy, condition);
-    if (name == "LeftJoin" && built_children.size() == 2) {
-      auto left_child = take_first_child();
-      auto right_child = take_first_child();
-      /* TODO: Investigate if flipping the children is correct here
-      and if it is, why not for RIGHT as well?*/
-      join->addChild(std::move(right_child));
-      join->addChild(std::move(left_child));
+    if ((name == "InnerJoin" || name == "LeftJoin" || name == "RightJoin" || name == "FullJoin") && built_children.size() == 2) {
+      auto probe_child = take_first_child();
+      auto build_child = take_first_child();
+      // Trino presents the probe side first and the build side second.
+      // Normalize to the shared dbprove convention where firstChild() is build.
+      join->addChild(std::move(build_child));
+      join->addChild(std::move(probe_child));
       applyNodeMetadata(*join, node_json);
       return join;
     }

@@ -32,15 +32,25 @@ target_sources(${_targetName}
 )
 
 target_embed_files(${_targetName} SQL_FILES
+        query/plan_join_check/anti_customer_orders_filter_customer.sql
         query/plan_join_check/anti_customer_orders.sql
+        query/plan_join_check/anti_orders_customer_filter_customer.sql
         query/plan_join_check/anti_orders_customer.sql
+        query/plan_join_check/anti_orders_customer_plus1_filter_customer.sql
         query/plan_join_check/anti_orders_customer_plus1.sql
+        query/plan_join_check/full_orders_customer_filter_customer.sql
         query/plan_join_check/full_orders_customer.sql
+        query/plan_join_check/inner_match_filter_part.sql
         query/plan_join_check/inner_match.sql
+        query/plan_join_check/left_customer_orders_filter_customer.sql
         query/plan_join_check/left_customer_orders.sql
+        query/plan_join_check/left_orders_customer_filter_customer.sql
         query/plan_join_check/left_orders_customer.sql
+        query/plan_join_check/semi_customer_orders_filter_customer.sql
         query/plan_join_check/semi_customer_orders.sql
+        query/plan_join_check/semi_orders_customer_filter_customer.sql
         query/plan_join_check/semi_orders_customer.sql
+        query/plan_join_check/semi_orders_customer_plus1_filter_customer.sql
         query/plan_join_check/semi_orders_customer_plus1.sql
         query/tpch/q01.sql
         query/tpch/q02.sql

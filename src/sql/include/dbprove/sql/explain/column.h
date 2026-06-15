@@ -24,7 +24,7 @@ public:
   Column(const Column&) = default;
 
   bool operator==(const Column& other) const {
-    return name == other.name;
+    return name == other.name && alias == other.alias;
   }
 
   bool operator!=(const Column& other) const {
@@ -32,7 +32,10 @@ public:
   }
 
   bool operator<(const Column& other) const {
-    return name < other.name;
+    if (name != other.name) {
+      return name < other.name;
+    }
+    return alias < other.alias;
   }
 
   bool hasAlias() const { return !alias.empty(); }
@@ -51,7 +54,9 @@ namespace std {
 template <>
 struct hash<sql::explain::Column> {
   size_t operator()(const sql::explain::Column& column) const {
-    return hash<string>()(column.name);
+    size_t seed = hash<string>()(column.name);
+    seed ^= hash<string>()(column.alias) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
   }
 };
 }

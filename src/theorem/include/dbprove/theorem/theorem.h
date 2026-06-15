@@ -255,12 +255,13 @@ public:
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeCsv(std::string_view proof_name, const std::vector<std::string_view>& values) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-         std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path = std::nullopt,
+         std::ostream& console, std::ostream& csv, std::optional<std::string> connection_artifacts_path = std::nullopt,
          std::optional<uint32_t> query_timeout_seconds = std::nullopt,
          size_t timing_runs = 3,
          std::optional<std::string> parquet_dir = std::nullopt,
          bool write_csv_header = true,
-         std::optional<std::filesystem::path> proof_directory = std::nullopt);
+         std::optional<std::filesystem::path> proof_directory = std::nullopt,
+         bool artifact_mode = false);
 
   ~RunCtx();
 };

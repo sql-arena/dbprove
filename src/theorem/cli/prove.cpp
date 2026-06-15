@@ -6,6 +6,9 @@
 
 namespace dbprove::theorem::cli {
 void cli_1(Proof& proof) {
+  if (proof.artifactMode()) {
+    throw std::runtime_error("Artifact replay mode does not support CLI timing theorems");
+  }
   auto sql = Query("SELECT 1");
   Runner runner(proof.factory());
   runner.serial(sql, 1);

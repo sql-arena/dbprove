@@ -168,15 +168,17 @@ void Runner::serialExplain(std::span<Query>& queries, Proof& proof) const {
 }
 
 void Runner::serialMeasure(std::span<Query>& queries, Proof& proof, const size_t iterations) const {
+  if (proof.artifactMode()) {
+    throw std::runtime_error(
+        "Artifact replay mode only supports explain-based theorem runs backed by generated artifacts");
+  }
   const auto connection = factory_.create();
   connection->setQueryTimeout(proof.queryTimeoutSeconds());
   for (auto& query : queries) {
     proof.data.push_back(std::make_unique<DataQuery>(query));
-    if (!proof.artifactMode()) {
-      for (size_t iteration = 0; iteration < iterations; ++iteration) {
-        const auto row_count = executeMeasuredQuery(*connection, query);
-        validateExpectedRowCount(query, proof, expectedRowCountFor(query, proof, queries.size()), row_count);
-      }
+    for (size_t iteration = 0; iteration < iterations; ++iteration) {
+      const auto row_count = executeMeasuredQuery(*connection, query);
+      validateExpectedRowCount(query, proof, expectedRowCountFor(query, proof, queries.size()), row_count);
     }
   }
   connection->close();

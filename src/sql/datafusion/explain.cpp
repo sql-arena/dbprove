@@ -1,5 +1,15 @@
-#include "connection.h"
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string_view>
+#include <vector>
 
+#include "connection.h"
+#include "sql_exceptions.h"
 #include <dbprove/common/json_utility.h>
 #include <dbprove/common/string.h>
 #include <explain/distribution.h>
@@ -12,20 +22,7 @@
 #include <explain/select.h>
 #include <explain/selection.h>
 #include <explain/sort.h>
-
 #include <nlohmann/json.hpp>
-
-#include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <cstdint>
-#include <memory>
-#include <optional>
-#include <sstream>
-#include <string_view>
-#include <vector>
-
-#include "sql_exceptions.h"
 
 namespace sql::datafusion {
 using json = nlohmann::json;
@@ -206,8 +203,7 @@ std::string expressionToString(const json& expression) {
     if (op == "Modulo") {
       return "MOD(" + expressionToString(binary["l"]) + ", " + expressionToString(binary["r"]) + ")";
     }
-    return "(" + expressionToString(binary["l"]) + " " +
-           binaryOperatorToString(op) + " " +
+    return "(" + expressionToString(binary["l"]) + " " + binaryOperatorToString(op) + " " +
            expressionToString(binary["r"]) + ")";
   }
   if (expression.contains("cast")) {
@@ -421,9 +417,7 @@ std::optional<double> extractDbproveRowCount(const json& body, std::string_view 
   return std::nullopt;
 }
 
-std::optional<double> estimateFromDbprove(const json& body) {
-  return extractDbproveRowCount(body, "estimated");
-}
+std::optional<double> estimateFromDbprove(const json& body) { return extractDbproveRowCount(body, "estimated"); }
 
 std::string tableNameFromPath(std::string_view path) {
   const auto slash = path.find_last_of('/');
@@ -554,9 +548,7 @@ bool sameEstimateAsChild(const Node& node) {
          std::abs(node.rows_estimated - child_estimated) < 0.5;
 }
 
-void clearUninformativeEstimate(Node& node) {
-  node.rows_estimated = NAN;
-}
+void clearUninformativeEstimate(Node& node) { node.rows_estimated = NAN; }
 
 void dropAggregateFallbackEstimateIfNeeded(Node& node, const json& body) {
   if (!body.contains("groupExpr")) {
@@ -571,9 +563,7 @@ void dropAggregateFallbackEstimateIfNeeded(Node& node, const json& body) {
   }
 }
 
-void dropPassthroughEstimate(Node& node) {
-  clearUninformativeEstimate(node);
-}
+void dropPassthroughEstimate(Node& node) { clearUninformativeEstimate(node); }
 
 void applyDbproveRowCounts(Node& node, const json& body) {
   if (const auto estimated = estimateFromDbprove(body)) {
@@ -649,9 +639,8 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
     const json* group_aliases = body.contains("groupExprName") ? &body["groupExprName"] : nullptr;
     const json* aggr_aliases = body.contains("aggrExprName") ? &body["aggrExprName"] : nullptr;
     result = std::make_unique<GroupBy>(
-      strategy,
-      columnsFromExpressions(body.value("groupExpr", json::array()), group_aliases),
-      columnsFromAggregateExpressions(body.value("aggrExpr", json::array()), aggr_aliases));
+        strategy, columnsFromExpressions(body.value("groupExpr", json::array()), group_aliases),
+        columnsFromAggregateExpressions(body.value("aggrExpr", json::array()), aggr_aliases));
     result->addChild(buildCanonicalNode(body["input"]));
     applyDbproveRowCounts(*result, body);
     dropAggregateFallbackEstimateIfNeeded(*result, body);
@@ -660,6 +649,7 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
 
   if (op == "hashJoin") {
     result = std::make_unique<Join>(parseJoinType(body), Join::Strategy::HASH, hashJoinCondition(body));
+    /* TODO: is this the wrong way around? */
     result->addChild(buildCanonicalNode(body["left"]));
     result->addChild(buildCanonicalNode(body["right"]));
     applyDbproveRowCounts(*result, body);
@@ -682,8 +672,7 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
     const auto& partitioning = body["partitioning"];
     if (partitioning.contains("hash")) {
       result = std::make_unique<Distribute>(
-        Distribute::Strategy::HASH,
-        columnsFromExpressions(partitioning["hash"].value("hashExpr", json::array())));
+          Distribute::Strategy::HASH, columnsFromExpressions(partitioning["hash"].value("hashExpr", json::array())));
     } else if (partitioning.contains("roundRobin")) {
       result = std::make_unique<Distribute>(Distribute::Strategy::ROUND_ROBIN);
     } else {
@@ -735,10 +724,11 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
   applyDbproveRowCounts(*result, body);
   return result;
 }
-} // namespace
+}  // namespace
 
 std::unique_ptr<Plan> Connection::explain(std::string_view statement, std::optional<std::string_view> name) {
-  const std::string artifact_name = name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
+  const std::string artifact_name =
+      name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
 
   json physical_json;
   if (const auto cached = getArtefact(artifact_name + "_physical", "json")) {
@@ -752,4 +742,4 @@ std::unique_ptr<Plan> Connection::explain(std::string_view statement, std::optio
   propagateMissingEstimates(*root);
   return std::make_unique<Plan>(std::move(root));
 }
-}
+}  // namespace sql::datafusion

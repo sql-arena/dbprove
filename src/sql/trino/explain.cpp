@@ -1,9 +1,11 @@
+#include <cctype>
+#include <cmath>
+#include <map>
+#include <optional>
+#include <ranges>
+#include <set>
+
 #include "connection.h"
-
-#include <dbprove/common/string.h>
-#include <nlohmann/json.hpp>
-#include <plog/Log.h>
-
 #include "distribution.h"
 #include "explain/plan.h"
 #include "group_by.h"
@@ -16,13 +18,9 @@
 #include "sequence.h"
 #include "sort.h"
 #include "union.h"
-
-#include <cmath>
-#include <cctype>
-#include <map>
-#include <optional>
-#include <ranges>
-#include <set>
+#include <dbprove/common/string.h>
+#include <nlohmann/json.hpp>
+#include <plog/Log.h>
 
 namespace sql::trino {
 using json = nlohmann::json;
@@ -148,14 +146,10 @@ struct TrinoExpressionParser {
     if (!assign_pos.has_value()) {
       return std::nullopt;
     }
-    return std::make_pair(
-      trim_string(detail.substr(0, *assign_pos)),
-      trim_string(detail.substr(*assign_pos + 2)));
+    return std::make_pair(trim_string(detail.substr(0, *assign_pos)), trim_string(detail.substr(*assign_pos + 2)));
   }
 
-  static bool isIdentifierStart(const char c) {
-    return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_';
-  }
+  static bool isIdentifierStart(const char c) { return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_'; }
 
   static bool isIdentifierChar(const char c) {
     return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '.';
@@ -215,9 +209,8 @@ struct TrinoExpressionParser {
     return !isIdentifierChar(*previous) && *previous != ')' && *previous != '\'';
   }
 
-  static std::string replaceIdentifiers(
-    const std::string_view expression,
-    const std::map<std::string, std::string>& assignments) {
+  static std::string replaceIdentifiers(const std::string_view expression,
+                                        const std::map<std::string, std::string>& assignments) {
     if (expression.empty() || assignments.empty()) {
       return std::string(expression);
     }
@@ -248,9 +241,8 @@ struct TrinoExpressionParser {
       if (found == assignments.end() || found->second.empty() || found->second == token) {
         resolved_expression += token;
       } else {
-        const auto replacement = found->second.find_first_of(" ()[],") == std::string::npos
-                                   ? found->second
-                                   : "(" + found->second + ")";
+        const auto replacement =
+            found->second.find_first_of(" ()[],") == std::string::npos ? found->second : "(" + found->second + ")";
         resolved_expression += replacement;
       }
       i = end;
@@ -316,8 +308,7 @@ struct TrinoExpressionParser {
       }
       if (type_end < expression.size() && expression[type_end] == '(') {
         const auto close = findMatchingParen(expression, type_end);
-        if (close.has_value() &&
-            isTypeModifierContents(expression.substr(type_end + 1, *close - type_end - 1))) {
+        if (close.has_value() && isTypeModifierContents(expression.substr(type_end + 1, *close - type_end - 1))) {
           type_end = *close + 1;
         }
       }
@@ -389,9 +380,7 @@ struct TrinoExpressionParser {
     return out;
   }
 
-  static std::string stripQuotedLiteralTypePrefix(
-    const std::string_view expression,
-    const std::string_view type_name) {
+  static std::string stripQuotedLiteralTypePrefix(const std::string_view expression, const std::string_view type_name) {
     std::string out;
     out.reserve(expression.size());
 
@@ -432,10 +421,8 @@ struct TrinoExpressionParser {
     return out;
   }
 
-  static std::string replaceOutsideStrings(
-    const std::string_view expression,
-    const std::string_view needle,
-    const std::string_view replacement) {
+  static std::string replaceOutsideStrings(const std::string_view expression, const std::string_view needle,
+                                           const std::string_view replacement) {
     if (needle.empty()) {
       return std::string(expression);
     }
@@ -461,11 +448,7 @@ struct TrinoExpressionParser {
 
   static std::string renameFunctions(const std::string_view expression) {
     static const std::map<std::string, std::string> replacements = {
-      {"add", "plus"},
-      {"subtract", "minus"},
-      {"like", "funcLike"},
-      {"and", "funcAnd"},
-      {"or", "funcOr"},
+        {"add", "plus"}, {"subtract", "minus"}, {"like", "funcLike"}, {"and", "funcAnd"}, {"or", "funcOr"},
     };
 
     std::string out;
@@ -494,11 +477,8 @@ struct TrinoExpressionParser {
 
       const auto token = to_lower(expression.substr(i, end - i));
       const auto requires_call_context = token == "and" || token == "or";
-      const auto should_replace =
-        replacements.contains(token) &&
-        next < expression.size() &&
-        expression[next] == '(' &&
-        (!requires_call_context || isFunctionCallContext(expression, i, next));
+      const auto should_replace = replacements.contains(token) && next < expression.size() && expression[next] == '(' &&
+                                  (!requires_call_context || isFunctionCallContext(expression, i, next));
       if (should_replace) {
         out += replacements.at(token);
       } else {
@@ -549,31 +529,17 @@ struct TrinoExpressionParser {
 
 bool isNumericTypedLiteral(const std::string_view type_name) {
   const auto upper = to_upper(type_name);
-  return upper == "BIGINT" ||
-         upper == "INTEGER" ||
-         upper == "INT" ||
-         upper == "SMALLINT" ||
-         upper == "TINYINT" ||
-         upper == "DOUBLE" ||
-         upper == "REAL" ||
-         upper.starts_with("DECIMAL");
+  return upper == "BIGINT" || upper == "INTEGER" || upper == "INT" || upper == "SMALLINT" || upper == "TINYINT" ||
+         upper == "DOUBLE" || upper == "REAL" || upper.starts_with("DECIMAL");
 }
 
-bool isBooleanTypedLiteral(const std::string_view type_name) {
-  return to_upper(type_name) == "BOOLEAN";
-}
+bool isBooleanTypedLiteral(const std::string_view type_name) { return to_upper(type_name) == "BOOLEAN"; }
 
-bool isPatternTypedLiteral(const std::string_view type_name) {
-  return to_upper(type_name) == "LIKEPATTERN";
-}
+bool isPatternTypedLiteral(const std::string_view type_name) { return to_upper(type_name) == "LIKEPATTERN"; }
 
 bool isReservedOutputSymbol(const std::string_view symbol) {
   static const std::set<std::string, std::less<>> reserved = {
-    "exists",
-    "false",
-    "null",
-    "true",
-    "unique",
+      "exists", "false", "null", "true", "unique",
   };
 
   return reserved.contains(to_lower(trim_string(symbol)));
@@ -803,7 +769,8 @@ std::optional<std::string> parseNegatedMarkerPredicate(std::string expression) {
   auto marker = trim_string(expression.substr(4));
   marker = trim_string(strip_enclosing(marker, '(', ')'));
   const auto marker_upper = to_upper(marker);
-  if (marker_upper.starts_with("COALESCE(") && marker.size() > std::string("COALESCE()").size() && marker.back() == ')') {
+  if (marker_upper.starts_with("COALESCE(") && marker.size() > std::string("COALESCE()").size() &&
+      marker.back() == ')') {
     const auto args = TrinoExpressionParser::splitTopLevel(marker.substr(9, marker.size() - 10), ',');
     if (args.size() == 2 && to_lower(trim_string(args[1])) == "false") {
       marker = trim_string(args[0]);
@@ -828,8 +795,9 @@ bool markerIsProjectedAsTrue(const Node& node, const std::string& marker_name) {
   while (current != nullptr) {
     if (current->type == NodeType::PROJECTION) {
       const auto& projection = reinterpret_cast<const Projection&>(*current);
-      const auto& projected_columns =
-        projection.synthetic_columns_projected.empty() ? projection.columns_projected : projection.synthetic_columns_projected;
+      const auto& projected_columns = projection.synthetic_columns_projected.empty()
+                                          ? projection.columns_projected
+                                          : projection.synthetic_columns_projected;
       for (const auto& column : projected_columns) {
         if (column.alias == marker_name && to_lower(trim_string(column.name)) == "true") {
           return true;
@@ -846,17 +814,14 @@ bool markerIsProjectedAsTrue(const Node& node, const std::string& marker_name) {
   return false;
 }
 
-std::optional<Join::Type> antiJoinRewriteType(
-  const Node& child,
-  const std::string& filter_expression,
-  const std::vector<std::string>& projected_outputs) {
+std::optional<Join::Type> antiJoinRewriteType(const Node& child, const std::string& filter_expression,
+                                              const std::vector<std::string>& projected_outputs) {
   if (child.type != NodeType::JOIN) {
     return std::nullopt;
   }
 
   const auto& join = reinterpret_cast<const Join&>(child);
-  if (join.type != Join::Type::LEFT_SEMI_OUTER &&
-      join.type != Join::Type::RIGHT_SEMI_OUTER &&
+  if (join.type != Join::Type::LEFT_SEMI_OUTER && join.type != Join::Type::RIGHT_SEMI_OUTER &&
       join.type != Join::Type::LEFT_OUTER) {
     return std::nullopt;
   }
@@ -879,8 +844,7 @@ std::optional<Join::Type> antiJoinRewriteType(
   if (join.type == Join::Type::RIGHT_SEMI_OUTER) {
     return Join::Type::RIGHT_ANTI;
   }
-  if (join.type == Join::Type::LEFT_OUTER &&
-      join.firstChild() != nullptr &&
+  if (join.type == Join::Type::LEFT_OUTER && join.firstChild() != nullptr &&
       markerIsProjectedAsTrue(*join.firstChild(), *marker)) {
     return Join::Type::LEFT_ANTI;
   }
@@ -1042,7 +1006,8 @@ std::vector<Column> parseDistributionArguments(const json& node_json) {
   }
 
   std::vector<Column> columns;
-  for (auto arg : TrinoExpressionParser::splitTopLevel(strip_enclosing(descriptor["arguments"].get<std::string>(), '[', ']'), ',')) {
+  for (auto arg : TrinoExpressionParser::splitTopLevel(
+           strip_enclosing(descriptor["arguments"].get<std::string>(), '[', ']'), ',')) {
     arg = TrinoExpressionParser::stripTrailingTypeCast(arg);
     if (!trim_string(arg).empty()) {
       columns.emplace_back(resolveNodeExpression(node_json, arg));
@@ -1104,9 +1069,8 @@ bool projectionMatchesOutputs(const std::vector<Column>& projection_columns, con
 }
 
 std::vector<Column> projectionColumnsForSyntheticOutputs(
-  const Node& child,
-  const std::vector<std::string>& outputs,
-  const std::map<std::string, std::string>& synthetic_assignments) {
+    const Node& child, const std::vector<std::string>& outputs,
+    const std::map<std::string, std::string>& synthetic_assignments) {
   std::vector<Column> projection_columns;
   projection_columns.reserve(outputs.size());
 
@@ -1211,10 +1175,8 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
       return child;
     }
 
-    auto projection = makeProjection(projectionColumnsForSyntheticOutputs(
-      *child,
-      outputs,
-      {{outputs.back(), "row_number() OVER ()"}}));
+    auto projection = makeProjection(
+        projectionColumnsForSyntheticOutputs(*child, outputs, {{outputs.back(), "row_number() OVER ()"}}));
     applyNodeMetadata(*projection, node_json);
     projection->addChild(std::move(child));
     return projection;
@@ -1387,9 +1349,8 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
   if (name == "InnerJoin" || name == "LeftJoin" || name == "RightJoin" || name == "CrossJoin" || name == "SemiJoin") {
     auto join_type = Join::Type::INNER;
     auto join_strategy = Join::Strategy::HASH;
-    auto condition = combineConjuncts(
-      resolveJoinExpression(node_json, descriptorString(node_json, "criteria")),
-      resolveJoinExpression(node_json, descriptorString(node_json, "filter")));
+    auto condition = combineConjuncts(resolveJoinExpression(node_json, descriptorString(node_json, "criteria")),
+                                      resolveJoinExpression(node_json, descriptorString(node_json, "filter")));
 
     if (name == "LeftJoin") {
       join_type = Join::Type::LEFT_OUTER;
@@ -1401,7 +1362,8 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
       condition.clear();
     } else if (name == "SemiJoin") {
       const auto outputs = outputNames(node_json);
-      const auto left_outputs = built_children.empty() ? std::vector<std::string>{} : built_children.front()->columns_output;
+      const auto left_outputs =
+          built_children.empty() ? std::vector<std::string>{} : built_children.front()->columns_output;
       join_type = outputs.size() > left_outputs.size() ? Join::Type::LEFT_SEMI_OUTER : Join::Type::LEFT_SEMI_INNER;
     }
 
@@ -1409,6 +1371,8 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
     if (name == "LeftJoin" && built_children.size() == 2) {
       auto left_child = take_first_child();
       auto right_child = take_first_child();
+      /* TODO: Investigate if flipping the children is correct here
+      and if it is, why not for RIGHT as well?*/
       join->addChild(std::move(right_child));
       join->addChild(std::move(left_child));
       applyNodeMetadata(*join, node_json);
@@ -1469,16 +1433,19 @@ std::unique_ptr<Plan> buildExplainPlan(const json& explain_json) {
 
   return std::make_unique<Plan>(std::move(root));
 }
-}
+}  // namespace
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
-  const std::string artifact_name = name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
+  const std::string artifact_name =
+      name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
   if (const auto cached_json = getArtefact(artifact_name, "json")) {
     PLOGI << "Using cached Trino execution plan artifact for: " << artifact_name;
     auto plan = buildExplainPlan(json::parse(*cached_json));
+    if (artifactReplayModeEnabled()) {
+      return plan;
+    }
     const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
-    const bool skip_actuals = skip_actuals_env != nullptr &&
-                              std::string_view(skip_actuals_env) == "1";
+    const bool skip_actuals = skip_actuals_env != nullptr && std::string_view(skip_actuals_env) == "1";
     if (!skip_actuals) {
       plan->fixActuals(*this);
     }
@@ -1489,12 +1456,14 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std:
   const auto explain_string = fetchScalar(explain_sql).asString();
   storeArtefact(artifact_name, "json", explain_string);
   auto plan = buildExplainPlan(json::parse(explain_string));
+  if (artifactReplayModeEnabled()) {
+    return plan;
+  }
   const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
-  const bool skip_actuals = skip_actuals_env != nullptr &&
-                            std::string_view(skip_actuals_env) == "1";
+  const bool skip_actuals = skip_actuals_env != nullptr && std::string_view(skip_actuals_env) == "1";
   if (!skip_actuals) {
     plan->fixActuals(*this);
   }
   return plan;
 }
-}
+}  // namespace sql::trino

@@ -288,6 +288,13 @@ std::unique_ptr<Node> createNodeFromJson(json& node_json, ExplainContext& ctx) {
       ctx.propagate_actual.push(sortNode.get());
       node->addChild(std::move(sortNode));
     }
+  } else if (operator_name == "STREAMING_LIMIT") {
+    auto limit_value = static_cast<int64_t>(actual_rows);
+    if (limit_value < 0) {
+      limit_value = 0;
+    }
+    node = std::make_unique<Limit>(limit_value);
+    node->rows_estimated = static_cast<double>(limit_value);
   } else if (operator_name == "ORDER_BY") {
     auto sort_keys = parseOrderColumns(node_json);
     node = std::make_unique<Sort>(sort_keys);
@@ -468,11 +475,18 @@ std::unique_ptr<Plan> buildExplainPlan(json& json) {
 
 
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
+  const std::string artifact_name = name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
+  if (const auto cached_json = getArtefact(artifact_name, "json")) {
+    auto explain_json = json::parse(*cached_json);
+    return buildExplainPlan(explain_json);
+  }
+
   const std::string explain_query = "PRAGMA enable_profiling = 'json';\n" "PRAGMA profiling_mode = 'detailed';\n"
                                     "EXPLAIN (ANALYSE, FORMAT JSON)\n" + std::string(statement);
   const auto result = fetchRow(explain_query);
 
   std::string explain_raw = result->asString(1);
+  storeArtefact(artifact_name, "json", explain_raw);
   auto explain_json = json::parse(explain_raw);
 
   return buildExplainPlan(explain_json);

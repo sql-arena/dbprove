@@ -16,6 +16,8 @@
 
 namespace sql {
 namespace {
+bool g_artifact_replay_mode = false;
+
 std::string normaliseExtension(std::string_view extension) {
   std::string normalised(extension);
   while (!normalised.empty() && normalised.front() == '.') {
@@ -75,6 +77,14 @@ std::string prettyContentIfNeeded(std::string_view extension, std::string_view c
   }
   return prettyXmlIfNeeded(extension, content);
 }
+}
+
+void setArtifactReplayMode(const bool enabled) {
+  g_artifact_replay_mode = enabled;
+}
+
+bool artifactReplayModeEnabled() {
+  return g_artifact_replay_mode;
 }
 
 const ConnectionBase::TypeMap& ConnectionBase::typeMap() const {
@@ -217,6 +227,9 @@ void ConnectionBase::validateSourcePaths(const std::vector<std::filesystem::path
 
 std::optional<std::string> ConnectionBase::getArtefact(const std::string_view name, const std::string_view extension) const {
   if (!artifacts_path_) {
+    if (artifactReplayModeEnabled()) {
+      throw std::runtime_error("Artifact replay mode is enabled but no artifacts directory was configured");
+    }
     return std::nullopt;
   }
 
@@ -224,11 +237,17 @@ std::optional<std::string> ConnectionBase::getArtefact(const std::string_view na
   const auto engine_dir = std::filesystem::path(*artifacts_path_) / engine_name;
   const auto path = artefactPathWithDot(engine_dir, name, extension);
   if (!std::filesystem::exists(path)) {
+    if (artifactReplayModeEnabled()) {
+      throw std::runtime_error("Missing required artifact: " + path.string());
+    }
     return std::nullopt;
   }
 
   std::ifstream f(path);
   if (!f.is_open()) {
+    if (artifactReplayModeEnabled()) {
+      throw std::runtime_error("Failed to open required artifact: " + path.string());
+    }
     return std::nullopt;
   }
 

@@ -18,6 +18,9 @@ class Plan;
 }
 
 namespace sql {
+void setArtifactReplayMode(bool enabled);
+bool artifactReplayModeEnabled();
+
 class ConnectionBase {
   bool closed_ = false;
   const Engine engine_;

@@ -19,6 +19,7 @@
 #include <cstdlib>
 
 #include "limit.h"
+#include <dbprove/common/string.h>
 #include <clickhouse/client.h>
 #include <nlohmann/json.hpp>
 #include <plog/Log.h>
@@ -121,7 +122,7 @@ Connection::~Connection() {
 
 void Connection::execute(std::string_view statement) {
   auto& client = impl_->getClient();
-  auto sql = std::string(statement);
+  auto sql = trim_trailing_semicolons(statement);
   static const std::regex delete_all_regex(R"(^\s*DELETE\s+FROM\s+([a-zA-Z0-9_\.]+)\s*;?\s*$)", std::regex::icase);
   std::smatch delete_match;
   if (std::regex_match(sql, delete_match, delete_all_regex) && delete_match.size() > 1) {
@@ -148,6 +149,7 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
   */
 
   auto& client = impl_->getClient();
+  const auto sql = trim_trailing_semicolons(statement);
   std::vector<std::shared_ptr<ch::Block>> blocks;
   const bool actuals_query = isActualsQuery(statement);
   const auto timeout_seconds = actuals_query ? actualsTimeoutSeconds() : 0;
@@ -156,7 +158,7 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
       client.Execute("SET max_execution_time = " + std::to_string(timeout_seconds));
       client.Execute("SET timeout_overflow_mode = 'throw'");
     }
-    client.Select(std::string(statement), [&](const ch::Block& b) {
+    client.Select(sql, [&](const ch::Block& b) {
       if (b.GetRowCount() == 0) {
         return;
       }
@@ -218,6 +220,7 @@ std::string Connection::translateDialectDdl(const std::string_view ddl) const {
   result = std::regex_replace(result, std::regex(R"(\bSTRING\b)", std::regex::icase), "String");
   result = std::regex_replace(result, std::regex(R"(\bBIGINT\b)", std::regex::icase), "Int64");
   result = std::regex_replace(result, std::regex(R"(\bINT\b)", std::regex::icase), "Int32");
+  result = std::regex_replace(result, std::regex(R"(\s+PRIMARY\s+KEY\b)", std::regex::icase), "");
   // Map generic TPCH DDL to a valid ClickHouse table definition.
   // We use MergeTree with ORDER BY tuple() as a neutral default that works for all tables.
   result = std::regex_replace(result, std::regex(R"(;\s*$)"), " ENGINE = MergeTree() ORDER BY tuple();");

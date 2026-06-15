@@ -319,7 +319,7 @@ std::vector<sql::Token> tokenize(const std::string& expr, const EngineDialect* d
     };
 
     // Literals
-    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', '@'};
+    static const std::set<char> valid_literal = {'.', '_', '\"', '[', ']', '#', '@', '$'};
     if (!std::isalnum(expr[i]) && !valid_literal.contains(expr[i])) {
       throw std::runtime_error(
           "Invalid character in expression, expected a literal, found: '" + std::string(1, expr[i]) + "' in " + expr);

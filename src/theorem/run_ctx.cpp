@@ -134,21 +134,22 @@ void RunCtx::writeCsv(const std::string_view proof_name, const std::vector<std::
 }
 
 RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-               std::ostream& console, std::ostream& csv, std::optional<std::string> artifacts_path,
+               std::ostream& console, std::ostream& csv, std::optional<std::string> connection_artifacts_path,
                std::optional<uint32_t> query_timeout_seconds, const size_t timing_runs,
                std::optional<std::string> parquet_dir,
                const bool write_csv_header,
-               const std::optional<std::filesystem::path> proof_directory)
+               const std::optional<std::filesystem::path> proof_directory,
+               const bool artifact_mode)
   : legacy_writer(std::make_unique<CsvWriter>())
   , proof_directory_path_(proof_directory.value_or(std::filesystem::path{}))
   , write_csv_header_(write_csv_header)
   , engine(engine)
   , credentials(credentials)
   , generator(generator)
-  , factory(engine, credentials, artifacts_path)
+  , factory(engine, credentials, connection_artifacts_path)
   , console(console)
   , csv(csv)
-  , artifact_mode(artifacts_path.has_value())
+  , artifact_mode(artifact_mode)
   , query_timeout_seconds(query_timeout_seconds)
   , timing_runs(timing_runs)
   , parquet_dir(std::move(parquet_dir)) {

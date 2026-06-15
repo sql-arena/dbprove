@@ -91,6 +91,7 @@ int main(int argc, char** argv) {
   std::optional<std::string> host = std::nullopt;
   std::optional<std::string> token = std::nullopt;
   std::optional<std::string> artifacts_path = std::nullopt;
+  std::optional<std::string> capture_artifacts_path = std::nullopt;
   std::optional<std::string> parquet_dir = std::nullopt;
   std::vector<std::string> all_theorems;
   std::string engine_arg;
@@ -123,6 +124,10 @@ int main(int argc, char** argv) {
   CLI::Option* artifacts_opt = app.add_option("-a,--artifacts",
                                              artifacts_path, "Path to store/load explain artifacts")
                                    ->expected(0, 1);
+  CLI::Option* capture_artifacts_opt = app.add_option("--write-artifacts",
+                                                      capture_artifacts_path,
+                                                      "Path to store explain artifacts while executing live queries")
+                                          ->expected(0, 1);
   app.add_option("--parquet-dir",
                  parquet_dir, "Directory containing parquet benchmark files such as orders.parquet and lineitem.parquet");
   app.add_flag("--prepare-ee-join-scale",
@@ -142,6 +147,13 @@ int main(int argc, char** argv) {
 
   if (artifacts_opt->count() > 0 && (!artifacts_path || artifacts_path->empty() || *artifacts_path == "true")) {
     artifacts_path = (fs::current_path() / "artifacts").string();
+  }
+  if (capture_artifacts_opt->count() > 0
+      && (!capture_artifacts_path || capture_artifacts_path->empty() || *capture_artifacts_path == "true")) {
+    capture_artifacts_path = (fs::current_path() / "artifacts").string();
+  }
+  if (artifacts_path && capture_artifacts_path) {
+    throw std::runtime_error("Use either -a/--artifacts for replay or --write-artifacts for capture, not both");
   }
 
   const auto log_directory = dbprove::common::make_directory("logs");
@@ -191,10 +203,12 @@ int main(int argc, char** argv) {
   auto theorems = theorem::parse(all_theorems);
 
   const bool artifact_mode = artifacts_path.has_value();
+  const auto connection_artifacts_path = artifact_mode ? artifacts_path : capture_artifacts_path;
+  sql::setArtifactReplayMode(artifact_mode);
   std::string engine_version = "unknown";
   if (!artifact_mode) {
     try {
-      sql::ConnectionFactory factory(engine, credentials, artifacts_path);
+      sql::ConnectionFactory factory(engine, credentials, connection_artifacts_path);
       auto connection = factory.create();
       engine_version = connection->version();
       connection->close();
@@ -220,17 +234,19 @@ int main(int argc, char** argv) {
     PLOGI << "Artifact mode enabled: skipping engine version check and proof CSV output";
   }
 
-  if (artifacts_path) {
-    PLOGI << "Using artifacts directory: " << fs::absolute(artifacts_path.value()).string();
+  if (connection_artifacts_path) {
+    PLOGI << (artifact_mode ? "Using replay artifacts directory: " : "Writing artifacts directory: ")
+          << fs::absolute(connection_artifacts_path.value()).string();
   }
 
   auto input_state = theorem::RunCtx{engine, credentials, generator_state,
-                                     std::cout, *csv_output_stream, artifacts_path,
+                                     std::cout, *csv_output_stream, connection_artifacts_path,
                                      query_timeout_seconds > 0 ? std::optional<uint32_t>(query_timeout_seconds) : std::nullopt,
                                      timing_runs,
                                      parquet_dir,
                                      write_csv_header,
-                                     proof_directory};
+                                     proof_directory,
+                                     artifact_mode};
 
   return theorem::prove(theorems, input_state) ? 0 : 1;
 }

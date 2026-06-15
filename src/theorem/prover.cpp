@@ -15,6 +15,33 @@ std::string_view classifyRunStatus(const std::string_view message) {
   }
   return "ERROR";
 }
+
+std::string renderFailureMessage(const std::exception& error, const std::optional<std::string>& render_error) {
+  if (!render_error.has_value()) {
+    return error.what();
+  }
+  return std::string(error.what()) + " | render failure: " + *render_error;
+}
+
+std::string renderFailureMessage(const char* error_message, const std::optional<std::string>& render_error) {
+  if (!render_error.has_value()) {
+    return error_message;
+  }
+  return std::string(error_message) + " | render failure: " + *render_error;
+}
+
+std::optional<std::string> tryRenderProof(Proof& proof) {
+  try {
+    proof.render();
+    return std::nullopt;
+  } catch (const std::exception& e) {
+    PLOGW << "Failed to render proof for theorem '" << proof.theorem.name << "': " << e.what();
+    return e.what();
+  } catch (...) {
+    PLOGW << "Failed to render proof for theorem '" << proof.theorem.name << "' with unknown non-std exception";
+    return "unknown non-std exception";
+  }
+}
 }
 
 void run_theorem(const Theorem& theorem, RunCtx& state) {
@@ -24,14 +51,14 @@ void run_theorem(const Theorem& theorem, RunCtx& state) {
     theorem.func(proof);
     proof.writeCsv("RunStatus", "OK", Unit::Status);
   } catch (const std::exception& e) {
-    proof.render();
+    const auto render_error = tryRenderProof(proof);
     proof.writeCsv("RunStatus", std::string(classifyRunStatus(e.what())), Unit::Status);
-    proof.writeCsv("ErrorMessage", e.what(), Unit::Text);
+    proof.writeCsv("ErrorMessage", renderFailureMessage(e, render_error), Unit::Text);
     throw;
   } catch (...) {
-    proof.render();
+    const auto render_error = tryRenderProof(proof);
     proof.writeCsv("RunStatus", "ERROR", Unit::Status);
-    proof.writeCsv("ErrorMessage", "Unknown non-std exception", Unit::Text);
+    proof.writeCsv("ErrorMessage", renderFailureMessage("Unknown non-std exception", render_error), Unit::Text);
     throw;
   }
 }
@@ -42,7 +69,14 @@ void writeVersion(RunCtx& input_state) {
     return;
   }
   PLOGI << "Reading Version...";
-  const std::string version = input_state.factory.create()->version();
+  std::string version = "unknown";
+  try {
+    version = input_state.factory.create()->version();
+  } catch (const std::exception& e) {
+    PLOGW << "Failed to read engine version for proof output: " << e.what();
+  } catch (...) {
+    PLOGW << "Failed to read engine version for proof output with unknown non-std exception";
+  }
 
   input_state.writeCsv("CONFIG-VERSION",
                        std::vector<std::string_view>{input_state.engine.name(),

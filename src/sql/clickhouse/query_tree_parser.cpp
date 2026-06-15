@@ -19,7 +19,7 @@ std::string fetchClickHouseExplainQueryTree(Connection& connection,
   }
 
   const std::string explain_query_tree_stmt = "EXPLAIN QUERY TREE\n"
-                                              + std::string(statement) + "\nFORMAT TSVRaw";
+                                              + trim_trailing_semicolons(statement) + "\nFORMAT TSVRaw";
   auto query_tree_result = connection.fetchAll(explain_query_tree_stmt);
   std::string query_tree;
   for (auto& row : query_tree_result->rows()) {

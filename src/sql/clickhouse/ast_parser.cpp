@@ -226,7 +226,7 @@ std::string fetchClickHouseExplainAst(Connection& connection,
   }
 
   const std::string explain_ast_stmt = "EXPLAIN AST\n"
-                                       + std::string(statement) + "\nFORMAT TSVRaw";
+                                       + trim_trailing_semicolons(statement) + "\nFORMAT TSVRaw";
   auto ast_result = connection.fetchAll(explain_ast_stmt);
   std::string string_ast;
   for (auto& row : ast_result->rows()) {

@@ -3,6 +3,7 @@
 #include "result.h"
 #include "sql_exceptions.h"
 
+#include <dbprove/common/string.h>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
@@ -109,7 +110,7 @@ public:
   }
 
   [[nodiscard]] std::string rewriteStatement(std::string_view statement) const {
-    std::string sql(statement);
+    std::string sql = trim_trailing_semicolons(statement);
 
     if (credential_.database == "tpch") {
       static const std::regex tpch_schema(R"(\btpch\.)", std::regex::icase);

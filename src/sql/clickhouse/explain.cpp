@@ -1769,8 +1769,9 @@ std::string fetchClickHouseExplainJson(Connection& connection,
     return *cached_json;
   }
 
+  const std::string explain_sql = trim_trailing_semicolons(statement);
   const std::string explain_stmt = "EXPLAIN PLAN json = 1, actions = 1, header = 1, description = 1\n"
-                                   + std::string(statement) + "\nFORMAT TSVRaw";
+                                   + explain_sql + "\nFORMAT TSVRaw";
   auto json_explain = connection.fetchScalar(explain_stmt).asString();
   connection.storeArtefact(artifact_name, "json", json_explain);
   return json_explain;
@@ -2108,6 +2109,9 @@ std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std:
   }
 
   auto plan = buildExplainPlan(json_explain, ctx);
+  if (artifactReplayModeEnabled()) {
+    return plan;
+  }
   const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
   const bool skip_actuals = skip_actuals_env != nullptr &&
                             std::string_view(skip_actuals_env) == "1";

@@ -79,6 +79,25 @@ std::string ordersScaleTableName(const int orders_scale) {
   return "orders_scale_" + padded_scale;
 }
 
+std::string renderCreateOrReplaceView(sql::Engine::Type engine_type,
+                                      const std::string& view_name,
+                                      const std::string& select_sql) {
+  if (engine_type == sql::Engine::Type::SQLServer) {
+    return "CREATE OR ALTER VIEW " + view_name + " AS " + select_sql;
+  }
+  return "CREATE OR REPLACE VIEW " + view_name + " AS " + select_sql;
+}
+
+std::string renderInlineReplicaSet(const int count, std::string_view alias) {
+  std::ostringstream sql;
+  sql << "(SELECT 0 AS replica_id";
+  for (int i = 1; i < count; ++i) {
+    sql << " UNION ALL SELECT " << i;
+  }
+  sql << ") AS " << alias;
+  return sql.str();
+}
+
 std::vector<std::filesystem::path> expectedMaterializedFiles(const std::filesystem::path& root) {
   std::vector<std::filesystem::path> files;
   files.push_back(root / "lineitem_25x" / "lineitem_25x.parquet");
@@ -159,6 +178,39 @@ std::string ordersMaterializationSql(const std::filesystem::path& source_dir,
   sql << "\nFROM " << readParquetSql(source_dir / "orders.parquet") << " o\n";
   sql << "CROSS JOIN orders_multiplier om\n";
   sql << ") TO '" << output_file.string() << "' (FORMAT PARQUET)";
+  return sql.str();
+}
+
+std::string lineitemViewSql(const sql::Engine::Type engine_type) {
+  std::ostringstream sql;
+  sql << "SELECT CAST(l.l_orderkey AS BIGINT) AS l_orderkey,\n";
+  sql << "       CAST(l.l_suppkey AS BIGINT) AS l_suppkey,\n";
+  sql << "       CAST(l.l_linenumber AS BIGINT) AS l_linenumber,\n";
+  sql << "       CAST(lm.replica_id AS BIGINT) AS lineitem_replica_id\n";
+  sql << "FROM tpch.lineitem l\n";
+  if (engine_type == sql::Engine::Type::ClickHouse) {
+    sql << "CROSS JOIN (SELECT arrayJoin(range(" << kLineitemScale << ")) AS replica_id) AS lm";
+  } else {
+    sql << "CROSS JOIN " << renderInlineReplicaSet(kLineitemScale, "lm");
+  }
+  return sql.str();
+}
+
+std::string ordersViewSql(const sql::Engine::Type engine_type, const int orders_scale) {
+  std::ostringstream sql;
+  sql << "SELECT CAST(CAST(o.o_orderkey AS BIGINT) * " << orders_scale
+      << " + CAST(om.replica_id AS BIGINT) AS BIGINT) AS join_key,\n";
+  sql << "       CAST(o.o_orderkey AS BIGINT) AS o_orderkey,\n";
+  sql << "       CAST(om.replica_id AS BIGINT) AS orders_replica_id";
+  for (const auto& column : kOrdersPayloadColumns) {
+    sql << ",\n       " << column.expr << " AS " << column.alias;
+  }
+  sql << "\nFROM tpch.orders o\n";
+  if (engine_type == sql::Engine::Type::ClickHouse) {
+    sql << "CROSS JOIN (SELECT arrayJoin(range(" << orders_scale << ")) AS replica_id) AS om";
+  } else {
+    sql << "CROSS JOIN " << renderInlineReplicaSet(orders_scale, "om");
+  }
   return sql.str();
 }
 
@@ -276,14 +328,39 @@ void ensureDuckDbMaterializedViews(Proof& proof) {
   conn->close();
 }
 
-void runJoinScale(Proof& proof, const int orders_scale) {
+void ensureJoinScaleRelations(Proof& proof) {
   const auto engine_type = proof.factory().engine().type();
-  if (engine_type != sql::Engine::Type::DataFusion
-      && engine_type != sql::Engine::Type::DuckDB
-      && engine_type != sql::Engine::Type::Trino) {
-    proof.ensureDataset("tpch");
+  if (engine_type == sql::Engine::Type::DataFusion || engine_type == sql::Engine::Type::Trino) {
+    return;
   }
-  ensureDuckDbMaterializedViews(proof);
+  proof.ensureDataset("tpch");
+  if (engine_type == sql::Engine::Type::DuckDB) {
+    ensureDuckDbMaterializedViews(proof);
+    return;
+  }
+
+  proof.ensureSchema("tpch");
+  auto conn = proof.factory().create();
+  if (engine_type == sql::Engine::Type::ClickHouse) {
+    conn->execute("DROP VIEW IF EXISTS tpch.lineitem_25x");
+    conn->execute("CREATE VIEW tpch.lineitem_25x AS " + lineitemViewSql(engine_type));
+  } else {
+    conn->execute(renderCreateOrReplaceView(engine_type, "tpch.lineitem_25x", lineitemViewSql(engine_type)));
+  }
+  for (const int orders_scale : kOrdersScales) {
+    const auto table_name = ordersScaleTableName(orders_scale);
+    if (engine_type == sql::Engine::Type::ClickHouse) {
+      conn->execute("DROP VIEW IF EXISTS tpch." + table_name);
+      conn->execute("CREATE VIEW tpch." + table_name + " AS " + ordersViewSql(engine_type, orders_scale));
+    } else {
+      conn->execute(renderCreateOrReplaceView(engine_type, "tpch." + table_name, ordersViewSql(engine_type, orders_scale)));
+    }
+  }
+  conn->close();
+}
+
+void runJoinScale(Proof& proof, const int orders_scale) {
+  ensureJoinScaleRelations(proof);
   Query query(joinScaleSql(orders_scale), proof.theorem.name.c_str(), 1);
   query.setExpectedRowValues(expectedJoinScaleRow(orders_scale));
   Runner runner(proof.factory());
@@ -291,26 +368,14 @@ void runJoinScale(Proof& proof, const int orders_scale) {
 }
 
 void runSortScale(Proof& proof, const int orders_scale) {
-  const auto engine_type = proof.factory().engine().type();
-  if (engine_type != sql::Engine::Type::DataFusion
-      && engine_type != sql::Engine::Type::DuckDB
-      && engine_type != sql::Engine::Type::Trino) {
-    proof.ensureDataset("tpch");
-  }
-  ensureDuckDbMaterializedViews(proof);
+  ensureJoinScaleRelations(proof);
   Query query(sortScaleSql(orders_scale), proof.theorem.name.c_str(), 1);
   Runner runner(proof.factory());
   runner.serialMeasure(std::move(query), proof, proof.timingRuns());
 }
 
 void runAggScale(Proof& proof, const int orders_scale) {
-  const auto engine_type = proof.factory().engine().type();
-  if (engine_type != sql::Engine::Type::DataFusion
-      && engine_type != sql::Engine::Type::DuckDB
-      && engine_type != sql::Engine::Type::Trino) {
-    proof.ensureDataset("tpch");
-  }
-  ensureDuckDbMaterializedViews(proof);
+  ensureJoinScaleRelations(proof);
   Query query(aggScaleSql(orders_scale), proof.theorem.name.c_str(), 1);
   Runner runner(proof.factory());
   runner.serialMeasure(std::move(query), proof, proof.timingRuns());

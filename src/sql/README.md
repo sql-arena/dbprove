@@ -54,6 +54,14 @@ For execution-plan work in a new session, load context in this order:
 - `src/sql/<engine>/tune/` contains dataset-specific tuning SQL.
 - `docker/README.md` documents the local database containers currently available for smoke testing and benchmarking.
 
+## Runtime Ownership Convention
+
+For engines that are started and supervised outside the process, such as the Docker-backed local engines, driver connections should assume the service is already running.
+
+- Container startup, health checks, retries, and credential bootstrapping belong in launcher scripts such as `benchmark.sh`, Docker `healthcheck` blocks, or dedicated helper scripts.
+- Engine connection classes under `src/sql/<engine>/connection.cpp` should focus on connecting, translating SQL, executing statements, and parsing results.
+- Avoid embedding Docker-specific liveness probes or container-management logic inside a connection implementation. If an engine must be made reachable first, do it in the outer shell or Python workflow that starts that engine.
+
 ## Adding A New Driver
 
 The fastest path is to copy `src/sql/boilerplate/` into a new `src/sql/<engine>/` directory and then wire the engine into the shared registration points.

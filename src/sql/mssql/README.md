@@ -93,6 +93,14 @@ The MSSQL connector uses a robust mechanism to find the best available ODBC driv
 3.  **Path Resolution**: It attempts to resolve the friendly driver name to an absolute library path using `SQLGetPrivateProfileString` or common installation paths.
 4.  **Caching**: The discovery result is cached for the duration of the process to avoid redundant searches and logging.
 
+## Runtime Ownership Convention
+
+SQL Server is an externally managed engine in local development: Docker Compose, shell scripts, or other orchestration layers are responsible for starting the container and proving that it is healthy before `dbprove` connects.
+
+- `src/sql/mssql/connection.cpp` assumes the server is already reachable.
+- Liveness checks, startup retries, and Docker-specific readiness probes belong in outer tooling such as `benchmark.sh` or Docker `healthcheck` configuration.
+- This keeps the connector aligned with the other externally managed engines and avoids baking container control flow into the database driver itself.
+
 ## Known Issues and Limitations
 
 - **Complex Expressions**: Some complex scalar expressions might still contain SQL Server-specific aliases or internal functions that are not fully cleaned.

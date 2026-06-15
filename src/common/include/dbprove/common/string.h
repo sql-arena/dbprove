@@ -46,6 +46,28 @@ inline std::string trim_string(const std::string_view sv) {
   return std::string(sv.substr(start, end - start + 1));
 }
 
+inline std::string trim_trailing_semicolons(const std::string_view sv) {
+  auto trimmed = trim_string(sv);
+  while (!trimmed.empty() && trimmed.back() == ';') {
+    trimmed.pop_back();
+    trimmed = trim_string(trimmed);
+  }
+  return trimmed;
+}
+
+inline std::string shell_quote(const std::string_view sv) {
+  std::string quoted = "'";
+  for (const char c : sv) {
+    if (c == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted += c;
+    }
+  }
+  quoted += "'";
+  return quoted;
+}
+
 inline std::string strip_enclosing(const std::string_view sv, const char open, const char close) {
   auto trimmed = trim_string(sv);
   if (trimmed.size() >= 2 && trimmed.front() == open && trimmed.back() == close) {

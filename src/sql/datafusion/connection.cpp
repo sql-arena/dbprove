@@ -10,6 +10,7 @@
 #include <optional>
 #include <regex>
 #include <sstream>
+#include <thread>
 #include <string_view>
 
 #include "result.h"
@@ -44,18 +45,7 @@ struct CommandResult {
   std::string output;
 };
 
-std::string shellQuote(std::string_view value) {
-  std::string quoted = "'";
-  for (const char c : value) {
-    if (c == '\'') {
-      quoted += "'\\''";
-    } else {
-      quoted += c;
-    }
-  }
-  quoted += "'";
-  return quoted;
-}
+CommandResult runCommand(std::string_view command);
 
 std::filesystem::path datafusionWorkspaceDir() {
   return dbprove::common::get_project_root() / "run" / "mount" / "datafusion";
@@ -68,8 +58,23 @@ std::filesystem::path dockerComposeFile() {
 constexpr std::string_view kComposeProjectName = "dbprove-scale";
 
 std::string composeExecPrefix() {
-  return "docker compose -p " + shellQuote(kComposeProjectName)
-         + " -f " + shellQuote(dockerComposeFile().string());
+  return "docker compose -p " + shell_quote(kComposeProjectName)
+         + " -f " + shell_quote(dockerComposeFile().string());
+}
+
+void waitForDataFusionBootstrap() {
+  using namespace std::chrono_literals;
+  const auto deadline = std::chrono::steady_clock::now() + 60s;
+  const auto ready_command = composeExecPrefix()
+                             + " exec -T datafusion sh -lc "
+                             + shell_quote("test -f /tmp/datafusion-bootstrap-ready");
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (runCommand(ready_command).exit_code == 0) {
+      return;
+    }
+    std::this_thread::sleep_for(500ms);
+  }
+  throw std::runtime_error("Timed out waiting for DataFusion bootstrap readiness marker in the datafusion container");
 }
 
 std::string readTextFile(const std::filesystem::path& path) {
@@ -94,8 +99,8 @@ class PersistentCliSession {
   static std::string sessionCommand() {
     return composeExecPrefix() +
            " exec -T datafusion sh -lc " +
-           shellQuote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
-                      "-r /workspace/datafusion-bootstrap.sql");
+           shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
+                       "-r /workspace/datafusion-bootstrap.sql");
   }
 
   static std::string trimLine(std::string line) {
@@ -445,7 +450,9 @@ class Connection::Pimpl {
   static std::string bootstrapSqlPath() { return "/workspace/datafusion-bootstrap.sql"; }
 
  public:
-  explicit Pimpl(CredentialNone credential) : credential_(std::move(credential)) {}
+  explicit Pimpl(CredentialNone credential) : credential_(std::move(credential)) {
+    waitForDataFusionBootstrap();
+  }
 
   void ensureOpen() const {
     if (closed_) {
@@ -476,9 +483,9 @@ class Connection::Pimpl {
     const std::string quiet_flag = quiet ? " --quiet" : "";
     const std::string command = composeExecPrefix() +
                                 " exec -T datafusion sh -lc " +
-                                shellQuote("exec /opt/datafusion-cli/bin/datafusion-cli --data-path /workspace "
-                                           "--mem-pool-type fair -m 2g -d 4g -r " +
-                                           shellQuote(bootstrapSqlPath()) + quiet_flag + " --format json -b 1000000");
+                                shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --data-path /workspace "
+                                            "--mem-pool-type fair -m 2g -d 4g -r " +
+                                            shell_quote(bootstrapSqlPath()) + quiet_flag + " --format json -b 1000000");
 #ifdef _WIN32
     return runCommand(command);
 #else
@@ -496,10 +503,10 @@ class Connection::Pimpl {
     const auto bootstrap_path = datafusionWorkspaceDir() / "datafusion-bootstrap.sql";
     const std::string command = composeExecPrefix() +
                                 " exec -T datafusion sh -lc " +
-                                shellQuote(
+                                shell_quote(
                                     "export TMPDIR=/workspace/datafusion-spill; "
                                     "exec /opt/datafusion-plan-json/bin/datafusion-plan-json --bootstrap-file " +
-                                    shellQuote("/workspace/" + bootstrap_path.filename().string()) + " --sql-stdin");
+                                    shell_quote("/workspace/" + bootstrap_path.filename().string()) + " --sql-stdin");
 #ifdef _WIN32
     return runCommand(command);
 #else
@@ -540,9 +547,10 @@ void Connection::execute(std::string_view statement) {
 }
 
 std::unique_ptr<ResultBase> Connection::fetchJsonQuery(std::string_view statement) {
+  const auto raw_output = trimOutput(impl_->runPersistentJsonQuery(statement));
   ordered_json payload;
   try {
-    payload = ordered_json::parse(trimOutput(impl_->runPersistentJsonQuery(statement)));
+    payload = ordered_json::parse(raw_output);
   } catch (const std::exception& e) {
     throw ProtocolException("Failed to parse DataFusion JSON output: " + std::string(e.what()));
   }

@@ -18,6 +18,7 @@ SUPPORTED_ENGINES=(
     "postgresql"
     "clickhouse"
     "mssql"
+    "datafusion"
     "duckdb"
     "databricks"
     "mariadb"
@@ -77,6 +78,9 @@ normalize_engine() {
         mssql|sqlserver|"sql server"|azurefabricwarehouse)
             printf 'mssql\n'
             ;;
+        datafusion|df)
+            printf 'datafusion\n'
+            ;;
         duckdb|duck)
             printf 'duckdb\n'
             ;;
@@ -113,7 +117,21 @@ normalize_engine() {
 
 engine_service_name() {
     case "$1" in
-        postgresql|clickhouse|mssql|trino)
+        postgresql|clickhouse|mssql|trino|datafusion)
+            printf '%s\n' "$1"
+            ;;
+        *)
+            printf '\n'
+            ;;
+    esac
+}
+
+engine_required_services() {
+    case "$1" in
+        trino)
+            printf 'nessie trino\n'
+            ;;
+        postgresql|clickhouse|mssql|datafusion)
             printf '%s\n' "$1"
             ;;
         *)
@@ -353,6 +371,8 @@ start_engine_if_needed() {
     local engine="$1"
     local service_name
     service_name=$(engine_service_name "$engine")
+    local required_services
+    required_services=$(engine_required_services "$engine")
 
     if [ -z "$service_name" ]; then
         echo "Note: Engine '$engine' does not have a local Docker container managed by this script."
@@ -364,21 +384,30 @@ start_engine_if_needed() {
     mkdir -p "$MOUNT_DIR/$service_name"
     cd "$DOCKER_DIR"
 
-    local container_running
-    container_running=$(docker-compose ps -q "$service_name" 2>/dev/null | xargs docker inspect -f '{{.State.Running}}' 2>/dev/null || echo "false")
+    local restart_required="$RESET_FLAG"
+    if [ "$restart_required" != "true" ]; then
+        for required_service in $required_services; do
+            local running
+            running=$(docker-compose ps -q "$required_service" 2>/dev/null | xargs docker inspect -f '{{.State.Running}}' 2>/dev/null || echo "false")
+            if [ "$running" != "true" ]; then
+                restart_required="true"
+                break
+            fi
+        done
+    fi
 
-    if [ "$RESET_FLAG" = true ] || [ "$container_running" != "true" ]; then
+    if [ "$restart_required" = true ]; then
         echo "Starting/Restarting Docker container for $service_name..."
         docker-compose down
-        if [ "$service_name" = "clickhouse" ] || [ "$service_name" = "trino" ]; then
-            docker-compose up -d --remove-orphans --force-recreate --build "$service_name"
+        if [ "$service_name" = "clickhouse" ] || [ "$service_name" = "trino" ] || [ "$service_name" = "datafusion" ]; then
+            docker-compose up -d --remove-orphans --force-recreate --build $required_services
         else
-            docker-compose up -d --remove-orphans --force-recreate "$service_name"
+            docker-compose up -d --remove-orphans --force-recreate $required_services
         fi
     else
         echo "Docker container for $service_name is already running. Using existing container."
         local other_services
-        other_services=$(docker-compose ps --services 2>/dev/null | grep -v "^$service_name$" || true)
+        other_services=$(docker-compose ps --services --filter "status=running" 2>/dev/null | grep -v -E "^($(printf '%s' "$required_services" | tr ' ' '|'))$" || true)
         if [ -n "$other_services" ]; then
             echo "Stopping other services: $other_services"
             docker-compose stop $other_services

@@ -1,0 +1,123 @@
+name: Publish Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docker/**"
+      - ".github/workflows/publish-docker-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: eu-north-1
+  ECR_REGISTRY: 578125593767.dkr.ecr.eu-north-1.amazonaws.com
+  ECR_REPOSITORY: dbprove
+  AWS_ROLE_TO_ASSUME: arn:aws:iam::578125593767:role/dbprove-github-actions-ecr
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.collect.outputs.has_changes }}
+      matrix: ${{ steps.collect.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            clickhouse:
+              - "docker/clickhouse/**"
+            datafusion:
+              - "docker/datafusion/**"
+            mssql:
+              - "docker/mssql/**"
+            postgresql:
+              - "docker/postgresql/**"
+            trino:
+              - "docker/trino/**"
+            workflow:
+              - ".github/workflows/publish-docker-images.yml"
+
+      - id: collect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_CHANGED: ${{ steps.filter.outputs.workflow }}
+          CLICKHOUSE_CHANGED: ${{ steps.filter.outputs.clickhouse }}
+          DATAFUSION_CHANGED: ${{ steps.filter.outputs.datafusion }}
+          MSSQL_CHANGED: ${{ steps.filter.outputs.mssql }}
+          POSTGRESQL_CHANGED: ${{ steps.filter.outputs.postgresql }}
+          TRINO_CHANGED: ${{ steps.filter.outputs.trino }}
+        run: |
+          set -euo pipefail
+
+          add_service() {
+            local service="$1"
+            local entry
+            entry=$(printf '{"service":"%s","context":"docker/%s"}' "$service" "$service")
+
+            if [ "$json" = "[]" ]; then
+              json="[$entry]"
+            else
+              json="${json%]},$entry]"
+            fi
+          }
+
+          json="[]"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$WORKFLOW_CHANGED" = "true" ]; then
+            for service in clickhouse datafusion mssql postgresql trino; do
+              add_service "$service"
+            done
+          else
+            [ "$CLICKHOUSE_CHANGED" = "true" ] && add_service clickhouse
+            [ "$DATAFUSION_CHANGED" = "true" ] && add_service datafusion
+            [ "$MSSQL_CHANGED" = "true" ] && add_service mssql
+            [ "$POSTGRESQL_CHANGED" = "true" ] && add_service postgresql
+            [ "$TRINO_CHANGED" = "true" ] && add_service trino
+          fi
+
+          if [ "$json" = "[]" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "matrix={\"include\":$json}" >> "$GITHUB_OUTPUT"
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-session-name: github-actions-ecr-push
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ matrix.service }}-latest
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ matrix.service }}-sha-${{ github.sha }}

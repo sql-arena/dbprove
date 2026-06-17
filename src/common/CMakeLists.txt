@@ -6,6 +6,7 @@ add_library(dbprove::common ALIAS ${_targetName})
 target_sources(${_targetName}
         PUBLIC FILE_SET installed TYPE HEADERS BASE_DIRS include
         PRIVATE
+        docker.cpp
         pretty.cpp
         file_utility.cpp
         json_utility.cpp

@@ -2,11 +2,19 @@
 
 This directory contains the containerized engine setups used by `dbprove`.
 
-For the current `EE-JOIN-SCALE-*` benchmark work, the important containers are:
+The directory shape now reserves a provider layer under each engine:
 
-- `duckdb/`
-- `datafusion/`
-- `trino/`
+- `docker/<engine>/local/...` for local runs
+- later `docker/<engine>/aws/...`, `docker/<engine>/azure/...`, and similar
+- under each provider, `native/` is for engine-native storage layouts and
+  `iceberg/` is for parquet-backed layouts that we expect to evolve toward
+  Iceberg-backed runs
+
+For the current `EE-JOIN-SCALE-*` benchmark work, the important local image roots are:
+
+- `duckdb/local/iceberg/`
+- `datafusion/local/iceberg/`
+- `trino/local/iceberg/`
 
 Those are the engines used by `scripts/run_scale.py`.
 
@@ -87,12 +95,12 @@ To start only one compose-managed engine:
 
 ```bash
 cd docker
-docker compose up -d datafusion
+docker compose up -d datafusion-iceberg
 ```
 
 ```bash
 cd docker
-docker compose up -d trino
+docker compose up -d trino-iceberg
 ```
 
 The benchmark runner does this automatically, so manual startup is mainly for
@@ -100,7 +108,7 @@ debugging.
 
 ## DuckDB
 
-`duckdb/` contains the single Docker image path for the DuckDB benchmark.
+`duckdb/local/iceberg/` contains the current local DuckDB benchmark image.
 
 Important points:
 
@@ -118,7 +126,7 @@ Important points:
 This image is built directly by:
 
 ```bash
-docker build --network=host -f docker/duckdb/Dockerfile -t dbprove-duckdb-bench:latest .
+docker build --network=host -f docker/duckdb/local/iceberg/Dockerfile -t dbprove-duckdb-bench:latest .
 ```
 
 The benchmark runner now calls that directly rather than going through an extra
@@ -126,7 +134,7 @@ wrapper script.
 
 ## DataFusion
 
-`datafusion/` contains the Apache DataFusion container setup.
+`datafusion/local/iceberg/` contains the Apache DataFusion local container setup.
 
 Important points:
 
@@ -143,12 +151,12 @@ Examples:
 
 ```bash
 cd docker
-docker compose run --rm datafusion
+docker compose run --rm datafusion-iceberg
 ```
 
 ```bash
 cd docker
-docker compose run --rm -T datafusion --format json -c "SELECT COUNT(*) FROM tpch.lineitem"
+docker compose run --rm -T datafusion-iceberg --format json -c "SELECT COUNT(*) FROM tpch.lineitem"
 ```
 
 ```bash
@@ -158,12 +166,12 @@ docker run --rm --entrypoint datafusion-plan-json dbprove-datafusion:latest \
 
 ```bash
 cd docker
-docker compose run --rm -T datafusion -f /opt/datafusion/collect_statistics.sql
+docker compose run --rm -T datafusion-iceberg -f /opt/datafusion/collect_statistics.sql
 ```
 
 ## Trino
 
-`trino/` contains the Trino benchmark container.
+`trino/local/iceberg/` contains the Trino local benchmark container.
 
 Important points:
 
@@ -260,9 +268,9 @@ In practice the current harness lands roughly here:
 These remain in the repository, but they are not part of the current join-scale
 benchmark flow:
 
-- `postgresql/`
-- `clickhouse/`
-- `mssql/`
+- `postgresql/local/native/`
+- `clickhouse/local/native/`
+- `mssql/local/native/`
 
 ## Notes For Future Updates
 

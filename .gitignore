@@ -65,6 +65,9 @@ run//scratchpad/
 docker/datafusion/__pycache__/
 docker/datafusion/plan_json/target/
 docker/datafusion/tpch/
+docker/datafusion/local/iceberg/__pycache__/
+docker/datafusion/local/iceberg/plan_json/target/
+docker/datafusion/local/iceberg/tpch/
 
 # Local database files
 duck.db

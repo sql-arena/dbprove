@@ -1,11 +1,28 @@
 #include "engine.h"
 
+#include "connection_factory.h"
 #include "credential.h"
 #include <dbprove/common/config.h>
+#include <dbprove/common/docker.h>
+#include <dbprove/common/string.h>
+#include <thread>
 
 namespace sql {
 /// @brief Some database engine dont have a concept, so we just return this
 static const std::string kDummyValue = "dummy";
+namespace {
+bool commandSucceeded(const dbprove::common::DockerCommandResult& result) {
+  return result.succeeded();
+}
+
+std::string firstLine(std::string output) {
+  const auto newline = output.find('\n');
+  if (newline != std::string::npos) {
+    output.resize(newline);
+  }
+  return trim_string(output);
+}
+}
 
 
 Engine::Engine(const std::string_view name) {
@@ -256,6 +273,165 @@ Credential Engine::parseCredentials(const std::string& host, const uint16_t port
     }
   }
   throw std::invalid_argument("Cannot generate credentials for engine: " + engine_name);
+}
+
+std::optional<dbprove::StorageVariant> Engine::defaultStorageVariant() const {
+  switch (type()) {
+    case Type::Postgres:
+    case Type::SQLServer:
+    case Type::ClickHouse:
+      return dbprove::StorageVariant::Native;
+    case Type::DataFusion:
+    case Type::Trino:
+      return dbprove::StorageVariant::Iceberg;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<Engine::DockerServiceConfig> Engine::dockerServiceConfig(const dbprove::StorageVariant variant) const {
+  switch (type()) {
+    case Type::Postgres:
+      if (variant == dbprove::StorageVariant::Native) {
+        return DockerServiceConfig{"postgresql-native", std::chrono::seconds(60)};
+      }
+      return std::nullopt;
+    case Type::SQLServer:
+      if (variant == dbprove::StorageVariant::Native) {
+        return DockerServiceConfig{"mssql-native", std::chrono::seconds(90)};
+      }
+      return std::nullopt;
+    case Type::ClickHouse:
+      if (variant == dbprove::StorageVariant::Native) {
+        return DockerServiceConfig{"clickhouse-native", std::chrono::seconds(60)};
+      }
+      return std::nullopt;
+    case Type::DataFusion:
+      if (variant == dbprove::StorageVariant::Iceberg) {
+        return DockerServiceConfig{"datafusion-iceberg", std::chrono::seconds(300)};
+      }
+      return std::nullopt;
+    case Type::Trino:
+      if (variant == dbprove::StorageVariant::Iceberg) {
+        return DockerServiceConfig{"trino-iceberg", std::chrono::seconds(180)};
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+void Engine::waitForDockerReady(const Credential& credentials, const std::chrono::seconds timeout) const {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  std::string last_error = "engine did not become ready";
+  const auto default_variant = defaultStorageVariant();
+  if (!default_variant.has_value()) {
+    throw std::runtime_error("Engine '" + name() + "' does not define a default Docker storage variant");
+  }
+  const auto service_config = dockerServiceConfig(*default_variant);
+  if (!service_config.has_value()) {
+    throw std::runtime_error("Engine '" + name() + "' does not define a Docker service for variant '"
+                             + std::string(to_string(*default_variant)) + "'");
+  }
+  const auto& service_name = service_config->service_name;
+  dbprove::common::DockerRunner docker;
+
+  while (std::chrono::steady_clock::now() < deadline) {
+    try {
+      if (type() == Type::SQLServer) {
+        const auto container_id = firstLine(docker.runCompose({"ps", "-q", service_name}).output);
+        if (!container_id.empty()) {
+          const auto health = trim_string(docker.runDocker({
+              "inspect",
+              "--format",
+              "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
+              container_id,
+          }).output);
+          if (health != "healthy") {
+            last_error = "SQL Server container health status is '" + health + "'";
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            continue;
+          }
+        }
+
+        int stable_successes = 0;
+        for (int attempt = 0; attempt < 3; ++attempt) {
+          const auto probe = docker.runCompose({
+              "exec", "-T", service_name,
+              "/opt/mssql-tools18/bin/sqlcmd",
+              "-C", "-l", "5", "-t", "5",
+              "-S", "localhost",
+              "-U", defaultUsername(std::nullopt),
+              "-P", defaultPassword(std::nullopt),
+              "-Q", "SET NOCOUNT ON; SELECT 1",
+          });
+          if (commandSucceeded(probe)) {
+            ++stable_successes;
+          } else {
+            last_error = "SQL Server probe failed: " + trim_string(probe.output);
+            break;
+          }
+          if (attempt < 2) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+          }
+        }
+        if (stable_successes < 3) {
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+          continue;
+        }
+      }
+
+      if (type() == Type::Trino) {
+        const auto bootstrap_marker = docker.runCompose({
+            "exec", "-T", service_name, "sh", "-lc", "test -f /tmp/trino-bootstrap-ready",
+        });
+        if (!commandSucceeded(bootstrap_marker)) {
+          last_error = "Trino bootstrap marker not present yet";
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+          continue;
+        }
+      }
+
+      if (type() == Type::Postgres) {
+        const auto ready = docker.runCompose({
+            "exec", "-T", service_name, "pg_isready", "-U", defaultUsername(std::nullopt),
+        });
+        if (!commandSucceeded(ready)) {
+          last_error = "PostgreSQL is not ready yet";
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+          continue;
+        }
+      }
+
+      if (type() == Type::ClickHouse) {
+        const auto ready = docker.runCompose({
+            "exec", "-T", service_name,
+            "clickhouse-client",
+            "--user", defaultUsername(std::nullopt),
+            "--password", defaultPassword(std::nullopt),
+            "-q", "SELECT 1",
+        });
+        if (!commandSucceeded(ready)) {
+          last_error = "ClickHouse is not ready yet";
+          std::this_thread::sleep_for(std::chrono::seconds(2));
+          continue;
+        }
+      }
+
+      ConnectionFactory factory(*this, credentials, std::nullopt);
+      auto connection = factory.create();
+      connection->version();
+      connection->close();
+      return;
+    } catch (const std::exception& e) {
+      last_error = e.what();
+    } catch (...) {
+      last_error = "unknown non-std exception";
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+  }
+
+  throw std::runtime_error("Timed out waiting for docker-managed engine to become ready: " + last_error);
 }
 
 std::string Engine::name() const {

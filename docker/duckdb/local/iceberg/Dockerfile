@@ -58,9 +58,9 @@ RUN /src/extern/vcpkg/bootstrap-vcpkg.sh -disableMetrics \
        -DDBPROVE_ENABLE_TESTING=OFF \
        -DVCPKG_TARGET_TRIPLET=arm64-linux-release \
        -DVCPKG_MANIFEST_MODE=ON \
-       -DVCPKG_MANIFEST_DIR=/src/docker/duckdb \
+       -DVCPKG_MANIFEST_DIR=/src/docker/duckdb/local/iceberg \
        -DVCPKG_INSTALLED_DIR=/src/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb \
-       -DVCPKG_OVERLAY_PORTS=/src/docker/duckdb/vcpkg_overlays \
+       -DVCPKG_OVERLAY_PORTS=/src/docker/duckdb/local/iceberg/vcpkg_overlays \
        -DVCPKG_OVERLAY_TRIPLETS=/src/overlay-triplets \
     && cmake --build /src/out/build/ubuntu-arm64-release-prebuilt-duckdb --target dbprove -j4
 
@@ -72,8 +72,8 @@ ENV LD_LIBRARY_PATH=/opt/dbprove/vcpkg_installed/lib:/opt/dbprove/vcpkg_installe
 RUN mkdir -p /opt/dbprove/bin /opt/dbprove/vcpkg_installed /opt/tpch /repo \
     && cp /src/out/build/ubuntu-arm64-release-prebuilt-duckdb/src/dbprove/dbprove /opt/dbprove/bin/dbprove \
     && cp -R /src/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb/arm64-linux-release/. /opt/dbprove/vcpkg_installed/ \
-    && cp -R /src/docker/datafusion/tpch/. /opt/tpch/ \
-    && cp /src/docker/duckdb/entrypoint.sh /usr/local/bin/duckdb-entrypoint.sh \
+    && cp -R /src/docker/datafusion/local/iceberg/tpch/. /opt/tpch/ \
+    && cp /src/docker/duckdb/local/iceberg/entrypoint.sh /usr/local/bin/duckdb-entrypoint.sh \
     && chmod +x /usr/local/bin/duckdb-entrypoint.sh
 
 WORKDIR /repo

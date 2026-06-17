@@ -1,13 +1,19 @@
 #pragma once
 #include "credential.h"
+#include <dbprove/common/storage_variant.h>
 #include <dbprove/common/string.h>
+#include <chrono>
 #include <map>
-
 
 namespace sql {
 /// @brief Which database engine to use
 class Engine {
 public:
+  struct DockerServiceConfig {
+    std::string service_name;
+    std::chrono::seconds readiness_timeout;
+  };
+
   enum class Type {
     MariaDB,
     Postgres,
@@ -99,6 +105,10 @@ public:
       const std::optional<std::string>& username,
       const std::optional<std::string>& password,
       const std::optional<std::string>& token) const;
+
+  [[nodiscard]] std::optional<dbprove::StorageVariant> defaultStorageVariant() const;
+  [[nodiscard]] std::optional<DockerServiceConfig> dockerServiceConfig(dbprove::StorageVariant variant) const;
+  void waitForDockerReady(const Credential& credentials, std::chrono::seconds timeout) const;
 
 private:
   Type type_;

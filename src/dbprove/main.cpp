@@ -1,10 +1,14 @@
 #include <dbprove/theorem/theorem.h>
+#include <dbprove/theorem/init.h>
+#include <dbprove/common/docker.h>
 #include <dbprove/ux/ux.h>
 #include <dbprove/sql/sql.h>
 #include <dbprove/common/null_stream.h>
 #include <dbprove/common/log_formatter.h>
 #include <dbprove/common/file_utility.h>
+#include <dbprove/common/string.h>
 #include <CLI/CLI.hpp>
+#include <chrono>
 #include <iostream>
 #include <string>
 #include <version>
@@ -48,6 +52,8 @@ sql::Credential parseCredentials(
       case sql::Engine::Type::MariaDB:
       case sql::Engine::Type::Postgres:
       case sql::Engine::Type::SQLServer:
+      case sql::Engine::Type::ClickHouse:
+      case sql::Engine::Type::Trino:
       case sql::Engine::Type::Yellowbrick:
       case sql::Engine::Type::Oracle: {
         if (!username) {
@@ -56,6 +62,7 @@ sql::Credential parseCredentials(
         return sql::CredentialPassword(host, database, port, username.value(), password);
       }
       case sql::Engine::Type::Utopia:
+      case sql::Engine::Type::DataFusion:
         return sql::CredentialNone();
       case sql::Engine::Type::DuckDB:
         return sql::CredentialFile(database);

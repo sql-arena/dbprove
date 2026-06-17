@@ -3,9 +3,10 @@ set -euo pipefail
 
 prepare_tpch_tmpfs() {
   rm -f /tmp/trino-bootstrap-ready
-  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse
-  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /data/trino/spill
+  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch
+  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch/sf1 /data/trino/spill
   cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+  cp -R /opt/tpch-source/sf1/. /mnt/tpch-tmpfs/tpch/sf1/
 }
 
 bootstrap_trino() {

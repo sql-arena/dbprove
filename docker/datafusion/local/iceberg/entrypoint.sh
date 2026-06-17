@@ -17,9 +17,7 @@ write_bootstrap_sql() {
   : > "${bootstrap_sql}"
 
   cat >> "${bootstrap_sql}" <<'SQL'
-CREATE SCHEMA IF NOT EXISTS tpch;
-
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.lineitem_25x (
+CREATE EXTERNAL TABLE IF NOT EXISTS lineitem_25x (
   l_orderkey BIGINT,
   l_suppkey BIGINT,
   l_linenumber BIGINT,
@@ -34,7 +32,7 @@ SQL
     [[ -d "${parquet_dir}" ]] || continue
     table_name="$(basename "${parquet_dir}")"
     cat >> "${bootstrap_sql}" <<SQL
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.${table_name} (
+CREATE EXTERNAL TABLE IF NOT EXISTS ${table_name} (
   join_key BIGINT,
   o_orderkey BIGINT,
   orders_replica_id BIGINT,
@@ -54,7 +52,7 @@ SQL
   done
 
   cat >> "${bootstrap_sql}" <<'SQL'
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.region (
+CREATE EXTERNAL TABLE IF NOT EXISTS region (
   r_regionkey INT,
   r_name VARCHAR,
   r_comment VARCHAR
@@ -62,7 +60,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.region (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/region.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.nation (
+CREATE EXTERNAL TABLE IF NOT EXISTS nation (
   n_nationkey INT,
   n_name VARCHAR,
   n_regionkey INT,
@@ -71,7 +69,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.nation (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/nation.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.supplier (
+CREATE EXTERNAL TABLE IF NOT EXISTS supplier (
   s_suppkey INT,
   s_name VARCHAR,
   s_address VARCHAR,
@@ -83,7 +81,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.supplier (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/supplier.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.customer (
+CREATE EXTERNAL TABLE IF NOT EXISTS customer (
   c_custkey INT,
   c_name VARCHAR,
   c_address VARCHAR,
@@ -96,7 +94,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.customer (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/customer.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.part (
+CREATE EXTERNAL TABLE IF NOT EXISTS part (
   p_partkey INT,
   p_name VARCHAR,
   p_mfgr VARCHAR,
@@ -110,7 +108,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.part (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/part.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.partsupp (
+CREATE EXTERNAL TABLE IF NOT EXISTS partsupp (
   ps_partkey INT,
   ps_suppkey INT,
   ps_availqty INT,
@@ -120,7 +118,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.partsupp (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/partsupp.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.orders (
+CREATE EXTERNAL TABLE IF NOT EXISTS orders (
   o_orderkey INT,
   o_custkey INT,
   o_orderstatus VARCHAR,
@@ -134,7 +132,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch.orders (
 STORED AS PARQUET
 LOCATION '/opt/tpch/sf1/orders.parquet';
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch.lineitem (
+CREATE EXTERNAL TABLE IF NOT EXISTS lineitem (
   l_orderkey INT,
   l_partkey INT,
   l_suppkey INT,

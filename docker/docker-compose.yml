@@ -4,20 +4,20 @@ services:
     ports:
       - "19120:19120"
 
-  postgresql:
-    build: ./postgresql
+  postgresql-native:
+    build: ./postgresql/local/native
     image: dbprove-postgresql:latest
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
-      - POSTGRES_DB=bench
+      - POSTGRES_DB=postgres
     ports:
       - "5432:5432"
     volumes:
       - ../run/mount/postgresql:/var/lib/postgresql
 
-  clickhouse:
-    build: ./clickhouse
+  clickhouse-native:
+    build: ./clickhouse/local/native
     image: dbprove-clickhouse:latest
     environment:
       - CLICKHOUSE_PASSWORD=default
@@ -28,21 +28,31 @@ services:
       - ../run/mount/clickhouse:/var/lib/clickhouse
       - ../run/table_data:/var/lib/clickhouse/user_files/table_data:ro
 
-  mssql:
-    build: ./mssql
+  mssql-native:
+    build: ./mssql/local/native
     image: dbprove-mssql:latest
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+      - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-YourStrong!Passw0rd}
       - MSSQL_PID=Developer
     ports:
       - "1433:1433"
     volumes:
       - ../run/mount/mssql:/var/opt/mssql
       - ../run/table_data:/var/opt/mssql/table_data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -C -l 5 -t 5 -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SET NOCOUNT ON; SELECT 1\" >/dev/null 2>&1 || exit 1"
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
 
-  trino:
-    build: ./trino
+  trino-iceberg:
+    build: ./trino/local/iceberg
     image: dbprove-trino:latest
     mem_limit: 7g
     depends_on:
@@ -54,9 +64,10 @@ services:
     volumes:
       - ../run/mount/trino:/data/trino
       - ../run/materialized/join_scale:/opt/join-scale-source:ro
+      - ./datafusion/local/iceberg/tpch/sf1:/opt/tpch-source/sf1:ro
 
-  datafusion:
-    build: ./datafusion
+  datafusion-iceberg:
+    build: ./datafusion/local/iceberg
     image: dbprove-datafusion:latest
     mem_limit: 7g
     tmpfs:

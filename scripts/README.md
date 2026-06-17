@@ -44,7 +44,7 @@ What it does:
 - Calls `dbprove --prepare-ee-join-scale` once up front to materialize and
   cache the host-side parquet inputs under `run/materialized/join_scale/`.
 - Cleans up latent benchmark containers before a new sweep.
-- Builds the DuckDB benchmark image directly from `docker/duckdb/Dockerfile`.
+- Builds the DuckDB benchmark image directly from `docker/duckdb/local/iceberg/Dockerfile`.
 - Starts the needed benchmark containers one engine at a time.
 - Runs the selected scale theorems through `dbprove`.
 - Parses `proof/*/*/*_proof.csv`.

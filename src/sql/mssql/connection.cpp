@@ -13,11 +13,7 @@
 #endif
 
 #include <mutex>
-#include <chrono>
-#include <string>
 #include <stdexcept>
-#include <thread>
-#include <dbprove/common/string.h>
 #include <plog/Log.h>
 #include <vector>
 
@@ -39,33 +35,6 @@
 #endif
 
 namespace sql::mssql {
-namespace {
-bool dockerMssqlReadyProbe(const Credential& credential) {
-  if (!std::holds_alternative<CredentialPassword>(credential)) {
-    return true;
-  }
-  const auto pwd = std::get<CredentialPassword>(credential);
-  const auto command =
-      "docker exec docker-mssql-1 /opt/mssql-tools18/bin/sqlcmd -S localhost -U "
-      + shell_quote(pwd.username)
-      + " -P " + shell_quote(pwd.password.value_or(""))
-      + " -Q " + shell_quote("SET NOCOUNT ON; SELECT 1")
-      + " -C >/dev/null 2>&1";
-  return std::system(command.c_str()) == 0;
-}
-
-void waitForDockerMssqlReadiness(const Credential& credential) {
-  using namespace std::chrono_literals;
-  const auto deadline = std::chrono::steady_clock::now() + 120s;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (dockerMssqlReadyProbe(credential)) {
-      return;
-    }
-    std::this_thread::sleep_for(2s);
-  }
-  throw ConnectionException(credential, "Timed out waiting for docker-mssql-1 to accept sqlcmd connections");
-}
-}
 
 std::string getDriverPath(const std::string& driverName) {
 #ifdef _WIN32
@@ -223,7 +192,6 @@ Connection::Connection(const Credential& credential, const Engine& engine, std::
     // In artifact replay mode we avoid touching the database during construction.
     return;
   }
-  waitForDockerMssqlReadiness(credential);
   // We connected to master initially to ensure we can always get in.
   // Now we create the target database if it doesn't exist and switch to it.
   try {

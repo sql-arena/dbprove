@@ -23,7 +23,7 @@ PROOF_ROOT = ROOT / "proof"
 PLOT_PATH = PROOF_ROOT / "join_scale_runtime.webp"
 SORT_PLOT_PATH = PROOF_ROOT / "sort_scale_runtime.webp"
 AGG_PLOT_PATH = PROOF_ROOT / "agg_scale_runtime.webp"
-PARQUET_SOURCE_DIR = ROOT / "docker" / "datafusion" / "tpch" / "sf1"
+PARQUET_SOURCE_DIR = ROOT / "docker" / "datafusion" / "local" / "iceberg" / "tpch" / "sf1"
 JOIN_SCALE_PARQUET_DIR = ROOT / "run" / "materialized" / "join_scale"
 
 
@@ -48,14 +48,20 @@ ENGINE_RUN_TIMEOUT_SECONDS = max(QUERY_TIMEOUT_SECONDS * len(SCALES) * 12, 600)
 ENGINE_COLUMNS = ["DuckDB", "DataFusion", "Trino"]
 DOCKER_COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
 DUCKDB_IMAGE = "dbprove-duckdb-bench:latest"
-COMPOSE_PROJECT_NAME = "dbprove-scale"
-LEGACY_COMPOSE_CONTAINER_NAMES = ("docker-nessie-1", "docker-trino-1", "docker-datafusion-1")
+COMPOSE_PROJECT_NAME = "dbprove-managed"
+LEGACY_COMPOSE_CONTAINER_NAMES = (
+    "docker-nessie-1",
+    "docker-trino-1",
+    "docker-datafusion-1",
+    "docker-trino-iceberg-1",
+    "docker-datafusion-iceberg-1",
+)
 FORCE_DUCKDB_BUILD = os.environ.get("DBPROVE_FORCE_DUCKDB_BUILD", "").lower() in {"1", "true", "yes"}
 
 ENGINES = [
     {"arg": "duckdb", "name": "DuckDB", "warmup": False},
-    {"arg": "datafusion", "name": "DataFusion", "warmup": False, "compose_build_service": "datafusion", "compose_service": "datafusion"},
-    {"arg": "trino", "name": "Trino", "warmup": True, "compose_build_service": "trino", "compose_service": "trino"},
+    {"arg": "datafusion", "name": "DataFusion", "warmup": False, "compose_build_service": "datafusion-iceberg", "compose_service": "datafusion-iceberg"},
+    {"arg": "trino", "name": "Trino", "warmup": True, "compose_build_service": "trino-iceberg", "compose_service": "trino-iceberg"},
 ]
 
 
@@ -565,7 +571,7 @@ def start_container_service(engine: dict[str, str | bool]) -> int:
                     "--network=host",
                     "--progress=plain",
                     "-f",
-                    str(ROOT / "docker" / "duckdb" / "Dockerfile"),
+                    str(ROOT / "docker" / "duckdb" / "local" / "iceberg" / "Dockerfile"),
                     "-t",
                     DUCKDB_IMAGE,
                     str(ROOT),
@@ -631,7 +637,7 @@ def start_container_service(engine: dict[str, str | bool]) -> int:
 
 def wait_for_engine_ready(engine: dict[str, str | bool]) -> int:
     if engine["arg"] == "datafusion":
-        marker_cmd = compose_cmd("exec", "-T", "datafusion", "sh", "-lc", "test -f /tmp/datafusion-bootstrap-ready")
+        marker_cmd = compose_cmd("exec", "-T", "datafusion-iceberg", "sh", "-lc", "test -f /tmp/datafusion-bootstrap-ready")
         deadline = time.time() + 300
         last_error = "bootstrap marker not present yet"
         while time.time() < deadline:
@@ -660,7 +666,7 @@ def wait_for_engine_ready(engine: dict[str, str | bool]) -> int:
             with urlopen("http://localhost:8080/v1/info", timeout=2) as response:
                 if response.status == 200:
                     marker = subprocess.run(
-                        compose_cmd("exec", "-T", "trino", "sh", "-lc", "test -f /tmp/trino-bootstrap-ready"),
+                        compose_cmd("exec", "-T", "trino-iceberg", "sh", "-lc", "test -f /tmp/trino-bootstrap-ready"),
                         cwd=ROOT,
                         capture_output=True,
                         text=True,
@@ -697,7 +703,7 @@ def warm_engine(engine: dict[str, str | bool], scales: list[int]) -> int:
         warmup_cmd = compose_cmd(
             "exec",
             "-T",
-            "trino",
+            "trino-iceberg",
             "/usr/bin/trino",
             "--server",
             "http://127.0.0.1:8080",

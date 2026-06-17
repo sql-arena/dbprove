@@ -8,7 +8,7 @@ Its job is to:
 
 - build `datafusion-cli` from source
 - build a small Rust `datafusion-plan-json` helper against the same DataFusion version
-- stage the TPC-H SF1 Parquet files from `gs://sql-arena-data/tpch/sf1/` into the image
+- read the TPC-H SF1 Parquet files from a mount at `/opt/tpch-source/sf1/`
 - register those files as external tables in a `tpch` schema
 - enable `datafusion.execution.collect_statistics`
 - expose a helper that emits the physical execution plan as JSON

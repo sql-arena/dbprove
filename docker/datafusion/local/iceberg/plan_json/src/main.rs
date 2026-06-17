@@ -21,10 +21,12 @@ const TPCH_TABLES: &[&str] = &[
 ];
 
 async fn register_tpch(ctx: &SessionContext) -> Result<()> {
+  let tpch_root = env::var("DATAFUSION_TPCH_ROOT")
+    .unwrap_or_else(|_| "/opt/tpch-source/sf1".to_string());
   ctx.sql("CREATE SCHEMA IF NOT EXISTS tpch").await?.collect().await?;
   for table in TPCH_TABLES {
     let statement = format!(
-      "CREATE EXTERNAL TABLE IF NOT EXISTS tpch.{table} STORED AS PARQUET LOCATION '/opt/tpch/sf1/{table}.parquet'"
+      "CREATE EXTERNAL TABLE IF NOT EXISTS tpch.{table} STORED AS PARQUET LOCATION '{tpch_root}/{table}.parquet'"
     );
     ctx.sql(&statement).await?.collect().await?;
   }

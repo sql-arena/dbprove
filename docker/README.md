@@ -10,11 +10,45 @@ The directory shape now reserves a provider layer under each engine:
   `iceberg/` is for parquet-backed layouts that we expect to evolve toward
   Iceberg-backed runs
 
+For remote provider containers, the convention is stricter:
+
+- remote containers should use a common `Ubuntu 22.04` base unless there is a strong reason not to
+- remote containers should ship with a prebuilt `dbprove` binary
+- remote containers should copy that binary from a shared prebuilt image instead of rebuilding `dbprove` per engine image
+- we plan to invoke `dbprove` through a terminal session inside the container
+- provider-specific data staging such as S3 download should live in `dbprove`
+  or in explicit operator commands, not in hidden image bootstrap logic
+
+To support that, `docker/ubuntu/dbprove-build/` is the dedicated Ubuntu-based
+builder image for producing `dbprove` binaries, and
+`docker/ubuntu/dbprove-prebuilt/` is the shared artifact image that remote
+engine images should copy from.
+
+For local provider containers, the convention is different:
+
+- local containers should not copy `dbprove` into the image by default
+- local containers should stay focused on the engine runtime and its local data wiring
+- if a local engine genuinely needs in-container `dbprove`, treat that as an explicit exception
+- `DataFusion` is the main expected exception for now
+
+One current caveat in the repo:
+
+- the existing `duckdb/local/iceberg/` image still bakes in `dbprove`
+- that image predates this clarified convention and should be treated as a legacy exception until we revisit it
+
 For the current `EE-JOIN-SCALE-*` benchmark work, the important local image roots are:
 
 - `duckdb/local/iceberg/`
 - `datafusion/local/iceberg/`
 - `trino/local/iceberg/`
+
+The first AWS-oriented native Trino image root is:
+
+- `trino/aws/native/`
+
+The first AWS-oriented native PostgreSQL image root is:
+
+- `postgresql/aws/native/`
 
 Those are the engines used by `scripts/run_scale.py`.
 
@@ -199,6 +233,27 @@ Important points:
 - The container is started and stopped around the benchmark sweep so memory is
   released between engines.
 - The compose service is capped with `mem_limit: 6g`.
+
+`trino/aws/native/` contains the first AWS-oriented Trino native-storage container.
+
+Important points:
+
+- It expects an EC2 host mount of ephemeral NVMe storage at `/mnt/nvme`.
+- It uses `Ubuntu 22.04` as the runtime base.
+- It includes a prebuilt `dbprove` binary so the container can be used as a remote terminal-driven runtime.
+- `dbprove` is expected to handle any S3 download or parquet staging work.
+- The same NVMe mount stores the managed Trino warehouse in native local format.
+- The container uses the Hive connector with a standalone metastore running in the same container and the local filesystem for table files.
+
+`postgresql/aws/native/` contains the AWS-oriented PostgreSQL native-storage container.
+
+Important points:
+
+- It expects an EC2 host mount of ephemeral NVMe storage at `/mnt/nvme`.
+- It uses `Ubuntu 22.04` as the runtime base.
+- It includes a prebuilt `dbprove` binary so the container can be used as a remote terminal-driven runtime.
+- `dbprove` is expected to handle any S3 download or staging work.
+- PostgreSQL stores its cluster data under `/mnt/nvme/postgresql/data` by default.
 
 ## Why The Materialized Inputs Matter
 

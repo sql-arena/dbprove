@@ -1,6 +1,21 @@
-FROM rust:1-bookworm AS builder
+FROM ubuntu:22.04 AS builder
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        pkg-config \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/opt/rustup
+ENV CARGO_HOME=/opt/cargo
+ENV PATH=/opt/cargo/bin:${PATH}
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal --default-toolchain stable
 
 RUN cargo install datafusion-cli --locked --root /opt/datafusion-cli
 
@@ -9,7 +24,7 @@ COPY plan_json/Cargo.toml Cargo.toml
 COPY plan_json/src src
 RUN cargo install --path . --root /opt/datafusion-plan-json
 
-FROM debian:bookworm-slim
+FROM ubuntu:22.04
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash ca-certificates tini \
@@ -17,7 +32,6 @@ RUN apt-get update \
 
 COPY --from=builder /opt/datafusion-cli /opt/datafusion-cli
 COPY --from=builder /opt/datafusion-plan-json /opt/datafusion-plan-json
-COPY tpch /opt/tpch
 COPY entrypoint.sh /usr/local/bin/datafusion-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/datafusion-entrypoint.sh \

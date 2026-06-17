@@ -75,3 +75,4 @@ services:
     volumes:
       - ../run/mount/datafusion:/workspace
       - ../run/materialized/join_scale:/opt/join-scale-source:ro
+      - ./datafusion/local/iceberg/tpch/sf1:/opt/tpch-source/sf1:ro

@@ -4,6 +4,7 @@ set -euo pipefail
 bootstrap_sql="/workspace/datafusion-bootstrap.sql"
 ready_marker="/tmp/datafusion-bootstrap-ready"
 host_ready_marker="/workspace/datafusion-ready"
+tpch_root="${DATAFUSION_TPCH_ROOT:-/opt/tpch-source/sf1}"
 
 prepare_tmpfs() {
   rm -f "${ready_marker}"
@@ -58,7 +59,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS region (
   r_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/region.parquet';
+LOCATION '${tpch_root}/region.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS nation (
   n_nationkey INT,
@@ -67,7 +68,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS nation (
   n_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/nation.parquet';
+LOCATION '${tpch_root}/nation.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS supplier (
   s_suppkey INT,
@@ -79,7 +80,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS supplier (
   s_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/supplier.parquet';
+LOCATION '${tpch_root}/supplier.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS customer (
   c_custkey INT,
@@ -92,7 +93,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS customer (
   c_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/customer.parquet';
+LOCATION '${tpch_root}/customer.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS part (
   p_partkey INT,
@@ -106,7 +107,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS part (
   p_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/part.parquet';
+LOCATION '${tpch_root}/part.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS partsupp (
   ps_partkey INT,
@@ -116,7 +117,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS partsupp (
   ps_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/partsupp.parquet';
+LOCATION '${tpch_root}/partsupp.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS orders (
   o_orderkey INT,
@@ -130,7 +131,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS orders (
   o_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/orders.parquet';
+LOCATION '${tpch_root}/orders.parquet';
 
 CREATE EXTERNAL TABLE IF NOT EXISTS lineitem (
   l_orderkey INT,
@@ -151,7 +152,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS lineitem (
   l_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/opt/tpch/sf1/lineitem.parquet';
+LOCATION '${tpch_root}/lineitem.parquet';
 
 SQL
 }

@@ -30,7 +30,7 @@ SqlVariant Result::columnData(const size_t index) const {
     case SQLITE3_TEXT:
       return SqlVariant(reinterpret_cast<const char*>(sqlite3_column_text(impl_->handle_, index)));
     case SQLITE_INTEGER:
-      return SqlVariant(sqlite3_column_int64(impl_->handle_, index));
+      return SqlVariant(static_cast<int64_t>(sqlite3_column_int64(impl_->handle_, index)));
     case SQLITE_FLOAT:
       return SqlVariant(sqlite3_column_double(impl_->handle_, index));
     case SQLITE_NULL:

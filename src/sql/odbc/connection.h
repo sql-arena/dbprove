@@ -17,7 +17,7 @@ public:
   virtual void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override {}
   virtual const TypeMap& typeMap() const override { static TypeMap empty; return empty; }
   virtual void analyse(std::string_view table_name) override {}
-  virtual std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override { return nullptr; }
+  virtual std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
 
   const char* connectionString() const;
   void close() override;

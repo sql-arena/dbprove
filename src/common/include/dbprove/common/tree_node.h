@@ -1,6 +1,7 @@
 #pragma once
 #include <atomic>
 #include <cassert>
+#include <limits>
 #include <memory>
 #include <queue>
 #include <stack>

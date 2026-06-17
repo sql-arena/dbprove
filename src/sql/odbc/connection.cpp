@@ -1,6 +1,7 @@
 #include "connection.h"
 #include "result.h"
 #include "sql_exceptions.h"
+#include <dbprove/sql/explain/plan.h>
 
 #include <cassert>
 #ifdef _WIN32
@@ -156,6 +157,10 @@ void Connection::execute(const std::string_view statement) {
 
 std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statement) {
   return impl_->execute(mapTypes(statement));
+}
+
+std::unique_ptr<explain::Plan> Connection::explain(std::string_view statement, std::optional<std::string_view> name) {
+  return nullptr;
 }
 
 void Connection::close() {

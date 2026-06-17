@@ -12,7 +12,8 @@ RowCount Result::rowCount() const {
       return 10;
     case UtopiaData::TEST_RESULT:
       return 3;
-  default:
+    default:
+      break;
   }
   return 0;
 }

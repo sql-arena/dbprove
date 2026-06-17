@@ -24,7 +24,7 @@ SqlVariant Row::get(const size_t index) const {
     case SqlTypeKind::INT:
       return SqlVariant(static_cast<int32_t>(std::stol(data)));
     case SqlTypeKind::BIGINT:
-      return SqlVariant(std::stoll(data));
+      return SqlVariant(static_cast<int64_t>(std::stoll(data)));
     case SqlTypeKind::REAL:
     case SqlTypeKind::DOUBLE:
       return SqlVariant(std::stod(data));

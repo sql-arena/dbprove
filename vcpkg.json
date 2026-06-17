@@ -26,6 +26,7 @@
     "cli11",
     "openssl",
     "clickhouse-cpp",
+    "cityhash",
     "duckdb",
     "azure-identity-cpp",
     "curl",

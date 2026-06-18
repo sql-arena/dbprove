@@ -13,7 +13,9 @@ target_sources(${_targetName}
         sql_exceptions.h
         sql_type.h
         sql.h
+        expression.h
         explain/node.h
         explain/node_type.h
         explain/column.h
+        explain/plan.h
 )

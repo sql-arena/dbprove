@@ -51,6 +51,7 @@ build/
 */build/
 */*/build/
 CMakeFiles/
+build.ninja
 CMakeCache.txt
 cmake_install.cmake
 Makefile

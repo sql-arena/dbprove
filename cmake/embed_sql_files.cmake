@@ -12,7 +12,7 @@ foreach(SQL_FILE IN LISTS SQL_FILES)
     message(STATUS "  ${SQL_FILE}")
 endforeach()
 
-file(WRITE ${OUTPUT} "// Auto-generated SQL header\n\n#include <string_view>\n\nnamespace resource {\n\n")
+file(WRITE ${OUTPUT} "// Auto-generated SQL header\n#pragma once\n\n#include <string_view>\n\nnamespace resource {\n\n")
 
 foreach(FILE_PATH IN LISTS SQL_FILES)
     message(STATUS "Processing SQL File: ${FILE_PATH} for embedding")
@@ -28,4 +28,4 @@ foreach(FILE_PATH IN LISTS SQL_FILES)
     file(APPEND ${OUTPUT} "constexpr std::string_view ${VAR_NAME} =\n\"${CONTENTS}\";\n\n")
 endforeach()
 
-file(APPEND ${OUTPUT} "} // namespace embedded_sql\n")
+file(APPEND ${OUTPUT} "} // namespace resource\n")

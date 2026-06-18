@@ -1,4 +1,5 @@
 #include <dbprove/theorem/theorem.h>
+#include "../theorem/init.h"
 #include <dbprove/common/docker.h>
 #include <dbprove/ux/ux.h>
 #include <dbprove/sql/sql.h>

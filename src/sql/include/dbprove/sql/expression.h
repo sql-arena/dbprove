@@ -90,6 +90,5 @@ std::string render(std::vector<Token>& tokens, const EngineDialect* dialect = nu
  */
 std::string cleanExpression(std::string expression, const EngineDialect* dialect = nullptr);
 
-
 std::string removeQuotes(std::string_view str);
 }

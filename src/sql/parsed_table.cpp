@@ -95,6 +95,7 @@ ColumnDdl parseColumn(std::string_view definition) {
   ColumnDdl column;
   column.name = tokens[0];
   column.type = parseType(tokens[1]);
+  column.is_null = true;
 
   if (tokens.size() == 3) {
     if (to_upper(tokens[2]) != "NULL") {

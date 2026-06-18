@@ -5,5 +5,6 @@ target_sources(${_targetName}
         job.h
         scale.h
         sql_resources.h
+        test.h
         tpch.h
 )

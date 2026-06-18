@@ -50,6 +50,14 @@ The first AWS-oriented native PostgreSQL image root is:
 
 - `postgresql/aws/native/`
 
+The first AWS-oriented DuckDB iceberg image root is:
+
+- `duckdb/aws/iceberg/`
+
+The first AWS-oriented SQL Server native image root is:
+
+- `mssql/aws/native/`
+
 Those are the engines used by `scripts/run_scale.py`.
 
 ## Current Benchmarking Model
@@ -257,6 +265,29 @@ Important points:
 - It includes a prebuilt `dbprove` binary so the container can be used as a remote terminal-driven runtime.
 - `dbprove` is expected to handle any S3 download or staging work.
 - PostgreSQL stores its cluster data under `/mnt/nvme/postgresql/data` by default.
+
+`duckdb/aws/iceberg/` contains the AWS-oriented DuckDB container for parquet-backed and Iceberg-adjacent runs.
+
+Important points:
+
+- It expects an EC2 host mount of ephemeral NVMe storage at `/mnt/nvme`.
+- It uses `Ubuntu 22.04` as the runtime base.
+- It includes a prebuilt `dbprove` binary so the container can be used as a remote terminal-driven runtime.
+- `dbprove` is expected to handle any S3 download, parquet staging, or Iceberg registration work.
+- The default working directory is `/mnt/nvme/duckdb`, which is where local DuckDB database files and staged artifacts should live.
+
+`mssql/aws/native/` contains the AWS-oriented SQL Server native-storage container.
+
+Important points:
+
+- It expects an EC2 host mount of ephemeral NVMe storage at `/mnt/nvme`.
+- It uses `Ubuntu 22.04` as the runtime base.
+- SQL Server on Linux is `amd64`-only in practice for this image, so build it with `docker buildx build --platform=linux/amd64` and pair it with an `amd64` `dbprove-prebuilt` image.
+- It includes a prebuilt `dbprove` binary so the container can be used as a remote terminal-driven runtime.
+- `dbprove` is expected to handle any S3 download or staging work.
+- The image installs SQL Server 2022, `msodbcsql18`, and `mssql-tools18`.
+- The default SQL Server credentials stay aligned with the repo defaults: user `sa`, password `YourStrong!Passw0rd`.
+- New database files are directed into `/mnt/nvme/mssql/data`, while log, backup, and dump files are directed into neighboring NVMe-backed directories.
 
 ## Why The Materialized Inputs Matter
 

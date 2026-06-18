@@ -3,7 +3,7 @@ env.sh
 .output.txt
 *.d
 node_modules/
-dbprove/
+/dbprove/
 run/
 run_user/
 scratchpad/

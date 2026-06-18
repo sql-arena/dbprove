@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <map>
 #include <functional>
 #include <optional>
 #include <ostream>
@@ -46,6 +47,10 @@ enum class Category {
   TEST = 6,
   UNKNOWN = 0
 };
+
+using TheoremMap = std::map<std::string, std::unique_ptr<class Theorem>>;
+using CategoryMap = std::map<Category, std::set<const Theorem*>>;
+using CategorySet = std::set<Category>;
 
 inline std::string_view to_string(const Category type) { return magic_enum::enum_name(type); }
 
@@ -173,7 +178,6 @@ public:
   const Theorem& theorem;
   std::vector<std::unique_ptr<Data>> data;
   [[nodiscard]] sql::ConnectionFactory& factory() const;
-  Proof& ensure(const std::string& table);
   Proof& ensureDataset(const std::string& dataset);
   /**
    * Make sure the schema exists
@@ -319,6 +323,23 @@ public:
  * Call this before using the library
  */
 void init();
+Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
+                    std::optional<sql::RowCount> expected_row_count,
+                    std::optional<std::string> display_name);
+inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
+                           std::optional<sql::RowCount> expected_row_count) {
+  return addTheorem(std::move(name), std::move(description), func, expected_row_count, std::nullopt);
+}
+inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func) {
+  return addTheorem(std::move(name), std::move(description), func, std::nullopt, std::nullopt);
+}
+void categoriseTheorem(Theorem& theorem, Category category);
+void tagTheorem(Theorem& theorem, const Tag& tag);
+void requireStorageVariant(Theorem& theorem, dbprove::StorageVariant variant);
+const TheoremMap& allTheorems();
+const std::set<const Theorem*>& allTheoremsInCategory(Category type);
+const CategorySet& allCategories();
+std::string_view allCategoriesAsString();
 /**
  * Parse a list of theorems and turn them into properly typed theorems
  * @param theorems List of strings to parse

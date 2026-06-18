@@ -6,10 +6,8 @@
 namespace dbprove::theorem::test {
 
 void run_test_query(Proof& proof, const std::string& sql, const std::vector<std::string>& tables) {
-    auto& ensure = proof.ensureSchema("test");
-    for (const auto& table : tables) {
-        ensure.ensure(table);
-    }
+    (void)tables;
+    proof.ensureDataset("test");
     Query query(sql, "test");
     Runner runner(proof.factory());
     runner.serialExplain(std::move(query), proof);

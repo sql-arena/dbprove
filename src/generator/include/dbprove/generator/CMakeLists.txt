@@ -3,6 +3,7 @@ target_sources(${_targetName}
         generated_table.h
         generator_state.h
         job.h
+        scale.h
         sql_resources.h
         tpch.h
 )

@@ -5,10 +5,8 @@ add_library(dbprove::generator ALIAS ${_targetName})
 
 target_sources(${_targetName}
         PUBLIC FILE_SET installed TYPE HEADERS BASE_DIRS include
-        generator_state.h
-        generated_table.h
-        tpch.h
 )
+
 target_include_directories(${_targetName}
         PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dbprove/generator>
@@ -63,4 +61,18 @@ target_embed_files(${_targetName} SQL_FILES
         job/ddl/person_info.sql
         job/ddl/role_type.sql
         job/ddl/title.sql
+        scale/ddl/lineitem_25x.ddl
+        scale/ddl/orders_scale_01.ddl
+        scale/ddl/orders_scale_02.ddl
+        scale/ddl/orders_scale_03.ddl
+        scale/ddl/orders_scale_04.ddl
+        scale/ddl/orders_scale_05.ddl
+        scale/ddl/orders_scale_06.ddl
+        scale/ddl/orders_scale_08.ddl
+        scale/ddl/orders_scale_10.ddl
+        scale/ddl/orders_scale_12.ddl
+        scale/ddl/orders_scale_14.ddl
+        scale/ddl/orders_scale_16.ddl
+        scale/ddl/orders_scale_18.ddl
+        scale/ddl/orders_scale_20.ddl
 )

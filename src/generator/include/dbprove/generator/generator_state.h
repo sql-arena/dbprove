@@ -63,22 +63,6 @@ public:
   [[nodiscard]] dbprove::StorageVariant storageVariant() const { return storageVariant_; }
 
   /**
-   * Makes sure that a table is availabe on the given connection
-   * @param table_name To guarantee exists and is ready
-   * @param conn Connection to generate the table at
-   * @return Rowcount of the generated table
-   */
-  void ensure(std::string_view table_name, sql::ConnectionFactory& conn);
-
-  /**
-   * Makes sure that a table is available on the given connection
-   * @param table_names To guarantee exists and is ready
-   * @param conn Connection to generate the table at
-   * @return Rowcount of the generated table
-   */
-  void ensure(std::span<const std::string_view> table_names, sql::ConnectionFactory& conn);
-
-  /**
    * Makes sure an entire dataset is available on the given connection.
    * @param dataset_name Dataset registered through REGISTER_TABLE
    * @param conn Connection factory used for ensure/load operations
@@ -126,6 +110,10 @@ public:
 
   static constexpr std::string_view columnSeparator() { return colSeparator_; }
   static constexpr std::string_view rowSeparator() { return rowSeparator_; }
+
+private:
+  void ensure(std::string_view table_name, sql::ConnectionFactory& conn);
+  void ensure(std::span<const std::string_view> table_names, sql::ConnectionFactory& conn);
 };
 
 

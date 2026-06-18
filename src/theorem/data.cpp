@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <ctime>
 #include <iomanip>
 #include <numeric>
 #include <string>
@@ -12,6 +13,36 @@
 #include <internal/basic_csv_parser.hpp>
 
 namespace dbprove::theorem {
+namespace {
+std::string lowerCamelFromLabel(std::string label) {
+  if (label.empty()) {
+    return label;
+  }
+
+  label[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(label[0])));
+  return label;
+}
+
+std::string formatWallClockTimestamp(
+    const std::chrono::time_point<std::chrono::system_clock>& timestamp) {
+  const auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(timestamp);
+  const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(timestamp - seconds).count();
+  const auto time_t = std::chrono::system_clock::to_time_t(seconds);
+
+  std::tm utc_time {};
+#if defined(_WIN32)
+  gmtime_s(&utc_time, &time_t);
+#else
+  gmtime_r(&time_t, &utc_time);
+#endif
+
+  std::ostringstream out;
+  out << std::put_time(&utc_time, "%Y-%m-%dT%H:%M:%S")
+      << '.' << std::setw(6) << std::setfill('0') << micros << 'Z';
+  return out.str();
+}
+}  // namespace
+
 void DataExplain::render(Proof& proof) {
   using namespace sql::explain;
   auto& out = proof.console();
@@ -40,16 +71,15 @@ void DataExplain::render(Proof& proof) {
   stats.push_back({"Scan", scanned});
   RowStatTable(out, stats);
 
-  proof.writeCsv("Join", std::to_string(joined), Unit::Rows);
-  proof.writeCsv("Aggregate", std::to_string(aggregated), Unit::Rows);
-  proof.writeCsv("Sort", std::to_string(sorted), Unit::Rows);
-  proof.writeCsv("Distribute", std::to_string(distributed), Unit::Rows);
-  proof.writeCsv("Seek", std::to_string(seeked), Unit::Rows);
-  proof.writeCsv("Scan", std::to_string(scanned), Unit::Rows);
-  proof.writeCsv("Hash", std::to_string(hash_build), Unit::Rows);
+  proof.setCurrentQueryOperatorRows("join", static_cast<int64_t>(joined));
+  proof.setCurrentQueryOperatorRows("aggregate", static_cast<int64_t>(aggregated));
+  proof.setCurrentQueryOperatorRows("sort", static_cast<int64_t>(sorted));
+  proof.setCurrentQueryOperatorRows("distribute", static_cast<int64_t>(distributed));
+  proof.setCurrentQueryOperatorRows("seek", static_cast<int64_t>(seeked));
+  proof.setCurrentQueryOperatorRows("scan", static_cast<int64_t>(scanned));
+  proof.setCurrentQueryOperatorRows("hash", static_cast<int64_t>(hash_build));
   auto mis_estimates = plan->misEstimations();
   ux::EstimationStatTable(out, mis_estimates);
-  // For CSV dump, it looks better to collect all operations together.
   std::ranges::sort(mis_estimates, [](const auto& lhs, const auto& rhs) {
     if (lhs.operation != rhs.operation) {
       return lhs.operation < rhs.operation;
@@ -58,25 +88,28 @@ void DataExplain::render(Proof& proof) {
   });
 
   for (const auto& [operation, magnitude, count] : mis_estimates) {
-    const auto name = "Mis-estimate " + std::string(to_string(operation)) + " " + magnitude.to_string();
-    proof.writeCsv(name, std::to_string(count), Unit::Magnitude);
+    proof.setCurrentQueryMisEstimate(lowerCamelFromLabel(std::string(to_string(operation))),
+                                     magnitude.to_string(),
+                                     static_cast<int64_t>(count));
   }
   const std::string csv_plan;
   std::ostringstream plan_stream(csv_plan);
   plan->render(plan_stream, 500);
-  proof.writeCsv("Plan", plan_stream.str(), Unit::Plan);
+  proof.setCurrentQueryPlan(plan_stream.str());
 }
 
 void DataQuery::render(Proof& proof) {
   auto& out = proof.console();
   ux::Header(out, "Query", 10);
   out << query.text() << std::endl;
-  proof.writeCsv("SQL", query.text(), Unit::Query);
+  proof.beginQuery(query.text());
 
   const auto& stats = query.stats();
   if (stats.empty()) {
     return;
   }
+
+  proof.setCurrentQueryStartTime(formatWallClockTimestamp(stats.front().start_wall_time));
 
   const auto [min_it, max_it] = std::minmax_element(stats.begin(), stats.end(), [](const QueryStats& lhs, const QueryStats& rhs) {
     return lhs.duration < rhs.duration;
@@ -104,13 +137,11 @@ void DataQuery::render(Proof& proof) {
       << ", min: " << min_duration.count() << " us"
       << ", max: " << max_it->duration.count() << " us" << std::endl;
 
-  proof.writeCsv("RuntimeRuns", std::to_string(stats.size()), Unit::COUNT);
-  proof.writeCsv("RuntimeBest", std::to_string(min_duration.count()), Unit::Microseconds);
-  proof.writeCsv("RuntimeAvg", std::to_string(avg_duration.count()), Unit::Microseconds);
-  proof.writeCsv("RuntimeMin", std::to_string(min_it->duration.count()), Unit::Microseconds);
-  proof.writeCsv("RuntimeMax", std::to_string(max_it->duration.count()), Unit::Microseconds);
-  std::ostringstream stddev_stream;
-  stddev_stream << std::fixed << std::setprecision(2) << stddev_us;
-  proof.writeCsv("RuntimeStdDev", stddev_stream.str(), Unit::Microseconds);
+  proof.setCurrentQueryBestRuntimeMicroseconds(min_duration.count());
+  proof.setRuntimeSummaryMicroseconds(min_duration.count(),
+                                      avg_duration.count(),
+                                      min_it->duration.count(),
+                                      max_it->duration.count(),
+                                      stddev_us);
 }
 }

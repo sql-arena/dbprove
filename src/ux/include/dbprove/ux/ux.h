@@ -12,6 +12,13 @@ struct RowStats {
   size_t rows;
 };
 
+struct TheoremListingRow {
+  std::string name;
+  std::string description;
+  std::string tags;
+  std::string categories;
+};
+
 
 enum class Colour {
   RED, GREEN, ORANGE, BLUE, YELLOW, MAGENTA, CYAN, WHITE, BLACK, GREY
@@ -19,6 +26,7 @@ enum class Colour {
 
 using Distance = uint16_t;
 void RowStatTable(std::ostream& out, const std::vector<RowStats>& rows);
+void TheoremListTable(std::ostream& out, const std::vector<TheoremListingRow>& rows);
 
 void EstimationStatTable(std::ostream& out, const std::vector<sql::explain::Plan::MisEstimation>& mis_estimations);
 

@@ -12,8 +12,8 @@ SELECT l_shipmode,
                    THEN 1
                ELSE 0
            END) AS low_line_count
-FROM tpch.lineitem
-INNER JOIN tpch.orders
+FROM tpch_sf1.lineitem
+INNER JOIN tpch_sf1.orders
     ON o_orderkey = l_orderkey
 WHERE l_shipmode IN ('AIR', 'TRUCK')
   AND l_commitdate < l_receiptdate

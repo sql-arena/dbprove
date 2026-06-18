@@ -12,12 +12,15 @@
 #include "selection.h"
 #include "sort.h"
 #include "explain/plan.h"
+#include "include/dbprove/sql/parsed_table.h"
 
 #include <string_view>
 #include <fstream>
 #include <regex>
 #include <cstdlib>
+#include <sstream>
 
+#include <dbprove/common/table_data_conventions.h>
 #include "limit.h"
 #include <dbprove/common/string.h>
 #include <clickhouse/client.h>
@@ -56,6 +59,54 @@ int actualsTimeoutSeconds() {
     }
   }
   return default_timeout;
+}
+
+std::string defaultTypeName(const SqlTypeKind kind) {
+  switch (kind) {
+    case SqlTypeKind::SMALLINT:
+      return "SMALLINT";
+    case SqlTypeKind::INT:
+      return "INT";
+    case SqlTypeKind::BIGINT:
+      return "BIGINT";
+    case SqlTypeKind::REAL:
+      return "REAL";
+    case SqlTypeKind::DOUBLE:
+      return "DOUBLE";
+    case SqlTypeKind::DECIMAL:
+      return "DECIMAL";
+    case SqlTypeKind::STRING:
+      return "TEXT";
+    case SqlTypeKind::DATE:
+      return "DATE";
+    case SqlTypeKind::TIME:
+      return "TIME";
+    case SqlTypeKind::DATETIME:
+      return "DATETIME";
+    case SqlTypeKind::SQL_NULL:
+      return "NULL";
+    case SqlTypeKind::UNKNOWN:
+      return "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
+std::string renderType(const SqlTypeMeta& type, const ConnectionBase::TypeMap& type_map) {
+  std::string rendered = type_map.contains(type.kind)
+                       ? std::string(type_map.at(type.kind))
+                       : defaultTypeName(type.kind);
+
+  if (type.kind == SqlTypeKind::STRING && std::holds_alternative<SqlTypeModifier::String>(type.modifier.value)) {
+    const auto length = std::get<SqlTypeModifier::String>(type.modifier.value).length;
+    return rendered + "(" + std::to_string(length) + ")";
+  }
+
+  if (type.kind == SqlTypeKind::DECIMAL && std::holds_alternative<SqlTypeModifier::Decimal>(type.modifier.value)) {
+    const auto decimal = std::get<SqlTypeModifier::Decimal>(type.modifier.value);
+    return rendered + "(" + std::to_string(decimal.precision) + ", " + std::to_string(decimal.scale) + ")";
+  }
+
+  return rendered;
 }
 }
 
@@ -199,10 +250,66 @@ void Connection::bulkLoad(const std::string_view table, const std::vector<std::f
     const auto file_name = path.filename().string();
     const auto statement =
         "INSERT INTO " + std::string(table) +
-        " SELECT * FROM file('table_data/" + file_name + "', 'CSVWithNames')"
+        " SELECT * FROM file('" +
+        dbprove::common::stagedContainerPath(dbprove::common::kClickHouseContainerTableDataRoot, table, file_name).string() +
+        "', 'CSVWithNames')"
         " SETTINGS format_csv_delimiter='|'";
     execute(statement);
   }
+}
+
+void Connection::constructTable(const std::string_view ddl,
+                                const std::span<const std::filesystem::path> source_stems,
+                                const dbprove::StorageVariant storage_variant) {
+  static_cast<void>(storage_variant);
+
+  if (source_stems.empty()) {
+    throw std::runtime_error("constructTable requires at least one staged source file stem");
+  }
+
+  const auto parsed = ParsedTable(ddl);
+  const auto& table = parsed.tableName();
+  std::ostringstream out;
+  out << "CREATE TABLE " << table << "\n(\n";
+  for (size_t i = 0; i < parsed.columns().size(); ++i) {
+    const auto& column = parsed.columns()[i];
+    const auto rendered_type = renderType(column.type, typeMap());
+    out << "    " << column.name << " ";
+    if (column.is_null) {
+      out << "Nullable(" << rendered_type << ")";
+    } else {
+      out << rendered_type;
+    }
+    if (i + 1 < parsed.columns().size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << ")\nENGINE = MergeTree()\nORDER BY tuple();";
+  const auto create_table = out.str();
+  PLOGI << create_table;
+  execute(create_table);
+
+  std::vector<std::filesystem::path> csv_paths;
+  csv_paths.reserve(source_stems.size());
+  for (const auto& stem : source_stems) {
+    auto csv_path = stem;
+    csv_path += ".csv";
+    csv_paths.push_back(std::move(csv_path));
+  }
+  bulkLoad(table, csv_paths);
+}
+
+const ConnectionBase::TypeMap& Connection::typeMap() const {
+  static const TypeMap map = {
+      {SqlTypeKind::SMALLINT, "Int16"},
+      {SqlTypeKind::REAL, "Float32"},
+      {SqlTypeKind::DOUBLE, "Float64"},
+      {SqlTypeKind::STRING, "String"},
+      {SqlTypeKind::INT, "Int32"},
+      {SqlTypeKind::BIGINT, "Int64"},
+  };
+  return map;
 }
 
 std::string Connection::version() {
@@ -212,19 +319,6 @@ std::string Connection::version() {
 void Connection::createSchema(const std::string_view schema_name) {
   // ClickHouse calls a schema a database
   execute("CREATE DATABASE " + std::string(schema_name));
-}
-
-std::string Connection::translateDialectDdl(const std::string_view ddl) const {
-  auto result = std::string(ddl);
-  // Normalise generic type names used by test generators.
-  result = std::regex_replace(result, std::regex(R"(\bSTRING\b)", std::regex::icase), "String");
-  result = std::regex_replace(result, std::regex(R"(\bBIGINT\b)", std::regex::icase), "Int64");
-  result = std::regex_replace(result, std::regex(R"(\bINT\b)", std::regex::icase), "Int32");
-  result = std::regex_replace(result, std::regex(R"(\s+PRIMARY\s+KEY\b)", std::regex::icase), "");
-  // Map generic TPCH DDL to a valid ClickHouse table definition.
-  // We use MergeTree with ORDER BY tuple() as a neutral default that works for all tables.
-  result = std::regex_replace(result, std::regex(R"(;\s*$)"), " ENGINE = MergeTree() ORDER BY tuple();");
-  return result;
 }
 
 void Connection::declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns,

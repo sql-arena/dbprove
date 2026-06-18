@@ -23,11 +23,13 @@ void init() {
 }
 
 Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
-                    const std::optional<sql::RowCount> expected_row_count) {
+                    const std::optional<sql::RowCount> expected_row_count,
+                    std::optional<std::string> display_name) {
   if (theorem_map_.contains(name)) {
     throw std::runtime_error("Theorem " + name + " already exists");
   }
-  theorem_map_.emplace(name, std::make_unique<Theorem>(name, description, func, expected_row_count));
+  theorem_map_.emplace(name, std::make_unique<Theorem>(name, description, func, expected_row_count,
+                                                       std::move(display_name)));
   return *theorem_map_.at(name).get();
 }
 
@@ -55,6 +57,10 @@ void categoriseTheorem(Theorem& theorem, const Category category) {
 
 void tagTheorem(Theorem& theorem, const Tag& tag) {
   theorem.addTag(tag);
+}
+
+void requireStorageVariant(Theorem& theorem, const dbprove::StorageVariant variant) {
+  theorem.requireStorageVariant(variant);
 }
 
 const TheoremMap& allTheorems() {

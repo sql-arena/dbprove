@@ -1,7 +1,7 @@
 CREATE TABLE job.movie_companies (
-    id integer NOT NULL PRIMARY KEY,
-    movie_id integer NOT NULL,
-    company_id integer NOT NULL,
-    company_type_id integer NOT NULL,
-    note text
+    id INT NOT NULL,
+    movie_id INT NOT NULL,
+    company_id INT NOT NULL,
+    company_type_id INT NOT NULL,
+    note TEXT
 );

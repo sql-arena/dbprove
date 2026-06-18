@@ -4,6 +4,7 @@
 #include "sql_type.h"
 #include "result_base.h"
 #include "row_base.h"
+#include <dbprove/common/storage_variant.h>
 
 #include <memory>
 #include <span>
@@ -26,7 +27,7 @@ class ConnectionBase {
   const Engine engine_;
 
 public:
-  using TypeMap = std::map<std::string_view, std::string_view>;
+  using TypeMap = std::map<SqlTypeKind, std::string_view>;
   virtual ~ConnectionBase() = default;
 
   explicit ConnectionBase(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt)
@@ -75,7 +76,15 @@ public:
     bulkLoad(table, std::vector({source_path}));
   }
 
-  void executeDdl(const std::string_view ddl);
+  /**
+   * @brief Construct a logical table from the registered DDL and staged file stems.
+   * @param ddl Registered logical DDL for the table.
+   * @param source_stems Canonical staged file paths without `.csv` / `.parquet`.
+   * @param storage_variant Active storage variant for this run.
+   */
+  virtual void constructTable(std::string_view ddl,
+                              std::span<const std::filesystem::path> source_stems,
+                              dbprove::StorageVariant storage_variant);
 
   virtual void createSchema(std::string_view schema_name);
 
@@ -113,12 +122,7 @@ public:
   virtual void declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns,
                                  std::string_view pk_table, std::span<std::string_view> pk_columns);
 
-  static std::string foreignKeyName(std::string_view table_name);
-
-  /// @brief Given DDL, updates types to match the engine
-  virtual std::string translateDialectDdl(const std::string_view ddl) const {
-    return std::string(mapTypes(ddl));
-  }
+  static std::string foreignKeyName(std::string_view table_name, std::span<std::string_view> fk_columns);
 
   /**
    * Get all the the column types for a table

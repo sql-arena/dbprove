@@ -1,8 +1,10 @@
 #include "connection.h"
 
+#include "include/dbprove/sql/parsed_table.h"
 #include "result.h"
 #include "sql_exceptions.h"
 
+#include <dbprove/common/table_data_conventions.h>
 #include <dbprove/common/string.h>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -11,6 +13,7 @@
 #include <plog/Log.h>
 #include <regex>
 #include <chrono>
+#include <sstream>
 
 namespace sql::trino {
 using json = nlohmann::json;
@@ -66,6 +69,87 @@ std::string jsonScalarAsString(const json& value) {
   }
   return value.dump();
 }
+
+std::string defaultTypeName(const SqlTypeKind kind) {
+  switch (kind) {
+    case SqlTypeKind::SMALLINT:
+      return "SMALLINT";
+    case SqlTypeKind::INT:
+      return "INT";
+    case SqlTypeKind::BIGINT:
+      return "BIGINT";
+    case SqlTypeKind::REAL:
+      return "REAL";
+    case SqlTypeKind::DOUBLE:
+      return "DOUBLE";
+    case SqlTypeKind::DECIMAL:
+      return "DECIMAL";
+    case SqlTypeKind::STRING:
+      return "TEXT";
+    case SqlTypeKind::DATE:
+      return "DATE";
+    case SqlTypeKind::TIME:
+      return "TIME";
+    case SqlTypeKind::DATETIME:
+      return "TIMESTAMP";
+    case SqlTypeKind::SQL_NULL:
+      return "NULL";
+    case SqlTypeKind::UNKNOWN:
+      return "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
+std::string renderType(const SqlTypeMeta& type, const ConnectionBase::TypeMap& type_map) {
+  std::string rendered = type_map.contains(type.kind)
+                       ? std::string(type_map.at(type.kind))
+                       : defaultTypeName(type.kind);
+
+  if (type.kind == SqlTypeKind::STRING && std::holds_alternative<SqlTypeModifier::String>(type.modifier.value)) {
+    const auto length = std::get<SqlTypeModifier::String>(type.modifier.value).length;
+    return rendered + "(" + std::to_string(length) + ")";
+  }
+
+  if (type.kind == SqlTypeKind::DECIMAL && std::holds_alternative<SqlTypeModifier::Decimal>(type.modifier.value)) {
+    const auto decimal = std::get<SqlTypeModifier::Decimal>(type.modifier.value);
+    return rendered + "(" + std::to_string(decimal.precision) + ", " + std::to_string(decimal.scale) + ")";
+  }
+
+  return rendered;
+}
+
+std::string localParquetUriForStem(const std::filesystem::path& stem) {
+  std::vector<std::string> components;
+  bool seen_table_data = false;
+  for (const auto& part : stem) {
+    const auto name = part.string();
+    if (name.empty() || name == ".") {
+      continue;
+    }
+    if (!seen_table_data) {
+      if (name == dbprove::common::kTableDataDirectoryName) {
+        seen_table_data = true;
+      }
+      continue;
+    }
+    components.push_back(name);
+  }
+
+  if (components.empty()) {
+    components.push_back(stem.filename().string());
+  }
+
+  std::ostringstream out;
+  out << "local:///";
+  for (size_t i = 0; i < components.size(); ++i) {
+    if (i > 0) {
+      out << "/";
+    }
+    out << components[i];
+  }
+  out << ".parquet";
+  return out.str();
+}
 }
 
 class Connection::Pimpl {
@@ -99,7 +183,7 @@ public:
   }
 
   [[nodiscard]] std::string currentSchema() const {
-    return credential_.database == "tpch" ? "sf1" : "default";
+    return credential_.database == "tpch" ? "tpch_sf1" : "default";
   }
 
   [[nodiscard]] std::string baseUrl() const {
@@ -113,9 +197,12 @@ public:
     std::string sql = trim_trailing_semicolons(statement);
 
     if (credential_.database == "tpch") {
-      static const std::regex tpch_schema(R"(\btpch\.)", std::regex::icase);
-      sql = std::regex_replace(sql, tpch_schema, "sf1.");
+      static const std::regex tpch_schema(R"(\btpch_sf1\.)", std::regex::icase);
+      sql = std::regex_replace(sql, tpch_schema, "");
     }
+
+    static const std::regex character_varying(R"(\bcharacter\s+varying\b)", std::regex::icase);
+    sql = std::regex_replace(sql, character_varying, "varchar");
 
     static const std::regex left_fn(R"(\bLEFT\s*\(\s*([^,()]+)\s*,\s*([^)]+?)\s*\))", std::regex::icase);
     sql = std::regex_replace(sql, left_fn, "SUBSTRING($1, 1, $2)");
@@ -367,7 +454,9 @@ Connection::Connection(const CredentialPassword& credential, const Engine& engin
 Connection::~Connection() = default;
 
 const ConnectionBase::TypeMap& Connection::typeMap() const {
-  static const TypeMap map = {{"STRING", "VARCHAR"}};
+  static const TypeMap map = {
+      {SqlTypeKind::STRING, "VARCHAR"},
+  };
   return map;
 }
 
@@ -381,7 +470,56 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 }
 
 void Connection::bulkLoad(const std::string_view, const std::vector<std::filesystem::path>) {
-  throw NotImplementedException("Trino bulk load is not implemented. dbprove uses Trino's built-in tpch catalog for PLAN theorem runs.");
+  throw NotImplementedException(
+      "Trino bulk load is not implemented. dbprove expects Trino datasets to be mounted from staged parquet.");
+}
+
+void Connection::constructTable(std::string_view ddl,
+                                const std::span<const std::filesystem::path> source_stems,
+                                const dbprove::StorageVariant storage_variant) {
+  if (storage_variant != dbprove::StorageVariant::Iceberg) {
+    ConnectionBase::constructTable(ddl, source_stems, storage_variant);
+    return;
+  }
+
+  if (source_stems.empty()) {
+    throw std::runtime_error("constructTable requires at least one staged source file stem");
+  }
+
+  const auto parsed = ParsedTable(ddl);
+  const auto& table = parsed.tableName();
+  const auto split = dbprove::common::splitQualifiedTableName(table);
+
+  if (!split.schema_name.empty()) {
+    execute("CREATE SCHEMA IF NOT EXISTS " + split.schema_name
+            + "\nWITH (location = 'local:///warehouse/" + split.schema_name + "')");
+  }
+
+  std::ostringstream out;
+  out << "CREATE TABLE " << table << " (\n";
+  for (size_t i = 0; i < parsed.columns().size(); ++i) {
+    const auto& column = parsed.columns()[i];
+    out << "    " << column.name << " " << renderType(column.type, typeMap());
+    out << (column.is_null ? " NULL" : " NOT NULL");
+    if (i + 1 < parsed.columns().size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << ")\nWITH (\n  format = 'PARQUET'\n)";
+  const auto create_table = out.str();
+  PLOGI << create_table;
+  execute(create_table);
+
+  for (const auto& stem : source_stems) {
+    const auto add_files =
+        "ALTER TABLE " + table + " EXECUTE add_files(\n"
+        "  location => '" + localParquetUriForStem(stem) + "',\n"
+        "  format => 'PARQUET'\n"
+        ")";
+    PLOGI << add_files;
+    execute(add_files);
+  }
 }
 
 std::string Connection::version() {

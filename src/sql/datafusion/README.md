@@ -2,27 +2,29 @@
 
 ## Container Setup
 
-The local container lives under `docker/datafusion/`.
+The local container lives under `docker/datafusion/local/iceberg/`.
 
 Its job is to:
 
 - build `datafusion-cli` from source
 - build a small Rust `datafusion-plan-json` helper against the same DataFusion version
-- read the TPC-H SF1 Parquet files from a mount at `/opt/tpch-source/sf1/`
-- register those files as external tables in a `tpch` schema
+- mount staged host parquet files under `/opt/table-data-source`
+- prepare join-scale support tables in `/workspace/datafusion-bootstrap.sql`
 - enable `datafusion.execution.collect_statistics`
 - expose a helper that emits the physical execution plan as JSON
 
-The bootstrap is intentionally quiet now: table registration happens on every run, but the row-count warmup was moved to `docker/datafusion/collect_statistics.sql` so normal query output stays parseable.
+The container bootstrap is intentionally minimal now: base dataset tables are
+registered by `dbprove` during theorem setup, not by the container init script.
+Container startup and shutdown are owned by `src/dbprove/main.cpp` through the shared `dbprove --docker` flow. User-facing CLI usage is documented in the repo-root `README.md`.
 
 ## Runtime Contract
 
 The driver under `src/sql/datafusion/` is container-backed and uses two execution paths:
 
 - SQL execution and result fetching:
-  - `docker run --rm dbprove-datafusion:latest -q --format json -b 1000000 -f /tmp/query.sql`
+  - run the mounted `datafusion-cli` session inside the managed container
 - Physical-plan JSON emission:
-  - `docker run --rm --entrypoint datafusion-plan-json dbprove-datafusion:latest --sql-file /tmp/query.sql`
+  - run the `datafusion-plan-json` helper inside the managed container
 - Canonical plan parsing:
   - parse the Rust helper's protobuf-backed physical-plan JSON directly into the shared `sql::explain` nodes
 
@@ -32,53 +34,38 @@ This split is deliberate:
 - DataFusion's Rust `datafusion-proto` crate already knows how to serialize physical plans
 - using the helper keeps the JSON format version-matched with the engine and avoids regex parsing
 
-## Validation Notes
+## Singleton Session Contract
 
-Validated locally against the container:
+DataFusion is intentionally special-cased compared to the other `dbprove`
+drivers.
 
-- all 22 TPC-H queries run successfully against the rebuilt image
-- `EXPLAIN FORMAT PGJSON` returns logical-plan JSON only
-- the Rust helper emits structured physical-plan JSON for the same 22-query workload
-- the `dbprove` theorem-backed DataFusion TPCH smoke test parses all 22 plans successfully
+- `ConnectionFactory::create()` still returns a fresh C++ wrapper object
+- all DataFusion wrappers share one process-wide driver backend session
+- `Connection::close()` is intentionally a no-op
+- query execution is serialized inside the driver with a mutex
+
+This exists because DataFusion state is session-oriented in this integration:
+
+- schemas and external tables live in the CLI session
+- `dbprove` frequently asks the factory for a new connection during dataset
+  ensure, theorem execution, and tuning
+- preserving the live DataFusion session across those calls is simpler and more
+  reliable than replaying all state after every `factory.create()`
+
+The mutex is deliberate. Multi-threaded theorem execution against DataFusion
+does not run truly concurrently; the driver queues those requests onto the same
+live session.
+
+The shared bootstrap file at `/workspace/datafusion-bootstrap.sql` is still
+kept up to date so fresh helper processes, such as `datafusion-plan-json`, can
+reconstruct the same table state when needed.
 
 ## Current Limitations
 
-- `bulkLoad(...)` is intentionally unimplemented because this driver targets the pre-mounted TPCH container
+- `bulkLoad(...)` is intentionally unimplemented because this driver targets the
+  mounted parquet workflow
 - canonical parsing currently focuses on the physical operators and expressions observed across the TPC-H workload
 - the protobuf-backed JSON gives rich operator structure, but this pass does not use `EXPLAIN VERBOSE` at all
-
-## Future Cleanup
-
-- if startup cost becomes noticeable, the next step is a small embedded DataFusion adapter instead of shelling into `docker run` per request
-
-That would improve startup cost and give us a cleaner structured explain contract, but it is not required to get an initial integration working.
-
-## How To Wire It Into `dbprove`
-
-For the CLI-backed phase-1 driver, the wiring in this repo is straightforward:
-
-1. Add `src/sql/datafusion/` by copying `src/sql/boilerplate/`.
-2. Register `Engine::Type::DataFusion` in:
-   - `src/sql/include/dbprove/sql/engine.h`
-   - `src/sql/engine.cpp`
-   - `src/sql/connection_factory.cpp`
-   - `src/sql/CMakeLists.txt`
-3. Model the connection layer on a process-backed transport:
-   - use `popen()` or a small process helper
-   - capture stdout and stderr separately if possible
-   - treat non-zero exit codes as engine errors
-4. Parse CLI JSON results into `ResultBase`.
-5. Implement `bulkLoad(...)` as a no-op or `NotImplementedException`, because the container already mounts Parquet externally instead of ingesting CSV.
-6. Implement `explain(...)` from the protobuf-backed JSON emitted by `datafusion-plan-json`.
-
-## Alternative
-
-The more reusable long-term option is either:
-
-- a small HTTP adapter around embedded DataFusion, or
-- Arrow Flight SQL on top of embedded DataFusion
-
-Flight SQL is attractive if we expect multiple Flight SQL engines later.
-An HTTP adapter is attractive if we want to stay close to the existing Trino-style integration pattern.
-
-Both are larger investments than a CLI-backed first pass.
+- connection semantics are intentionally unlike the other engines; callers must
+  treat DataFusion as a shared serialized session rather than an isolated
+  connection per `create()`

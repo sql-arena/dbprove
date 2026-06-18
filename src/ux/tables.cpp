@@ -26,6 +26,20 @@ void RowStatTable(std::ostream& out, const std::vector<RowStats>& rows) {
   out << table.to_string() << std::endl;
 }
 
+void TheoremListTable(std::ostream& out, const std::vector<TheoremListingRow>& rows) {
+  char_table table;
+
+  table.set_border_style(FT_SOLID_ROUND_STYLE);
+
+  table << header << "Name" << "Description" << "Tags" << "Category" << endr;
+  for (const auto& row : rows) {
+    table << row.name << row.description << row.tags << row.categories << endr;
+  }
+  table[0].set_cell_text_style(text_style::bold);
+
+  out << table.to_string() << std::endl;
+}
+
 std::string order_to_string(int8_t magnitude) {
   return std::to_string(1 << std::abs(magnitude)) + "x";
 }

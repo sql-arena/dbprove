@@ -1,8 +1,8 @@
 #include "connection_factory.h"
 #include "duckdb/connection.h"
 #ifndef DBPROVE_DUCKDB_ONLY
-#include "datafusion/connection.h"
 #include "clickhouse/connection.h"
+#include "datafusion/connection.h"
 #include "databricks/connection.h"
 #include "mariadb/connection.h"
 #include "mssql/connection.h"
@@ -44,6 +44,8 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
       return std::make_unique<duckdb::Connection>(std::get<CredentialFile>(credential_), engine_, artifacts_path_);
 #ifndef DBPROVE_DUCKDB_ONLY
     case Engine::Type::DataFusion:
+      // DataFusion intentionally reuses one process-wide driver session across
+      // factory.create() calls. See src/sql/datafusion/README.md.
       return std::make_unique<datafusion::Connection>(std::get<CredentialNone>(credential_), engine_, artifacts_path_);
     case Engine::Type::Databricks:
       return std::make_unique<databricks::Connection>(std::get<CredentialAccessToken>(credential_), engine_, artifacts_path_);

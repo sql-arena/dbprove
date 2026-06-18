@@ -1,16 +1,16 @@
 /* TPC-H Q20 */
 SELECT s_name,
        s_address
-FROM tpch.supplier
-INNER JOIN tpch.nation
+FROM tpch_sf1.supplier
+INNER JOIN tpch_sf1.nation
     ON s_nationkey = n_nationkey
 WHERE s_suppkey IN (SELECT ps_suppkey
-                    FROM tpch.partsupp
+                    FROM tpch_sf1.partsupp
                     WHERE ps_partkey IN (SELECT p_partkey
-                                         FROM tpch.part AS p_inner
+                                         FROM tpch_sf1.part AS p_inner
                                          WHERE p_name LIKE 'almond%')
                       AND ps_availqty > (SELECT 0.5 * SUM(l_quantity) AS qty
-                                         FROM tpch.lineitem as li_inner
+                                         FROM tpch_sf1.lineitem as li_inner
                                          WHERE l_partkey = ps_partkey
                                            AND l_suppkey = ps_suppkey
                                            AND l_shipdate >= '1993-01-01'

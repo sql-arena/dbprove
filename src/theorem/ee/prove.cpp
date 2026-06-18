@@ -56,9 +56,10 @@ const std::vector<int> kOrdersScales = {
     16, 18, 20
 };
 constexpr std::string_view kJoinScaleMaterializationVersion = "ee-join-scale-v2";
+constexpr std::string_view kTpchSchema = "tpch_sf1";
 
 std::filesystem::path defaultSourceParquetDir() {
-  return dbprove::common::get_project_root() / "docker" / "datafusion" / "tpch" / "sf1";
+  return dbprove::common::get_project_root() / "docker" / "datafusion" / "local" / "iceberg" / "tpch" / "sf1";
 }
 
 std::filesystem::path defaultMaterializedParquetDir() {
@@ -187,7 +188,7 @@ std::string lineitemViewSql(const sql::Engine::Type engine_type) {
   sql << "       CAST(l.l_suppkey AS BIGINT) AS l_suppkey,\n";
   sql << "       CAST(l.l_linenumber AS BIGINT) AS l_linenumber,\n";
   sql << "       CAST(lm.replica_id AS BIGINT) AS lineitem_replica_id\n";
-  sql << "FROM tpch.lineitem l\n";
+  sql << "FROM " << kTpchSchema << ".lineitem l\n";
   if (engine_type == sql::Engine::Type::ClickHouse) {
     sql << "CROSS JOIN (SELECT arrayJoin(range(" << kLineitemScale << ")) AS replica_id) AS lm";
   } else {
@@ -205,7 +206,7 @@ std::string ordersViewSql(const sql::Engine::Type engine_type, const int orders_
   for (const auto& column : kOrdersPayloadColumns) {
     sql << ",\n       " << column.expr << " AS " << column.alias;
   }
-  sql << "\nFROM tpch.orders o\n";
+  sql << "\nFROM " << kTpchSchema << ".orders o\n";
   if (engine_type == sql::Engine::Type::ClickHouse) {
     sql << "CROSS JOIN (SELECT arrayJoin(range(" << orders_scale << ")) AS replica_id) AS om";
   } else {
@@ -215,8 +216,8 @@ std::string ordersViewSql(const sql::Engine::Type engine_type, const int orders_
 }
 
 std::string joinScaleSql(const int orders_scale) {
-  const auto orders_table = "tpch." + ordersScaleTableName(orders_scale);
-  const auto lineitem_table = "tpch.lineitem_25x";
+  const auto orders_table = std::string(kTpchSchema) + "." + ordersScaleTableName(orders_scale);
+  const auto lineitem_table = std::string(kTpchSchema) + ".lineitem_25x";
   std::ostringstream sql;
   sql << "SELECT COUNT(*) AS join_row_count,\n";
   sql << "       COUNT(l.l_orderkey) AS count_l_orderkey";
@@ -238,7 +239,7 @@ std::string joinScaleSql(const int orders_scale) {
 }
 
 std::string sortScaleSql(const int orders_scale) {
-  const auto orders_table = "tpch." + ordersScaleTableName(orders_scale);
+  const auto orders_table = std::string(kTpchSchema) + "." + ordersScaleTableName(orders_scale);
   std::ostringstream sql;
   sql << "SELECT SUM(CAST(c AS BIGINT)) AS sum_row_number,\n";
   sql << "       COUNT(o_orderkey) AS count_o_orderkey";
@@ -257,7 +258,7 @@ std::string sortScaleSql(const int orders_scale) {
 }
 
 std::string aggScaleSql(const int orders_scale) {
-  const auto orders_table = "tpch." + ordersScaleTableName(orders_scale);
+  const auto orders_table = std::string(kTpchSchema) + "." + ordersScaleTableName(orders_scale);
   std::ostringstream sql;
   sql << "SELECT COUNT(*) AS agg_group_count,\n";
   sql << "       SUM(CAST(group_rows AS BIGINT)) AS sum_group_rows,\n";
@@ -315,14 +316,14 @@ void ensureDuckDbMaterializedViews(Proof& proof) {
   }
 
   auto conn = proof.factory().create();
-  conn->execute("CREATE SCHEMA IF NOT EXISTS tpch");
+  conn->execute("CREATE SCHEMA IF NOT EXISTS " + std::string(kTpchSchema));
   conn->execute(
-      "CREATE OR REPLACE VIEW tpch.lineitem_25x AS SELECT * FROM read_parquet('"
+      "CREATE OR REPLACE VIEW " + std::string(kTpchSchema) + ".lineitem_25x AS SELECT * FROM read_parquet('"
       + (parquet_dir / "lineitem_25x" / "lineitem_25x.parquet").string() + "')");
   for (const int orders_scale : kOrdersScales) {
     const auto table_name = ordersScaleTableName(orders_scale);
     conn->execute(
-        "CREATE OR REPLACE VIEW tpch." + table_name + " AS SELECT * FROM read_parquet('"
+        "CREATE OR REPLACE VIEW " + std::string(kTpchSchema) + "." + table_name + " AS SELECT * FROM read_parquet('"
         + (parquet_dir / table_name / (table_name + ".parquet")).string() + "')");
   }
   conn->close();
@@ -333,27 +334,27 @@ void ensureJoinScaleRelations(Proof& proof) {
   if (engine_type == sql::Engine::Type::DataFusion || engine_type == sql::Engine::Type::Trino) {
     return;
   }
-  proof.ensureDataset("tpch");
+  proof.ensureDataset(std::string(kTpchSchema));
   if (engine_type == sql::Engine::Type::DuckDB) {
     ensureDuckDbMaterializedViews(proof);
     return;
   }
 
-  proof.ensureSchema("tpch");
+  proof.ensureSchema(std::string(kTpchSchema));
   auto conn = proof.factory().create();
   if (engine_type == sql::Engine::Type::ClickHouse) {
-    conn->execute("DROP VIEW IF EXISTS tpch.lineitem_25x");
-    conn->execute("CREATE VIEW tpch.lineitem_25x AS " + lineitemViewSql(engine_type));
+    conn->execute("DROP VIEW IF EXISTS " + std::string(kTpchSchema) + ".lineitem_25x");
+    conn->execute("CREATE VIEW " + std::string(kTpchSchema) + ".lineitem_25x AS " + lineitemViewSql(engine_type));
   } else {
-    conn->execute(renderCreateOrReplaceView(engine_type, "tpch.lineitem_25x", lineitemViewSql(engine_type)));
+    conn->execute(renderCreateOrReplaceView(engine_type, std::string(kTpchSchema) + ".lineitem_25x", lineitemViewSql(engine_type)));
   }
   for (const int orders_scale : kOrdersScales) {
     const auto table_name = ordersScaleTableName(orders_scale);
     if (engine_type == sql::Engine::Type::ClickHouse) {
-      conn->execute("DROP VIEW IF EXISTS tpch." + table_name);
-      conn->execute("CREATE VIEW tpch." + table_name + " AS " + ordersViewSql(engine_type, orders_scale));
+      conn->execute("DROP VIEW IF EXISTS " + std::string(kTpchSchema) + "." + table_name);
+      conn->execute("CREATE VIEW " + std::string(kTpchSchema) + "." + table_name + " AS " + ordersViewSql(engine_type, orders_scale));
     } else {
-      conn->execute(renderCreateOrReplaceView(engine_type, "tpch." + table_name, ordersViewSql(engine_type, orders_scale)));
+      conn->execute(renderCreateOrReplaceView(engine_type, std::string(kTpchSchema) + "." + table_name, ordersViewSql(engine_type, orders_scale)));
     }
   }
   conn->close();
@@ -393,6 +394,7 @@ void registerJoinScale(const int orders_scale) {
   categoriseTheorem(theorem, Category::EE);
   tagTheorem(theorem, Tag("JOIN"));
   tagTheorem(theorem, Tag("scale"));
+  requireStorageVariant(theorem, dbprove::StorageVariant::Iceberg);
 }
 
 void registerSortScale(const int orders_scale) {
@@ -407,6 +409,7 @@ void registerSortScale(const int orders_scale) {
   categoriseTheorem(theorem, Category::EE);
   tagTheorem(theorem, Tag("SORT"));
   tagTheorem(theorem, Tag("scale"));
+  requireStorageVariant(theorem, dbprove::StorageVariant::Iceberg);
 }
 
 void registerAggScale(const int orders_scale) {
@@ -421,6 +424,7 @@ void registerAggScale(const int orders_scale) {
   categoriseTheorem(theorem, Category::EE);
   tagTheorem(theorem, Tag("AGG"));
   tagTheorem(theorem, Tag("scale"));
+  requireStorageVariant(theorem, dbprove::StorageVariant::Iceberg);
 }
 }
 

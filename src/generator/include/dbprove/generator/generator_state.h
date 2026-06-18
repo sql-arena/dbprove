@@ -1,9 +1,14 @@
 #pragma once
 #include <dbprove/sql/sql.h>
-#include <filesystem>
-#include <functional>
-#include <set>
 #include <dbprove/common/cloud_provider.h>
+#include <dbprove/common/storage_variant.h>
+#include <filesystem>
+#include <ostream>
+#include <set>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 
 namespace sql {
@@ -11,9 +16,18 @@ class ConnectionFactory;
 }
 
 namespace generator {
-class GeneratorState;
 class GeneratedTable;
-using GeneratorFunc = std::function<void(GeneratorState&, sql::ConnectionBase*)>;
+
+struct ForeignKeyMetadata {
+  std::vector<std::string> columns;
+  std::string referenced_table;
+  std::vector<std::string> referenced_columns;
+};
+
+struct TableMetadata {
+  std::vector<std::string> primary_key_columns;
+  std::vector<ForeignKeyMetadata> foreign_keys;
+};
 
 
 class GeneratorState {
@@ -22,6 +36,7 @@ class GeneratorState {
   const std::filesystem::path basePath_;
   const CloudProvider dataProvider_;
   const std::string dataPath_;
+  const dbprove::StorageVariant storageVariant_;
   static constexpr std::string_view colSeparator_ = "|";
   static constexpr std::string_view rowSeparator_ = "\n";
 
@@ -37,14 +52,15 @@ class GeneratorState {
   std::set<std::string, TransparentLess> ready_tables_ = {};
 
 public:
-  explicit GeneratorState(const sql::Engine& engine, const std::filesystem::path& basePath, CloudProvider dataProvider = CloudProvider::NONE, std::string dataPath = "");
+  explicit GeneratorState(const sql::Engine& engine, const std::filesystem::path& basePath,
+                          CloudProvider dataProvider = CloudProvider::NONE, std::string dataPath = "",
+                          dbprove::StorageVariant storageVariant = dbprove::StorageVariant::Native);
   ~GeneratorState();
-
-  void prepareFileInput(std::string_view schemaName, std::string_view tableName, std::string_view relativePath);
 
   [[nodiscard]] const sql::Engine& engine() const { return engine_; }
   [[nodiscard]] CloudProvider cloudProvider() const { return dataProvider_; }
   [[nodiscard]] const std::string& dataPath() const { return dataPath_; }
+  [[nodiscard]] dbprove::StorageVariant storageVariant() const { return storageVariant_; }
 
   /**
    * Makes sure that a table is availabe on the given connection
@@ -64,15 +80,23 @@ public:
 
   /**
    * Makes sure an entire dataset is available on the given connection.
-   * @param dataset_name Dataset registered through REGISTER_GENERATOR
+   * @param dataset_name Dataset registered through REGISTER_TABLE
    * @param conn Connection factory used for ensure/load operations
    */
   void ensureDataset(std::string_view dataset_name, sql::ConnectionFactory& conn);
 
   /**
-   * Generate a table input (if not already made) and return the row count
+   * Make sure local source files for an entire dataset have been generated or
+   * downloaded and registered, without loading them into a database.
+   * This is useful for engines that mount staged parquet directly at startup.
    */
-  sql::RowCount generate(std::string_view table_name, sql::ConnectionBase* conn = nullptr);
+  void ensureDatasetFiles(std::string_view dataset_name);
+
+  /**
+   * Make sure the local CSV/parquet source files for a table exist and return
+   * the expected row count.
+   */
+  sql::RowCount generate(std::string_view table_name);
   /**
    * Load a table
    * @param table_name Table to load
@@ -82,9 +106,12 @@ public:
   /**
    * Lets the state know that we've made the input files necessary for the generation
    * @param table_name The table we've generated
-   * @param path The path where the input file can be found
+   * @param csv_paths The local CSV input files
+   * @param parquet_paths The local parquet input files
    */
-  void registerGeneration(const std::string_view table_name, const std::filesystem::path& path) const;
+  void registerGeneration(std::string_view table_name,
+                          std::vector<std::filesystem::path> csv_paths,
+                          std::vector<std::filesystem::path> parquet_paths) const;
 
   /**
    * @brief Prints a summary of all tables that were ensured/generated during this run.
@@ -97,26 +124,26 @@ public:
   static bool containsDataset(std::string_view dataset_name);
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
 
-  [[nodiscard]] std::filesystem::path csvPath(const std::string_view table_name) const {
-    const std::string file_name = std::string(table_name) + ".csv";
-    return basePath_ / file_name;
-  }
-
   static constexpr std::string_view columnSeparator() { return colSeparator_; }
   static constexpr std::string_view rowSeparator() { return rowSeparator_; }
 };
 
 
 struct Registrar {
-  Registrar(std::string_view table_name, std::string_view dataset_name, std::string_view ddl, const GeneratorFunc& f, sql::RowCount rows);
+  Registrar(std::string_view table_name,
+            std::string_view dataset_name,
+            std::string_view ddl,
+            sql::RowCount rows,
+            size_t expected_file_count,
+            TableMetadata metadata = {});
 };
 }
 
 /**
- * Macros to register generator functions.
+ * Macros to register table source functions.
  *
  *  Usage:
- *      REGISTER_GENERATOR("<name>", <funcPtr>);
+ *      REGISTER_TABLE("<name>", "<dataset>", <ddl>, <rows>, <fileCount>);
  *
  */
 
@@ -128,7 +155,8 @@ struct Registrar {
 #define BRACED(...) { __VA_ARGS__ }
 
 
-#define REGISTER_GENERATOR(NAME, DATASET, DDL, FUNC, ROWS) \
-    extern void FUNC(generator::GeneratorState&, sql::ConnectionBase*); \
-    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DATASET, DDL, FUNC, ROWS);
+#define REGISTER_TABLE(NAME, DATASET, DDL, ROWS, FILE_COUNT) \
+    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DATASET, DDL, ROWS, FILE_COUNT);
 
+#define REGISTER_TABLE_WITH_METADATA(NAME, DATASET, DDL, ROWS, FILE_COUNT, METADATA) \
+    static inline generator::Registrar CONCATENATE(_registrar_, __COUNTER__)(NAME, DATASET, DDL, ROWS, FILE_COUNT, METADATA);

@@ -56,11 +56,19 @@ For execution-plan work in a new session, load context in this order:
 
 ## Runtime Ownership Convention
 
-For engines that are started and supervised outside the process, such as the Docker-backed local engines, driver connections should assume the service is already running.
+For docker-backed local engines, process startup and shutdown are now owned by `src/dbprove/main.cpp` through the `--docker` CLI flow.
 
-- Container startup, health checks, retries, and credential bootstrapping belong in launcher scripts such as `benchmark.sh`, Docker `healthcheck` blocks, or dedicated helper scripts.
+- Driver connections should still assume the service is already running by the time they are constructed.
+- Container startup, health checks, retries, and credential bootstrapping belong in the shared launcher path in `main.cpp` and the common docker helpers it calls.
 - Engine connection classes under `src/sql/<engine>/connection.cpp` should focus on connecting, translating SQL, executing statements, and parsing results.
-- Avoid embedding Docker-specific liveness probes or container-management logic inside a connection implementation. If an engine must be made reachable first, do it in the outer shell or Python workflow that starts that engine.
+- Avoid embedding Docker-specific liveness probes or container-management logic inside a connection implementation. If an engine must be made reachable first, do it in the shared `dbprove` startup path rather than in per-driver code.
+- Docker-managed engine images must keep their bootstrap credentials aligned
+  with `Engine::defaultUsername(...)`, `Engine::defaultPassword(...)`,
+  `Engine::defaultDatabase(...)`, and related connection defaults. If the
+  container-side defaults change, update the `Engine` defaults in the same
+  change.
+
+User-facing `dbprove` CLI usage belongs in the repo-root `README.md`. Keep the `src` READMEs focused on implementation details, driver behavior, and internal conventions.
 
 ## Adding A New Driver
 
@@ -160,12 +168,12 @@ Tune scripts live under each engine in a `tune/` folder:
 
 Examples:
 
-- `src/sql/mssql/tune/tpch.sql`
-- `src/sql/mssql/tune/tpch_drop.sql`
-- `src/sql/postgresql/tune/tpch.sql`
-- `src/sql/postgresql/tune/tpch_drop.sql`
-- `src/sql/databricks/tune/tpch.sql`
-- `src/sql/databricks/tune/tpch_drop.sql`
+- `src/sql/mssql/tune/tpch_sf1.sql`
+- `src/sql/mssql/tune/tpch_sf1_drop.sql`
+- `src/sql/postgresql/tune/tpch_sf1.sql`
+- `src/sql/postgresql/tune/tpch_sf1_drop.sql`
+- `src/sql/databricks/tune/tpch_sf1.sql`
+- `src/sql/databricks/tune/tpch_sf1_drop.sql`
 
 ### Execution Behavior
 

@@ -1,5 +1,6 @@
 #include "connection.h"
 
+#include "include/dbprove/sql/parsed_table.h"
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -16,6 +18,8 @@
 #include "result.h"
 #include "sql_exceptions.h"
 #include <dbprove/common/file_utility.h>
+#include <dbprove/common/table_data_conventions.h>
+#include <dbprove/common/docker.h>
 #include <dbprove/common/string.h>
 #include <nlohmann/json.hpp>
 #ifdef _WIN32
@@ -51,14 +55,18 @@ std::filesystem::path datafusionWorkspaceDir() {
   return dbprove::common::get_project_root() / "run" / "mount" / "datafusion";
 }
 
+std::filesystem::path bootstrapSqlHostPath() {
+  return datafusionWorkspaceDir() / "datafusion-bootstrap.sql";
+}
+
 std::filesystem::path dockerComposeFile() {
   return dbprove::common::get_project_root() / "docker" / "docker-compose.yml";
 }
 
-constexpr std::string_view kComposeProjectName = "dbprove-scale";
+constexpr std::string_view kDataFusionComposeService = "datafusion-iceberg";
 
 std::string composeExecPrefix() {
-  return "docker compose -p " + shell_quote(kComposeProjectName)
+  return "docker compose -p " + shell_quote(std::string(dbprove::common::kDbproveManagedComposeProjectName))
          + " -f " + shell_quote(dockerComposeFile().string());
 }
 
@@ -66,7 +74,7 @@ void waitForDataFusionBootstrap() {
   using namespace std::chrono_literals;
   const auto deadline = std::chrono::steady_clock::now() + 60s;
   const auto ready_command = composeExecPrefix()
-                             + " exec -T datafusion sh -lc "
+                             + " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc "
                              + shell_quote("test -f /tmp/datafusion-bootstrap-ready");
   while (std::chrono::steady_clock::now() < deadline) {
     if (runCommand(ready_command).exit_code == 0) {
@@ -74,7 +82,7 @@ void waitForDataFusionBootstrap() {
     }
     std::this_thread::sleep_for(500ms);
   }
-  throw std::runtime_error("Timed out waiting for DataFusion bootstrap readiness marker in the datafusion container");
+  throw std::runtime_error("Timed out waiting for DataFusion bootstrap readiness marker in the datafusion-iceberg container");
 }
 
 std::string readTextFile(const std::filesystem::path& path) {
@@ -85,6 +93,31 @@ std::string readTextFile(const std::filesystem::path& path) {
   std::ostringstream buffer;
   buffer << in.rdbuf();
   return buffer.str();
+}
+
+void appendBootstrapStatement(std::string_view statement) {
+  const auto path = bootstrapSqlHostPath();
+  std::string existing;
+  if (std::filesystem::exists(path)) {
+    existing = readTextFile(path);
+    if (existing.contains(statement)) {
+      return;
+    }
+  } else {
+    std::filesystem::create_directories(path.parent_path());
+  }
+
+  std::ofstream out(path, std::ios::app);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open DataFusion bootstrap SQL for append: " + path.string());
+  }
+  out << statement;
+  if (!statement.empty() && statement.back() != '\n') {
+    out << '\n';
+  }
+  if (statement.empty() || statement.back() != ';') {
+    out << ";\n";
+  }
 }
 
 std::string normalizeCliStatement(std::string_view sql);
@@ -98,7 +131,7 @@ class PersistentCliSession {
 
   static std::string sessionCommand() {
     return composeExecPrefix() +
-           " exec -T datafusion sh -lc " +
+           " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc " +
            shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
                        "-r /workspace/datafusion-bootstrap.sql");
   }
@@ -108,6 +141,21 @@ class PersistentCliSession {
       line.pop_back();
     }
     return line;
+  }
+
+  static bool isJsonPayload(std::string_view line) {
+    const auto trimmed = trim_string(line);
+    return !trimmed.empty() && (trimmed.front() == '[' || trimmed.front() == '{');
+  }
+
+  static bool isCompleteJsonPayload(std::string_view payload) {
+    try {
+      const auto parsed = json::parse(payload.begin(), payload.end());
+      static_cast<void>(parsed);
+      return true;
+    } catch (const json::parse_error&) {
+      return false;
+    }
   }
 
   static std::string describeWaitStatus(const int status) {
@@ -197,6 +245,7 @@ public:
     fflush(input_);
 
     std::array<char, 65536> buffer{};
+    std::string json_payload;
     while (fgets(buffer.data(), static_cast<int>(buffer.size()), output_) != nullptr) {
       std::string line = trimLine(buffer.data());
       if (line.empty()) {
@@ -205,10 +254,21 @@ public:
       if (line == trimLine(std::string(statement))) {
         continue;
       }
-      const auto trimmed = trim_string(line);
-      if (!trimmed.empty() && (trimmed.front() == '[' || trimmed.front() == '{')) {
-        return line;
+      if (!json_payload.empty()) {
+        json_payload += line;
+        if (isCompleteJsonPayload(json_payload)) {
+          return json_payload;
+        }
+        continue;
       }
+      if (isJsonPayload(line)) {
+        json_payload = line;
+        if (isCompleteJsonPayload(json_payload)) {
+          return json_payload;
+        }
+        continue;
+      }
+      const auto trimmed = trim_string(line);
       if (trimmed.starts_with("Error") || trimmed.starts_with("error")) {
         throw std::runtime_error(line);
       }
@@ -318,6 +378,35 @@ std::string trimOutput(std::string output) {
     output.pop_back();
   }
   return output;
+}
+
+std::vector<std::string> splitSqlStatements(std::string_view sql) {
+  std::vector<std::string> statements;
+  std::string current;
+  current.reserve(sql.size());
+  for (const char c : sql) {
+    if (c == ';') {
+      const auto trimmed = trim_string(current);
+      if (!trimmed.empty()) {
+        statements.emplace_back(trimmed);
+      }
+      current.clear();
+      continue;
+    }
+    current.push_back(c);
+  }
+  const auto trimmed = trim_string(current);
+  if (!trimmed.empty()) {
+    statements.emplace_back(trimmed);
+  }
+  return statements;
+}
+
+std::string rewriteStatement(std::string_view sql) {
+  std::string rewritten = trim_trailing_semicolons(sql);
+  static const std::regex tpch_schema(R"(\btpch\.)", std::regex::icase);
+  rewritten = std::regex_replace(rewritten, tpch_schema, "");
+  return rewritten;
 }
 
 std::string normalizeCliStatement(std::string_view sql) {
@@ -442,7 +531,7 @@ SqlVariant jsonValueToVariant(const ordered_json& value) {
 
 class Connection::Pimpl {
   CredentialNone credential_;
-  bool closed_ = false;
+  mutable std::recursive_mutex mutex_;
 #ifndef _WIN32
   std::unique_ptr<PersistentCliSession> session_;
 #endif
@@ -454,14 +543,7 @@ class Connection::Pimpl {
     waitForDataFusionBootstrap();
   }
 
-  void ensureOpen() const {
-    if (closed_) {
-      throw ConnectionClosedException(credential_);
-    }
-  }
-
-  void close() {
-    closed_ = true;
+  void resetSession() {
 #ifndef _WIN32
     if (session_) {
       session_->close();
@@ -479,10 +561,14 @@ class Connection::Pimpl {
   }
 #endif
 
+  std::recursive_mutex& mutex() const {
+    return mutex_;
+  }
+
   CommandResult runOneShotCli(std::string_view sql, bool quiet) const {
     const std::string quiet_flag = quiet ? " --quiet" : "";
     const std::string command = composeExecPrefix() +
-                                " exec -T datafusion sh -lc " +
+                                " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc " +
                                 shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --data-path /workspace "
                                             "--mem-pool-type fair -m 2g -d 4g -r " +
                                             shell_quote(bootstrapSqlPath()) + quiet_flag + " --format json -b 1000000");
@@ -494,15 +580,13 @@ class Connection::Pimpl {
   }
 
   CommandResult runCli(std::string_view sql, bool quiet = true) const {
-    ensureOpen();
     return runOneShotCli(sql, quiet);
   }
 
   CommandResult runPhysicalPlanHelper(std::string_view sql) const {
-    ensureOpen();
     const auto bootstrap_path = datafusionWorkspaceDir() / "datafusion-bootstrap.sql";
     const std::string command = composeExecPrefix() +
-                                " exec -T datafusion sh -lc " +
+                                " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc " +
                                 shell_quote(
                                     "export TMPDIR=/workspace/datafusion-spill; "
                                     "exec /opt/datafusion-plan-json/bin/datafusion-plan-json --bootstrap-file " +
@@ -515,22 +599,29 @@ class Connection::Pimpl {
   }
 
   std::string runPersistentJsonQuery(std::string_view sql) {
-    ensureOpen();
 #ifdef _WIN32
-    const auto result = runCli(sql);
+    const auto result = runCli(rewriteStatement(sql));
     if (result.exit_code != 0) {
       throwForCommandError(credential_, sql, result.exit_code, result.output);
     }
     return trimOutput(result.output);
 #else
-    return session().runJsonQuery(sql);
+    try {
+      return session().runJsonQuery(rewriteStatement(sql));
+    } catch (const std::runtime_error& e) {
+      throwForCommandError(credential_, sql, 1, e.what());
+    }
 #endif
   }
 };
 
 Connection::Connection(const CredentialNone& credential, const Engine& engine,
                        std::optional<std::string> artifacts_path)
-    : ConnectionBase(credential, engine, std::move(artifacts_path)), impl_(std::make_unique<Pimpl>(credential)) {}
+    : ConnectionBase(credential, engine, std::move(artifacts_path)),
+      impl_([](const CredentialNone& singleton_credential) {
+        static const auto singleton = std::make_shared<Pimpl>(singleton_credential);
+        return singleton;
+      }(credential)) {}
 
 Connection::~Connection() = default;
 
@@ -539,14 +630,21 @@ const ConnectionBase::TypeMap& Connection::typeMap() const {
   return map;
 }
 
+std::recursive_mutex& Connection::driverMutex() const {
+  return impl_->mutex();
+}
+
 void Connection::execute(std::string_view statement) {
-  const auto result = impl_->runCli(statement, true);
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
+  const auto rewritten = rewriteStatement(statement);
+  const auto result = impl_->runCli(rewritten, true);
   if (result.exit_code != 0) {
     throwForCommandError(credential, statement, result.exit_code, result.output);
   }
 }
 
 std::unique_ptr<ResultBase> Connection::fetchJsonQuery(std::string_view statement) {
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
   const auto raw_output = trimOutput(impl_->runPersistentJsonQuery(statement));
   ordered_json payload;
   try {
@@ -598,19 +696,52 @@ void Connection::bulkLoad(const std::string_view table, const std::vector<std::f
       "The DataFusion driver uses a pre-mounted dataset container and does not implement bulk load");
 }
 
+void Connection::constructTable(std::string_view ddl,
+                                const std::span<const std::filesystem::path> source_stems,
+                                const dbprove::StorageVariant storage_variant) {
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
+  const auto parsed = ParsedTable(ddl);
+  const auto& table = parsed.tableName();
+
+  if (storage_variant != dbprove::StorageVariant::Iceberg) {
+    ConnectionBase::constructTable(ddl, source_stems, storage_variant);
+    return;
+  }
+
+  if (source_stems.size() != 1) {
+    throw NotImplementedException("DataFusion parquet-backed constructTable currently expects a single staged parquet file");
+  }
+
+  const auto split = dbprove::common::splitQualifiedTableName(table);
+  const auto parquet_path = dbprove::common::stagedMountedParquetPath(table, 0, source_stems.size());
+  const auto create_table = "CREATE EXTERNAL TABLE IF NOT EXISTS " + std::string(table)
+                          + " STORED AS PARQUET LOCATION '" + parquet_path.string() + "'";
+  if (!split.schema_name.empty()) {
+    execute("CREATE SCHEMA IF NOT EXISTS " + split.schema_name);
+    appendBootstrapStatement("CREATE SCHEMA IF NOT EXISTS " + split.schema_name);
+  }
+  execute(create_table);
+  appendBootstrapStatement(create_table);
+  impl_->resetSession();
+}
+
 void Connection::analyse(std::string_view table_name) {
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
   const auto statement = "SELECT COUNT(*) FROM " + std::string(table_name);
   execute(statement);
 }
 
-bool Connection::shouldSkipDatasetTuning(std::string_view dataset) { return dataset == "tpch"; }
+std::string Connection::version() {
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
+  return fetchScalar("SELECT version()").asString();
+}
 
-std::string Connection::version() { return fetchScalar("SELECT version()").asString(); }
-
-void Connection::close() { impl_->close(); }
+void Connection::close() {}
 
 json Connection::fetchPhysicalPlanJson(std::string_view statement) const {
-  const auto result = impl_->runPhysicalPlanHelper(statement);
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
+  const auto rewritten = rewriteStatement(statement);
+  const auto result = impl_->runPhysicalPlanHelper(rewritten);
   if (result.exit_code != 0) {
     throwForCommandError(credential, statement, result.exit_code, result.output);
   }

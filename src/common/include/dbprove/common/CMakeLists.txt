@@ -10,4 +10,5 @@ target_sources(${_targetName}
         docker.h
         file_utility.h
         json_utility.h
+        table_data_conventions.h
 )

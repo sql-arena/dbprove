@@ -7,12 +7,12 @@ SELECT c_custkey,
        c_address,
        c_phone,
        c_comment
-FROM tpch.lineitem
-INNER JOIN tpch.orders
+FROM tpch_sf1.lineitem
+INNER JOIN tpch_sf1.orders
     ON l_orderkey = o_orderkey
-INNER JOIN tpch.customer
+INNER JOIN tpch_sf1.customer
     ON o_custkey = c_custkey
-INNER JOIN tpch.nation
+INNER JOIN tpch_sf1.nation
     ON c_nationkey = n_nationkey
 WHERE o_orderdate >= '1994-06-01'
   AND o_orderdate < '1994-09-01'

@@ -41,9 +41,11 @@ public:
   std::string defaultHost(std::optional<std::string> host = std::nullopt) const;
 
   /**
-   * @brief Default port (or 0 if no port needed) if not provided
+   * @brief Default port (or 0 if no port needed) if not provided. In docker
+   * mode all host-exposed engines share one fixed port so starting multiple
+   * engine containers at once fails loudly.
    */
-  uint16_t defaultPort(uint16_t port) const;
+  uint16_t defaultPort(uint16_t port, bool docker_mode = false) const;
 
   /**
    * @brief Default database if none supplied

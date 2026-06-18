@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+stage_tpch_tables() {
+  if [[ -d /opt/table-data-source/tpch_sf1 ]]; then
+    cp -R /opt/table-data-source/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
+    return
+  fi
+
+  local tables=(region nation supplier customer part partsupp orders lineitem)
+  for table in "${tables[@]}"; do
+    cp "/opt/table-data-source/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
+  done
+}
+
 prepare_tpch_tmpfs() {
   rm -f /tmp/trino-bootstrap-ready
-  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch
-  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch/sf1 /data/trino/spill
+  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1
+  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1 /data/trino/spill
   cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
-  cp -R /opt/tpch-source/sf1/. /mnt/tpch-tmpfs/tpch/sf1/
+  stage_tpch_tables
 }
 
 bootstrap_trino() {
@@ -18,17 +30,7 @@ bootstrap_trino() {
         --server http://127.0.0.1:8080 \
         --catalog tpch \
         --schema default \
-        --file /opt/trino/bootstrap.sql >>/tmp/trino-bootstrap.log 2>&1 \
-        && /usr/bin/trino \
-          --server http://127.0.0.1:8080 \
-          --catalog tpch \
-          --schema sf1 \
-          --execute "SELECT * FROM tpch.sf1.lineitem_25x LIMIT 1" >>/tmp/trino-bootstrap.log 2>&1 \
-        && /usr/bin/trino \
-          --server http://127.0.0.1:8080 \
-          --catalog tpch \
-          --schema sf1 \
-          --execute "SELECT * FROM tpch.sf1.orders_scale_20 LIMIT 1" >>/tmp/trino-bootstrap.log 2>&1; then
+        --execute "SELECT 1" >>/tmp/trino-bootstrap.log 2>&1; then
         return 0
       fi
     fi

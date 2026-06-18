@@ -12,7 +12,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_DB=postgres
     ports:
-      - "5432:5432"
+      - "65432:5432"
     volumes:
       - ../run/mount/postgresql:/var/lib/postgresql
 
@@ -23,7 +23,7 @@ services:
       - CLICKHOUSE_PASSWORD=default
     ports:
       - "8123:8123"
-      - "9000:9000"
+      - "65432:9000"
     volumes:
       - ../run/mount/clickhouse:/var/lib/clickhouse
       - ../run/table_data:/var/lib/clickhouse/user_files/table_data:ro
@@ -36,7 +36,7 @@ services:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-YourStrong!Passw0rd}
       - MSSQL_PID=Developer
     ports:
-      - "1433:1433"
+      - "65432:1433"
     volumes:
       - ../run/mount/mssql:/var/opt/mssql
       - ../run/table_data:/var/opt/mssql/table_data
@@ -58,13 +58,13 @@ services:
     depends_on:
       - nessie
     ports:
-      - "8080:8080"
+      - "65432:8080"
     tmpfs:
       - /mnt/tpch-tmpfs:size=4g,uid=1000,gid=1000,mode=755
     volumes:
       - ../run/mount/trino:/data/trino
       - ../run/materialized/join_scale:/opt/join-scale-source:ro
-      - ./datafusion/local/iceberg/tpch/sf1:/opt/tpch-source/sf1:ro
+      - ../run/table_data:/opt/table-data-source:ro
 
   datafusion-iceberg:
     build: ./datafusion/local/iceberg
@@ -75,4 +75,4 @@ services:
     volumes:
       - ../run/mount/datafusion:/workspace
       - ../run/materialized/join_scale:/opt/join-scale-source:ro
-      - ./datafusion/local/iceberg/tpch/sf1:/opt/tpch-source/sf1:ro
+      - ../run/table_data:/opt/table-data-source:ro

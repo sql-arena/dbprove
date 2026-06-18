@@ -1,6 +1,6 @@
 # Databricks Execution Plan Parsing
 
-This document tracks the ongoing understanding of Databricks query plans, specifically those retrieved via the SQL UI JSON scraper and `EXPLAIN COST`.
+This document describes how dbprove interprets Databricks query plans retrieved via the SQL UI JSON scraper and `EXPLAIN COST`.
 
 ## Plan Sources
 
@@ -125,10 +125,3 @@ Spark's logical estimates (from `EXPLAIN COST`) are matched against the physical
     -   **Pattern Matching**: The propagation logic also handles specific physical patterns like `GROUP BY -> DISTRIBUTE -> GROUP BY`. In this case, the row estimate from the top-most `GROUP BY` (which is typically the only one represented in the logical plan) is aggressively propagated down to the lower `GROUP BY` and the intermediate `DISTRIBUTE` node. This ensures consistent estimates across the physical distribution stage and corrects cases where the lower nodes might have incorrectly matched unrelated logical estimates during the initial greedy pass.
 
 This strategy ensures that multiple occurrences of the same operator type (e.g., several `Join` or `Scan` nodes) are correctly matched to their specific estimates based on their position in the plan, rather than all receiving the same estimate from a global map. It also improves robustness by not forcing matches for technical nodes that might not appear in the logical plan.
-
-## Strategy: Incremental Parsing via Theorems
-
-We use `src/theorem/test_theorem.cpp` and `src/theorem/plan/prove.cpp` to run controlled queries (e.g., TPC-H Q01) and capture their plans as artifacts. 
-
--   **Test Driven**: By observing how different SQL constructs (joins, subqueries, CTEs) manifest in the JSON, we can incrementally teach the parser to handle more complex plans.
--   **Artifacts**: Using the `-a/--artifacts` flag allows us to work with stable, offline copies of the JSON for iterative development.

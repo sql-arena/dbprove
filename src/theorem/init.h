@@ -13,13 +13,15 @@ using CategorySet = std::set<Category>;
  * New theorems must call this to register themselves
  */
 Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
-                    std::optional<sql::RowCount> expected_row_count = std::nullopt);
-/**
- * Theorems belong to categories.
- * That allows us to easily group up and report on things depending on where in the stack they belong
- * @param theorem The theorem as returned by `addTheorem`
- * @param category The category to add the theorem to. A theorem can belong to multiple categories.
- */
+                    std::optional<sql::RowCount> expected_row_count,
+                    std::optional<std::string> display_name);
+inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
+                           std::optional<sql::RowCount> expected_row_count) {
+  return addTheorem(std::move(name), std::move(description), func, expected_row_count, std::nullopt);
+}
+inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func) {
+  return addTheorem(std::move(name), std::move(description), func, std::nullopt, std::nullopt);
+}
 void categoriseTheorem(Theorem& theorem, Category category);
 /**
  * Theorems can be tagged so they are easy to group up
@@ -27,6 +29,7 @@ void categoriseTheorem(Theorem& theorem, Category category);
  * @param tag Tag to apply. Tagging is idempotent.
  */
 void tagTheorem(Theorem& theorem, const Tag& tag);
+void requireStorageVariant(Theorem& theorem, dbprove::StorageVariant variant);
 const TheoremMap& allTheorems();
 const std::set<const Theorem*>& allTheoremsInCategory(Category type);
 const CategorySet& allCategories();

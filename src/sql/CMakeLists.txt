@@ -16,6 +16,7 @@ target_sources(${_coreTargetName}
         row_base.cpp
         expression.cpp
         sql_type.cpp
+        parsed_table.cpp
 )
 
 target_precompile_headers(${_coreTargetName}

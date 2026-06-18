@@ -209,6 +209,103 @@ struct TrinoExpressionParser {
     return !isIdentifierChar(*previous) && *previous != ')' && *previous != '\'';
   }
 
+  static bool isSingleColon(const std::string_view text, const size_t index) {
+    return index < text.size() && text[index] == ':' &&
+           (index == 0 || text[index - 1] != ':') &&
+           (index + 1 >= text.size() || text[index + 1] != ':');
+  }
+
+  static size_t skipWhitespace(const std::string_view text, size_t index) {
+    while (index < text.size() && std::isspace(static_cast<unsigned char>(text[index])) != 0) {
+      ++index;
+    }
+    return index;
+  }
+
+  static size_t readIdentifierToken(const std::string_view text, const size_t start) {
+    if (start >= text.size() || !isIdentifierStart(text[start])) {
+      return start;
+    }
+
+    size_t end = start + 1;
+    while (end < text.size() && isIdentifierChar(text[end])) {
+      ++end;
+    }
+    return end;
+  }
+
+  static size_t readDigits(const std::string_view text, const size_t start) {
+    size_t end = start;
+    while (end < text.size() && std::isdigit(static_cast<unsigned char>(text[end])) != 0) {
+      ++end;
+    }
+    return end;
+  }
+
+  static size_t readTypeToken(const std::string_view text, size_t start) {
+    start = skipWhitespace(text, start);
+    auto end = readIdentifierToken(text, start);
+    if (end == start) {
+      return start;
+    }
+
+    while (true) {
+      const auto next = skipWhitespace(text, end);
+      const auto next_end = readIdentifierToken(text, next);
+      if (next_end == next) {
+        break;
+      }
+      end = next_end;
+    }
+
+    const auto modifier_start = skipWhitespace(text, end);
+    if (modifier_start < text.size() && text[modifier_start] == '(') {
+      const auto modifier_end = findMatchingParen(text, modifier_start);
+      if (!modifier_end.has_value()) {
+        return start;
+      }
+      end = *modifier_end + 1;
+    }
+
+    return end;
+  }
+
+  static bool isAnnotationBoundary(const std::string_view text, const size_t index) {
+    if (index >= text.size()) {
+      return true;
+    }
+
+    const auto c = text[index];
+    return std::isspace(static_cast<unsigned char>(c)) != 0 ||
+           c == ',' || c == ')' || c == ']' || c == '}' ||
+           c == '+' || c == '-' || c == '*' || c == '/' ||
+           c == '=' || c == '<' || c == '>' || c == ';';
+  }
+
+  static std::optional<std::pair<std::string, size_t>> parseInlineAnnotatedReference(const std::string_view text,
+                                                                                      const size_t start) {
+    size_t cursor = start;
+    const auto slot_end = readDigits(text, cursor);
+    if (slot_end == cursor || !isSingleColon(text, slot_end)) {
+      return std::nullopt;
+    }
+    cursor = slot_end + 1;
+
+    const auto symbol_start = cursor;
+    const auto symbol_end = readIdentifierToken(text, symbol_start);
+    if (symbol_end == symbol_start || !isSingleColon(text, symbol_end)) {
+      return std::nullopt;
+    }
+
+    const auto type_start = symbol_end + 1;
+    const auto type_end = readTypeToken(text, type_start);
+    if (type_end == type_start || !isAnnotationBoundary(text, type_end)) {
+      return std::nullopt;
+    }
+
+    return std::make_pair(std::string(text.substr(symbol_start, symbol_end - symbol_start)), type_end);
+  }
+
   static std::string replaceIdentifiers(const std::string_view expression,
                                         const std::map<std::string, std::string>& assignments) {
     if (expression.empty() || assignments.empty()) {
@@ -425,7 +522,6 @@ struct TrinoExpressionParser {
     std::string out;
     out.reserve(expression.size());
 
-    ScanState state;
     for (size_t i = 0; i < expression.size();) {
       if (expression[i] == '\'') {
         const auto end = readQuotedString(expression, i);
@@ -434,30 +530,13 @@ struct TrinoExpressionParser {
         continue;
       }
 
-      if (isTopLevel(state) && expression[i] == ':' && (i == 0 || expression[i - 1] != ':')) {
-        const auto prev = previousNonWhitespaceChar(expression, i);
-        size_t next = i + 1;
-        while (next < expression.size() && std::isspace(static_cast<unsigned char>(expression[next])) != 0) {
-          ++next;
-        }
-
-        if (prev.has_value() &&
-            (std::isalnum(static_cast<unsigned char>(*prev)) != 0 || *prev == ')' || *prev == '\'')) {
-          size_t end = next;
-          while (end < expression.size()) {
-            if (std::isspace(static_cast<unsigned char>(expression[end])) != 0 || expression[end] == ',' ||
-                expression[end] == ')' || expression[end] == ']' || expression[end] == '}') {
-              break;
-            }
-            ++end;
-          }
-          i = end;
-          continue;
-        }
+      if (const auto annotated = parseInlineAnnotatedReference(expression, i); annotated.has_value()) {
+        out += annotated->first;
+        i = annotated->second;
+        continue;
       }
 
       out += expression[i];
-      advance(state, expression, i);
       ++i;
     }
 
@@ -1103,16 +1182,16 @@ std::string parseTableName(const std::string& raw_table) {
   if (parts.size() == 2) {
     const auto schema_table = splitTable(parts[1]);
     if (!schema_table.schema_name.empty()) {
-      if (parts[0] == "tpch" && schema_table.schema_name == "sf1") {
-        return "tpch." + schema_table.table_name;
+      if (parts[0] == "tpch" && schema_table.schema_name == "tpch_sf1") {
+        return "tpch_sf1." + schema_table.table_name;
       }
       return schema_table.schema_name + "." + schema_table.table_name;
     }
   }
 
   if (parts.size() == 3) {
-    if (parts[0] == "tpch" && parts[1] == "sf1") {
-      return "tpch." + parts[2];
+    if (parts[0] == "tpch" && parts[1] == "tpch_sf1") {
+      return "tpch_sf1." + parts[2];
     }
     return parts[1] + "." + parts[2];
   }

@@ -739,6 +739,11 @@ std::unique_ptr<Node> handleJoin(const xml_node& node_xml, const MssqlExplainCtx
   if (physical_op == "Hash Match" || physical_op == "Adaptive Join") {
     const auto hash = node_xml.child(physical_op == "Hash Match" ? "Hash" : "AdaptiveJoin");
     std::string condition;
+    const auto logical_join_type = Join::typeFromString(logical_op);
+    std::vector<xml_node> join_relops;
+    for (auto child : hash.children("RelOp")) {
+      join_relops.push_back(child);
+    }
 
     // Prioritize ProbeResidual if it exists, as it often contains the full join condition (including equi-keys)
     const auto probe = hash.child("ProbeResidual");
@@ -753,27 +758,68 @@ std::unique_ptr<Node> handleJoin(const xml_node& node_xml, const MssqlExplainCtx
       }
     }
     
-    // SQL Server Join operators (especially Adaptive Join) can contain multiple child branches, 
+    // SQL Server Join operators (especially Adaptive Join) can contain multiple child branches,
     // some of which might not have been executed during runtime (e.g., alternative strategies).
-    // For Adaptive Join, we try to prune. For standard Hash Join, we take first two.
+    // For Adaptive Join, we try to keep the executed input plus the branch that matches the
+    // runtime-selected strategy. For standard Hash Join, we take the first two.
     if (physical_op == "Adaptive Join") {
-        for (auto child : hash.children("RelOp")) {
+        for (auto child : join_relops) {
           if (getTotalActualExecutions(child) > 0 || getTotalActualRows(child) > 0) {
               children.push_back(child);
           }
         }
+
+        const auto runtime = node_xml.child("RunTimeInformation").child("RunTimeCountersPerThread");
+        const auto actual_join_type = std::string(runtime.attribute("ActualJoinType").as_string());
+
+        if (children.size() == 1 && join_relops.size() > children.size()) {
+          auto child_already_selected = [&](const xml_node& candidate) {
+            return std::ranges::any_of(children, [&](const xml_node& selected) {
+              return selected == candidate;
+            });
+          };
+
+          auto find_inactive_branch = [&](const std::function<bool(const xml_node&)>& predicate) -> std::optional<xml_node> {
+            for (auto child : join_relops) {
+              if (child_already_selected(child)) {
+                continue;
+              }
+              if (predicate(child)) {
+                return child;
+              }
+            }
+            return std::nullopt;
+          };
+
+          if (actual_join_type == "Nested Loops") {
+            if (const auto nested_loop_branch = find_inactive_branch([](const xml_node& child) {
+                  const auto child_physical = std::string(child.attribute("PhysicalOp").as_string());
+                  return child_physical.contains("Seek") || child.child("IndexScan").child("SeekPredicates");
+                })) {
+              children.push_back(*nested_loop_branch);
+            }
+          } else if (actual_join_type == "Hash Match") {
+            if (const auto hash_branch = find_inactive_branch([](const xml_node& child) {
+                  const auto child_physical = std::string(child.attribute("PhysicalOp").as_string());
+                  return child_physical.contains("Scan") || child_physical == "Hash Match";
+                })) {
+              children.push_back(*hash_branch);
+            }
+          }
+        }
     }
     
-    // Fallback: if we still have no children, or it's a standard Hash Join, take the first two RelOps.
-    if (children.empty()) {
+    // Fallback: if pruning still did not yield a binary join, take the first two RelOps.
+    if (children.size() != 2) {
+        children.clear();
         int count = 0;
-        for (auto child : hash.children("RelOp")) {
+        for (auto child : join_relops) {
           children.push_back(child);
           if (++count == 2) break;
         }
     }
 
-    return std::make_unique<Join>(Join::Type::INNER, Join::Strategy::HASH, condition);
+    return std::make_unique<Join>(logical_join_type, Join::Strategy::HASH, condition);
   }
 
   if (physical_op == "Nested Loops") {
@@ -971,6 +1017,19 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     node = handleScan(node_xml, ctx, physical_op, pushed_filter);
   } else if (logical_op == "Compute Scalar") {
     node = handleComputeScalar(node_xml, ctx, children);
+  } else if (logical_op == "Bitmap Create" || physical_op == "Bitmap") {
+    // TODO: Model SQL Server bitmap creation explicitly once we need accurate bitmap/filter lineage.
+    // For now this helper node is treated as transparent so plan parsing can continue.
+    const auto bitmap_node = node_xml.child("Bitmap");
+    const auto child_rel_op = bitmap_node.child("RelOp");
+    if (child_rel_op) {
+      auto result = createNodeFromXML(child_rel_op, ctx, pushed_filter);
+      if (result.first->rows_actual <= 0) {
+        parseRowCount(result.first.get(), node_xml);
+      }
+      return result;
+    }
+    throw ExplainException("Bitmap Create node without child RelOp");
   } else if (logical_op == "Parallelism" || physical_op == "Parallelism") {
     // SQL Server is not a distributed database, so we skip the Parallelism node
     // and process its child instead.

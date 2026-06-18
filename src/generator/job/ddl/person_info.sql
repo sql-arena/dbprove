@@ -1,7 +1,7 @@
 CREATE TABLE job.person_info (
-    id integer NOT NULL PRIMARY KEY,
-    person_id integer NOT NULL,
-    info_type_id integer NOT NULL,
-    info text NOT NULL,
-    note text
+    id INT NOT NULL,
+    person_id INT NOT NULL,
+    info_type_id INT NOT NULL,
+    info TEXT NOT NULL,
+    note TEXT
 );

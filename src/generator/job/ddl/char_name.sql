@@ -1,9 +1,9 @@
 CREATE TABLE job.char_name (
-    id integer NOT NULL PRIMARY KEY,
-    name text NOT NULL,
-    imdb_index character varying(12),
-    imdb_id integer,
-    name_pcode_nf character varying(5),
-    surname_pcode character varying(5),
-    md5sum character varying(32)
+    id INT NOT NULL,
+    name TEXT NOT NULL,
+    imdb_index TEXT,
+    imdb_id INT,
+    name_pcode_nf TEXT,
+    surname_pcode TEXT,
+    md5sum TEXT
 );

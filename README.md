@@ -39,23 +39,82 @@ The concrete driver-extension checklist now lives in:
 - `src/sql/README.md` for engine registration, CMake wiring, artifacts, and test hooks
 - `src/sql/boilerplate/README.md` for the template driver layout
 
+## Running `dbprove`
+
+User-facing CLI documentation for running `dbprove` should live in this root README.
+For local workflow conventions such as which directory to invoke `dbprove` from, see [ai-rules.md](ai-rules.md).
+
+Common flags:
+
+- `-e <engine>` selects the engine to run against.
+- `-T <selector[,selector...]>` selects one or more theorems to run.
+  A selector can be a theorem name, a tag, or a category such as `PLAN`.
+- `--docker` starts and stops the managed local docker image for engines that support local containerized runs.
+- `--variant <native|iceberg>` selects the storage layout to use with `--docker`.
+- `--artefact-dir <path>` replays required plan artefacts from an existing directory instead of generating them live.
+- `--data-bucket <uri>` overrides the default source bucket used for shared input data.
+- `--download-dir <path>` overrides where downloaded table data is staged locally. By default this is `./table_data` under the directory where `dbprove` is invoked.
+
+Docker credential contract:
+
+- Docker-managed engine containers are expected to use the same username,
+  password, database, and similar connection defaults that `dbprove` itself
+  returns from `Engine::defaultUsername(...)`, `Engine::defaultPassword(...)`,
+  and related helpers.
+- That convention is intentional. `dbprove --docker` should work without
+  callers needing to supply extra credentials just to match a local container.
+- If a docker image changes its bootstrap credentials, the corresponding
+  `Engine` defaults must be updated in lockstep.
+
+Shared input data assumptions:
+
+- The generator path now treats local staged table data as a dual-format cache: each ensured table is expected to have both a `*.csv` file and a sibling `*.parquet` file under `table_data/`.
+- When the source bucket is used as the backing store, we assume the bucket layout can satisfy that dual-format expectation, either by already containing both formats or by containing enough source data for `dbprove` to materialize the missing parquet locally after the CSV is ensured.
+- This lets engines choose between classic CSV bulk load and direct parquet mounting/registration without changing theorem code.
+
+Docker storage variants:
+
+- `native` uses the engine's native local storage format.
+- `iceberg` uses the object-store style layout used for parquet and Iceberg-oriented workflows.
+- If `--variant` is omitted, `dbprove` uses the engine default.
+- Some theorem suites require a specific storage variant. In those cases, `dbprove` enforces the theorem requirement and rejects conflicting `--variant` values.
+
+Current local engine defaults:
+
+- PostgreSQL, SQL Server, and ClickHouse default to `native`.
+- Trino and DataFusion default to `iceberg`.
+
+Examples:
+
+```bash
+cd run
+../out/build/osx-arm-base/src/dbprove/dbprove -e duckdb -T TPCH-Q01
+../out/build/osx-arm-base/src/dbprove/dbprove -e duckdb -T PLAN
+../out/build/osx-arm-base/src/dbprove/dbprove -e postgresql -T CLI-1 --docker
+../out/build/osx-arm-base/src/dbprove/dbprove -e trino -T EE-JOIN-SCALE-1 --docker --variant iceberg
+../out/build/osx-arm-base/src/dbprove/dbprove -e mssql -T TPCH-Q01 --artefact-dir ./proof/SQL\\ Server/2022/artefacts
+```
+
 ### Databricks Support
 Databricks connectivity relies on a browser-based authentication flow for some features (like plan dumping). 
 
-#### Plan Artifacts
-To make analysis and debugging easier, you can cache Databricks plan artifacts (the scraped JSON and raw EXPLAIN output) using the `-a/--artifacts <path>` flag. 
-
-```bash
-dbprove -e Databricks ... -a ./my_artifacts
-```
-When this flag is used, `dbprove` will first check the specified directory for cached files (named `databricks_<hash>.json` and `databricks_<hash>.raw_explain`). If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
-
-#### Authentication
+#### Databricks Authentication
 Before running Databricks-related commands that require a browser session, run the authentication script:
 ```bash
 ./authenticate_databricks.sh
 ```
 This script will open a browser window using Playwright. Complete the login and 2FA process, then close the browser. Your session will be saved in a local profile (`~/.databricks-playwright-profile`) and reused by `dbprove`.
+
+#### Plan Artifacts
+To make analysis and debugging easier, `dbprove` writes artifacts (scraped JSON, raw EXPLAIN output and other engine specific data) into the default proof output tree under `artefacts`. 
+To replay from an existing artifact directory instead of running live queries, use `--artefact-dir <path>`.
+
+```bash
+dbprove -e Databricks ... --artefact-dir ./my_artifacts
+```
+When this flag is used, `dbprove` will check the specified directory for cached files (named `databricks_<hash>.json` and `databricks_<hash>.raw_explain`). It will then run without needing the engine to be up.
+If a required artifact is missing, the run fails.
+
 
 # Coding Guidelines
 Detailed coding guidelines for contributors and AI agents are maintained in [ai-rules.md](ai-rules.md).

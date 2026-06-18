@@ -1,8 +1,8 @@
 SELECT COUNT(o.o_orderkey)
-FROM tpch.orders AS o
+FROM tpch_sf1.orders AS o
 WHERE EXISTS (
   SELECT 1
-  FROM tpch.customer AS c
+  FROM tpch_sf1.customer AS c
   WHERE c.c_custkey = o.o_custkey
     AND c.c_custkey = 1
 );

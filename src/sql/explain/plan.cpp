@@ -290,9 +290,49 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
   std::string indent;
   using namespace dbprove::common;
   const std::string divider = "  ";
-  struct Frame {
+  struct SnapshotNode {
     Node* node;
+    Node* parent;
+    Node* first_child;
+    Node* last_child;
+    size_t child_count;
+    size_t depth;
+  };
+  struct Frame {
+    SnapshotNode snapshot;
     std::string indent;
+  };
+  auto snapshot_children = [](Node& node) {
+    std::vector<Node*> snapshot;
+    snapshot.reserve(node.childCount());
+    for (auto* child : node.children()) {
+      if (child != nullptr) {
+        snapshot.push_back(child);
+      }
+    }
+    return snapshot;
+  };
+  auto snapshot_depth_first = [&](Node& root) {
+    std::vector<SnapshotNode> snapshot;
+    std::stack<Node*> stack;
+    stack.push(&root);
+    while (!stack.empty()) {
+      Node* current = stack.top();
+      stack.pop();
+      const auto children = snapshot_children(*current);
+      snapshot.push_back(SnapshotNode{
+          .node = current,
+          .parent = current->isRoot() ? current : &current->parent(),
+          .first_child = children.empty() ? nullptr : children.front(),
+          .last_child = children.empty() ? nullptr : children.back(),
+          .child_count = children.size(),
+          .depth = current->depth(),
+      });
+      for (auto it = children.rbegin(); it != children.rend(); ++it) {
+        stack.push(*it);
+      }
+    }
+    return snapshot;
   };
   out << rang::style::bold;
   out << "Estimate" << divider;
@@ -300,7 +340,8 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
   out << "Operator";
   out << rang::style::reset << std::endl;
   std::vector<Frame> parent_split_nodes;
-  for (auto& node : plan_tree->depth_first()) {
+  for (const auto& current : snapshot_depth_first(*plan_tree)) {
+    auto& node = *current.node;
     const auto used_before = out.tellp();
     /* Estimates/actuals */
     std::string estimate = std::isnan(node.rows_estimated) ? PrettyUnknown() : PrettyHumanCount(node.rowsEstimated());
@@ -308,38 +349,40 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
     out << PrettyHumanCount(node.rowsActual()) << divider;
 
     /* Coming back up the tree. If I am the last descendant of a union, I need to have my indentation removed.*/
-    if (!parent_split_nodes.empty() && node.depth() < parent_split_nodes.back().node->depth()) {
-      const auto parent_type = parent_split_nodes.back().node->type;
+    while (!parent_split_nodes.empty() && current.depth < parent_split_nodes.back().snapshot.depth) {
+      const auto parent_type = parent_split_nodes.back().snapshot.node->type;
       if (parent_type == NodeType::UNION || parent_type == NodeType::SEQUENCE) {
         parent_split_nodes.pop_back();
+      } else {
+        break;
       }
     }
 
     /* Joins only indent the build side. Keep things compact.*/
-    if (node.parent().type == NodeType::JOIN && node.parent().lastChild() == &node) {
+    if (!parent_split_nodes.empty() && current.parent->type == NodeType::JOIN && current.parent->lastChild() == &node) {
       parent_split_nodes.pop_back();
     }
 
     /* Render ancestor lines */
     for (size_t i = 0; i < parent_split_nodes.size(); ++i) {
-      const auto& ancestor = parent_split_nodes[i].node;
+      const auto& ancestor = parent_split_nodes[i].snapshot;
       auto& current_indent = parent_split_nodes[i].indent;
-      if (ancestor->type == NodeType::JOIN && &node == ancestor->firstChild()) {
+      if (ancestor.node->type == NodeType::JOIN && &node == ancestor.first_child) {
         out << "│└";
-      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE) && &node == ancestor->
-                 lastChild()) {
+      } else if ((ancestor.node->type == NodeType::UNION || ancestor.node->type == NodeType::SEQUENCE)
+                 && &node == ancestor.last_child) {
         out << "└─";
         current_indent = "  "; // Last children of UNION must just be indented
-      } else if ((ancestor->type == NodeType::UNION || ancestor->type == NodeType::SEQUENCE) && &node.parent() ==
-                 ancestor) {
+      } else if ((ancestor.node->type == NodeType::UNION || ancestor.node->type == NodeType::SEQUENCE)
+                 && current.parent == ancestor.node) {
         out << "├─";
       } else {
         out << current_indent;
       }
     }
 
-    if (node.children().size() > 1) {
-      parent_split_nodes.push_back({&node, "│ "});
+    if (current.child_count > 1) {
+      parent_split_nodes.push_back({current, "│ "});
     }
 
     // Remaining length in the terminal

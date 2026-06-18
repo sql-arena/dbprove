@@ -6,19 +6,34 @@ ready_marker="/tmp/datafusion-bootstrap-ready"
 host_ready_marker="/workspace/datafusion-ready"
 tpch_root="${DATAFUSION_TPCH_ROOT:-/opt/tpch-source/sf1}"
 
+stage_tpch_tables() {
+  if [[ -d /opt/table-data-source/tpch_sf1 ]]; then
+    cp -R /opt/table-data-source/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
+    return
+  fi
+
+  local tables=(region nation supplier customer part partsupp orders lineitem)
+  for table in "${tables[@]}"; do
+    cp "/opt/table-data-source/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
+  done
+}
+
 prepare_tmpfs() {
   rm -f "${ready_marker}"
   rm -f "${host_ready_marker}"
-  rm -rf /mnt/tpch-tmpfs/join_scale
-  mkdir -p /mnt/tpch-tmpfs/join_scale /workspace/datafusion-spill
+  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/tpch_sf1
+  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/tpch_sf1 /workspace/datafusion-spill
   cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+  stage_tpch_tables
 }
 
 write_bootstrap_sql() {
   : > "${bootstrap_sql}"
 
   cat >> "${bootstrap_sql}" <<'SQL'
-CREATE EXTERNAL TABLE IF NOT EXISTS lineitem_25x (
+CREATE SCHEMA IF NOT EXISTS tpch_sf1;
+
+CREATE EXTERNAL TABLE IF NOT EXISTS tpch_sf1.lineitem_25x (
   l_orderkey BIGINT,
   l_suppkey BIGINT,
   l_linenumber BIGINT,
@@ -33,7 +48,7 @@ SQL
     [[ -d "${parquet_dir}" ]] || continue
     table_name="$(basename "${parquet_dir}")"
     cat >> "${bootstrap_sql}" <<SQL
-CREATE EXTERNAL TABLE IF NOT EXISTS ${table_name} (
+CREATE EXTERNAL TABLE IF NOT EXISTS tpch_sf1.${table_name} (
   join_key BIGINT,
   o_orderkey BIGINT,
   orders_replica_id BIGINT,
@@ -53,107 +68,6 @@ SQL
   done
 
   cat >> "${bootstrap_sql}" <<'SQL'
-CREATE EXTERNAL TABLE IF NOT EXISTS region (
-  r_regionkey INT,
-  r_name VARCHAR,
-  r_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/region.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS nation (
-  n_nationkey INT,
-  n_name VARCHAR,
-  n_regionkey INT,
-  n_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/nation.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS supplier (
-  s_suppkey INT,
-  s_name VARCHAR,
-  s_address VARCHAR,
-  s_nationkey INT,
-  s_phone VARCHAR,
-  s_acctbal DECIMAL(15,2),
-  s_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/supplier.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS customer (
-  c_custkey INT,
-  c_name VARCHAR,
-  c_address VARCHAR,
-  c_nationkey INT,
-  c_phone VARCHAR,
-  c_acctbal DECIMAL(15,2),
-  c_mktsegment VARCHAR,
-  c_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/customer.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS part (
-  p_partkey INT,
-  p_name VARCHAR,
-  p_mfgr VARCHAR,
-  p_brand VARCHAR,
-  p_type VARCHAR,
-  p_size INT,
-  p_container VARCHAR,
-  p_retailprice DECIMAL(15,2),
-  p_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/part.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS partsupp (
-  ps_partkey INT,
-  ps_suppkey INT,
-  ps_availqty INT,
-  ps_supplycost DECIMAL(15,2),
-  ps_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/partsupp.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS orders (
-  o_orderkey INT,
-  o_custkey INT,
-  o_orderstatus VARCHAR,
-  o_totalprice DECIMAL(15,2),
-  o_orderdate DATE,
-  o_orderpriority VARCHAR,
-  o_clerk VARCHAR,
-  o_shippriority INT,
-  o_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/orders.parquet';
-
-CREATE EXTERNAL TABLE IF NOT EXISTS lineitem (
-  l_orderkey INT,
-  l_partkey INT,
-  l_suppkey INT,
-  l_linenumber INT,
-  l_quantity DECIMAL(15,2),
-  l_extendedprice DECIMAL(15,2),
-  l_discount DECIMAL(15,2),
-  l_tax DECIMAL(15,2),
-  l_returnflag VARCHAR,
-  l_linestatus VARCHAR,
-  l_shipdate DATE,
-  l_commitdate DATE,
-  l_receiptdate DATE,
-  l_shipinstruct VARCHAR,
-  l_shipmode VARCHAR,
-  l_comment VARCHAR
-)
-STORED AS PARQUET
-LOCATION '${tpch_root}/lineitem.parquet';
-
 SQL
 }
 

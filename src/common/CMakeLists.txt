@@ -10,6 +10,7 @@ target_sources(${_targetName}
         pretty.cpp
         file_utility.cpp
         json_utility.cpp
+        aws_bucket.cpp
 )
 find_package(magic_enum CONFIG REQUIRED)
 target_link_libraries(${_targetName}

@@ -374,7 +374,7 @@ wait_for_engine() {
             done
             ;;
         trino)
-            until curl -fsS http://localhost:8080/v1/info 2>/dev/null | grep -q '"starting":false'; do
+            until curl -fsS http://localhost:65432/v1/info 2>/dev/null | grep -q '"starting":false'; do
                 echo "Waiting for Trino to be ready..."
                 sleep 2
             done

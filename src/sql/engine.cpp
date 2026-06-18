@@ -11,6 +11,8 @@ namespace sql {
 /// @brief Some database engine dont have a concept, so we just return this
 static const std::string kDummyValue = "dummy";
 namespace {
+constexpr uint16_t kSharedDockerHostPort = 65432;
+
 bool commandSucceeded(const dbprove::common::DockerCommandResult& result) {
   return result.succeeded();
 }
@@ -138,34 +140,49 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
   throw std::invalid_argument("No default host or endpoint found");
 }
 
-uint16_t Engine::defaultPort(const uint16_t port) const {
+uint16_t Engine::defaultPort(const uint16_t port, const bool docker_mode) const {
   if (port > 0) {
     return port;
   }
+  uint16_t default_port = 0;
   switch (type()) {
     case Type::Postgres:
-      return 5432;
+      default_port = 5432;
+      break;
     case Type::Yellowbrick: {
       const auto yb_port = getEnvVar("YBPORT").value_or("5432");
-      return std::stoi(yb_port);
+      default_port = std::stoi(yb_port);
+      break;
     }
     case Type::SQLServer:
-      return 1433;
+      default_port = 1433;
+      break;
     case Type::Databricks:
-      return 443;
+      default_port = 443;
+      break;
     case Type::Oracle:
-      return 1521;
+      default_port = 1521;
+      break;
     case Type::ClickHouse:
-      return 9000; // ClickHouse only speaks its native protocol via C++
+      default_port = 9000; // ClickHouse only speaks its native protocol via C++
+      break;
     case Type::Trino:
-      return 8080;
+      default_port = 8080;
+      break;
     case Type::DuckDB:
     case Type::DataFusion:
     case Type::SQLite:
-      return 42; // Dummy port, Duck is localhost
+      default_port = 42; // Dummy port, Duck is localhost
+      break;
     default:
-      return 0;
+      default_port = 0;
+      break;
   }
+
+  if (docker_mode && default_port > 0) {
+    return kSharedDockerHostPort;
+  }
+  return default_port;
 }
 
 

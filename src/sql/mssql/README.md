@@ -1,6 +1,6 @@
 # SQL Server Execution Plan Parsing
 
-This document tracks the ongoing understanding of SQL Server query plans, specifically those retrieved via `SET STATISTICS XML ON`.
+This document describes how dbprove interprets SQL Server query plans retrieved via `SET STATISTICS XML ON`.
 
 ## Plan Sources
 
@@ -9,7 +9,7 @@ This document tracks the ongoing understanding of SQL Server query plans, specif
 ## Plan Retrieval
 
 The `explain` method in the SQL Server driver implements the following flow:
-1.  **Artifact Check**: It first checks for a cached XML plan in the specified artifacts directory (if the `-a/--artifacts` flag is used).
+1.  **Artifact Check**: It first checks for a cached XML plan in the specified artifacts directory when `dbprove` is run with `--artefact-dir`.
 2.  **STATISTICS XML**: If no artifact is found, it executes `SET STATISTICS XML ON`.
 3.  Executes the target SQL statement.
 4.  Drains the result sets (as the query execution produces data).
@@ -18,11 +18,12 @@ The `explain` method in the SQL Server driver implements the following flow:
 7.  **Artifact Storage**: The retrieved XML is stored in the artifacts directory for future use.
 
 #### Plan Artifacts
-To make analysis and debugging easier, you can cache SQL Server plan artifacts using the `-a/--artifacts <path>` flag. 
+By default, `dbprove` writes SQL Server plan artifacts into `proof/[Engine]/[Version]/artefacts`.
+To replay from a specific artifact directory, use:
 ```bash
-dbprove -e mssql ... -a ./my_artifacts
+dbprove -e mssql ... --artefact-dir ./my_artifacts
 ```
-When this flag is used, `dbprove` will first check the specified directory for cached files (named `sql server_<name>_xml`). If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
+When this flag is used, `dbprove` will check the specified directory for cached files (named `sql server_<name>_xml`). Missing required artifacts cause the run to fail.
 
 ## XML Format Structure
 
@@ -95,11 +96,11 @@ The MSSQL connector uses a robust mechanism to find the best available ODBC driv
 
 ## Runtime Ownership Convention
 
-SQL Server is an externally managed engine in local development: Docker Compose, shell scripts, or other orchestration layers are responsible for starting the container and proving that it is healthy before `dbprove` connects.
+SQL Server is a docker-managed local engine in this repo, and that lifecycle is owned by `src/dbprove/main.cpp`.
 
 - `src/sql/mssql/connection.cpp` assumes the server is already reachable.
-- Liveness checks, startup retries, and Docker-specific readiness probes belong in outer tooling such as `benchmark.sh` or Docker `healthcheck` configuration.
-- This keeps the connector aligned with the other externally managed engines and avoids baking container control flow into the database driver itself.
+- Liveness checks, startup retries, and Docker-specific readiness probes belong in the shared docker startup path rather than in the connector itself.
+- This keeps the connector aligned with the other engines and avoids baking container control flow into the database driver.
 
 ## Known Issues and Limitations
 
@@ -113,17 +114,3 @@ brew tap microsoft/mssql-release
 brew install msodbcsql18 mssql-tools18
 ```
 The driver is required even when connecting to a SQL Server instance running in Docker.
-
-### Running with Docker
-
-To start a SQL Server instance for testing:
-```bash
-cd docker
-docker-compose up -d mssql
-```
-
-Default credentials:
-- **User**: `sa`
-- **Password**: `YourStrong!Passw0rd`
-
-Data is persisted in `run/mount/mssql`.

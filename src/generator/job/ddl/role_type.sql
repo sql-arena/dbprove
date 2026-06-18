@@ -1,4 +1,4 @@
 CREATE TABLE job.role_type (
-    id integer NOT NULL PRIMARY KEY,
-    role character varying(32) NOT NULL
+    id INT NOT NULL,
+    role TEXT NOT NULL
 );

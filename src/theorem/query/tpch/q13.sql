@@ -8,8 +8,8 @@ FROM
       c_custkey,
       COUNT(o_orderkey)
     FROM
-      tpch.customer
-      LEFT OUTER JOIN tpch.orders ON c_custkey = o_custkey
+      tpch_sf1.customer
+      LEFT OUTER JOIN tpch_sf1.orders ON c_custkey = o_custkey
       AND o_comment NOT LIKE ' % special % requests % '
     GROUP BY
       c_custkey

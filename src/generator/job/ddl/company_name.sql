@@ -1,9 +1,9 @@
 CREATE TABLE job.company_name (
-    id integer NOT NULL PRIMARY KEY,
-    name text NOT NULL,
-    country_code character varying(255),
-    imdb_id integer,
-    name_pcode_nf character varying(5),
-    name_pcode_sf character varying(5),
-    md5sum character varying(32)
+    id INT NOT NULL,
+    name TEXT NOT NULL,
+    country_code TEXT,
+    imdb_id INT,
+    name_pcode_nf TEXT,
+    name_pcode_sf TEXT,
+    md5sum TEXT
 );

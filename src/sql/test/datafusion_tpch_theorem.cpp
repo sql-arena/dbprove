@@ -18,8 +18,12 @@ TEST_CASE("DataFusion parses all TPCH theorem plans", "[DataFusion][Theorem][TPC
     std::filesystem::temp_directory_path() / "dbprove-datafusion-theorem");
 
   std::ostringstream console;
-  std::ostringstream csv;
-  dbprove::theorem::RunCtx ctx(engine, sql::CredentialNone("datafusion"), generator, console, csv);
+  dbprove::theorem::RunCtx ctx(
+    engine,
+    sql::CredentialNone("datafusion"),
+    generator,
+    console,
+    "test");
 
   const auto theorems = dbprove::theorem::parse({"TPC-H"});
 

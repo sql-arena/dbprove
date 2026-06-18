@@ -111,11 +111,12 @@ namespace sql::explain
             {"inner", Type::INNER},
             {"inner join", Type::INNER},
             {"right semi join", Type::RIGHT_SEMI_INNER},
-            {"left semi join", Type::RIGHT_SEMI_INNER},
+            {"left semi join", Type::LEFT_SEMI_INNER},
             {"left anti semi join", Type::LEFT_ANTI},
-            {"right anti semi join", Type::LEFT_ANTI},
+            {"right anti semi join", Type::RIGHT_ANTI},
             {"left", Type::LEFT_OUTER},
             {"left outer", Type::LEFT_OUTER},
+            {"left outer join", Type::LEFT_OUTER},
             {"mark", Type::INNER},
             {"right", Type::RIGHT_OUTER},
             {"right anti", Type::RIGHT_ANTI},
@@ -125,6 +126,7 @@ namespace sql::explain
             {"left anti", Type::LEFT_ANTI},
             {"anti", Type::LEFT_ANTI},
             {"right outer", Type::RIGHT_OUTER},
+            {"right outer join", Type::RIGHT_OUTER},
             {"right_semi", Type::RIGHT_SEMI_INNER},
             {"right semi", Type::RIGHT_SEMI_INNER},
             {"left_semi", Type::LEFT_SEMI_INNER},
@@ -133,7 +135,10 @@ namespace sql::explain
             {"semi left inner", Type::LEFT_SEMI_INNER},
             {"semi left outer", Type::LEFT_SEMI_OUTER},
             {"semi", Type::LEFT_SEMI_INNER},
-            {"full", Type::FULL}
+            {"full", Type::FULL},
+            {"full outer", Type::FULL},
+            {"full join", Type::FULL},
+            {"full outer join", Type::FULL}
         };
 
         if (!type_map.contains(type_lower)) {
@@ -149,9 +154,9 @@ namespace sql::explain
         case Join::Type::INNER:
             return "JOIN";
         case Join::Type::LEFT_OUTER:
-        case Join::Type::RIGHT_OUTER:
-            /* LEFT and RIGHT as algorithmic, the query is still left */
             return "LEFT JOIN";
+        case Join::Type::RIGHT_OUTER:
+            return "RIGHT JOIN";
         case Join::Type::FULL:
             return "FULL JOIN";
         case Join::Type::CROSS:

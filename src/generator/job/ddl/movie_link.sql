@@ -1,6 +1,6 @@
 CREATE TABLE job.movie_link (
-    id integer NOT NULL PRIMARY KEY,
-    movie_id integer NOT NULL,
-    linked_movie_id integer NOT NULL,
-    link_type_id integer NOT NULL
+    id INT NOT NULL,
+    movie_id INT NOT NULL,
+    linked_movie_id INT NOT NULL,
+    link_type_id INT NOT NULL
 );

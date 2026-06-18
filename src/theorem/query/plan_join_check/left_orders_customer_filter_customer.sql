@@ -1,8 +1,8 @@
 SELECT COUNT(o.o_orderkey), COUNT(c.c_custkey)
-FROM tpch.orders AS o
+FROM tpch_sf1.orders AS o
 LEFT JOIN (
   SELECT *
-  FROM tpch.customer
+  FROM tpch_sf1.customer
   WHERE c_custkey = 1
 ) AS c
   ON o.o_custkey = c.c_custkey;

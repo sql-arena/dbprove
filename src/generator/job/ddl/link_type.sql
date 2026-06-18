@@ -1,4 +1,4 @@
 CREATE TABLE job.link_type (
-    id integer NOT NULL PRIMARY KEY,
-    link character varying(32) NOT NULL
+    id INT NOT NULL,
+    link TEXT NOT NULL
 );

@@ -1,7 +1,7 @@
 /* TPC-H Q19 */
 SELECT SUM(l_extendedprice * (1 - l_discount)) AS revenue
-FROM tpch.lineitem
-INNER JOIN tpch.part ON p_partkey = l_partkey
+FROM tpch_sf1.lineitem
+INNER JOIN tpch_sf1.part ON p_partkey = l_partkey
 WHERE (
 
         p_brand = 'Brand#11'

@@ -1,5 +1,6 @@
 #include "connection_base.h"
 
+#include "include/dbprove/sql/parsed_table.h"
 #include <iostream>
 #include <regex>
 #include <nlohmann/json.hpp>
@@ -77,6 +78,55 @@ std::string prettyContentIfNeeded(std::string_view extension, std::string_view c
   }
   return prettyXmlIfNeeded(extension, content);
 }
+
+std::string defaultTypeName(const SqlTypeKind kind) {
+  switch (kind) {
+    case SqlTypeKind::SMALLINT:
+      return "SMALLINT";
+    case SqlTypeKind::INT:
+      return "INT";
+    case SqlTypeKind::BIGINT:
+      return "BIGINT";
+    case SqlTypeKind::REAL:
+      return "REAL";
+    case SqlTypeKind::DOUBLE:
+      return "DOUBLE";
+    case SqlTypeKind::DECIMAL:
+      return "DECIMAL";
+    case SqlTypeKind::STRING:
+      return "TEXT";
+    case SqlTypeKind::DATE:
+      return "DATE";
+    case SqlTypeKind::TIME:
+      return "TIME";
+    case SqlTypeKind::DATETIME:
+      return "DATETIME";
+    case SqlTypeKind::SQL_NULL:
+      return "NULL";
+    case SqlTypeKind::UNKNOWN:
+      return "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
+std::string renderType(const SqlTypeMeta& type, const ConnectionBase::TypeMap& type_map) {
+  std::string rendered = type_map.contains(type.kind)
+                       ? std::string(type_map.at(type.kind))
+                       : defaultTypeName(type.kind);
+
+  if (type.kind == SqlTypeKind::STRING && std::holds_alternative<SqlTypeModifier::String>(type.modifier.value)) {
+    const auto length = std::get<SqlTypeModifier::String>(type.modifier.value).length;
+    return rendered + "(" + std::to_string(length) + ")";
+  }
+
+  if (type.kind == SqlTypeKind::DECIMAL && std::holds_alternative<SqlTypeModifier::Decimal>(type.modifier.value)) {
+    const auto decimal = std::get<SqlTypeModifier::Decimal>(type.modifier.value);
+    return rendered + "(" + std::to_string(decimal.precision) + ", " + std::to_string(decimal.scale) + ")";
+  }
+
+  return rendered;
+}
+
 }
 
 void setArtifactReplayMode(const bool enabled) {
@@ -120,11 +170,41 @@ std::unique_ptr<explain::Plan> ConnectionBase::explain(const std::string_view st
   return nullptr;
 }
 
-void ConnectionBase::executeDdl(const std::string_view ddl)
-{
-  const auto translatedDdl = translateDialectDdl(ddl);
+void ConnectionBase::constructTable(const std::string_view ddl,
+                                    const std::span<const std::filesystem::path> source_stems,
+                                    const dbprove::StorageVariant storage_variant) {
+  static_cast<void>(storage_variant);
+
+  if (source_stems.empty()) {
+    throw std::runtime_error("constructTable requires at least one staged source file stem");
+  }
+
+  const auto parsed = ParsedTable(ddl);
+  const auto& table = parsed.tableName();
+  std::ostringstream out;
+  out << "CREATE TABLE " << table << "\n(\n";
+  for (size_t i = 0; i < parsed.columns().size(); ++i) {
+    const auto& column = parsed.columns()[i];
+    out << "    " << column.name << " " << renderType(column.type, typeMap());
+    out << (column.is_null ? " NULL" : " NOT NULL");
+    if (i + 1 < parsed.columns().size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << ");";
+  const auto translatedDdl = out.str();
   PLOGI << translatedDdl;
   execute(translatedDdl);
+
+  std::vector<std::filesystem::path> csv_paths;
+  csv_paths.reserve(source_stems.size());
+  for (const auto& stem : source_stems) {
+    auto csv_path = stem;
+    csv_path += ".csv";
+    csv_paths.push_back(std::move(csv_path));
+  }
+  bulkLoad(table, csv_paths);
 }
 
 void ConnectionBase::createSchema(std::string_view schema_name) {
@@ -152,7 +232,7 @@ std::optional<RowCount> ConnectionBase::tableRowCount(const std::string_view tab
 
 void ConnectionBase::declareForeignKey(const std::string_view fk_table, const std::span<std::string_view> fk_columns,
                                        const std::string_view pk_table, const std::span<std::string_view> pk_columns) {
-  const std::string statement = "ALTER TABLE " + std::string(fk_table) + " ADD CONSTRAINT " + foreignKeyName(fk_table) +
+  const std::string statement = "ALTER TABLE " + std::string(fk_table) + " ADD CONSTRAINT " + foreignKeyName(fk_table, fk_columns) +
                                 " FOREIGN KEY (" + join(fk_columns, ", ") + ")" + " REFERENCES " + std::string(pk_table)
                                 + "(" + join(pk_columns, ", ") + ")";
 
@@ -165,8 +245,13 @@ void ConnectionBase::declareForeignKey(const std::string_view fk_table, const st
   }
 }
 
-std::string ConnectionBase::foreignKeyName(std::string_view table_name) {
-  return "fk_" + std::regex_replace(std::string(table_name), std::regex("\\."), "_");
+std::string ConnectionBase::foreignKeyName(std::string_view table_name, const std::span<std::string_view> fk_columns) {
+  std::string name = "dbprove_fk_" + std::regex_replace(std::string(table_name), std::regex("\\."), "_");
+  for (const auto column : fk_columns) {
+    name += "_";
+    name += column;
+  }
+  return name;
 }
 
 
@@ -201,16 +286,7 @@ std::vector<SqlTypeMeta> ConnectionBase::describeColumnTypes(std::string_view ta
 }
 
 std::string ConnectionBase::mapTypes(const std::string_view statement) const {
-  std::string result(statement);
-
-  for (const auto& [key, value] : typeMap()) {
-    std::size_t pos = 0;
-    while ((pos = result.find(key, pos)) != std::string::npos) {
-      result.replace(pos, key.size(), value);
-      pos += value.size();
-    }
-  }
-  return result;
+  return std::string(statement);
 }
 
 void ConnectionBase::validateSourcePaths(const std::vector<std::filesystem::path>& source_paths) {

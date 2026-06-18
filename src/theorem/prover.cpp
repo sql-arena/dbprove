@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <ranges>
+#include <nlohmann/json.hpp>
 #include <dbprove/ux/ux.h>
 
 #include "init.h"
@@ -42,23 +43,53 @@ std::optional<std::string> tryRenderProof(Proof& proof) {
     return "unknown non-std exception";
   }
 }
+
+void persistProofOutput(Proof& proof, RunCtx& state) {
+  try {
+    state.writeProofJson(proof.theorem.name, proof.toJson());
+  } catch (const std::exception& e) {
+    PLOGE << "Failed to write proof JSON for theorem '" << proof.theorem.name << "': " << e.what();
+  } catch (...) {
+    PLOGE << "Failed to write proof JSON for theorem '" << proof.theorem.name << "' with unknown non-std exception";
+  }
+}
+
+std::string configVersionJson(const RunCtx& input_state, const std::string_view version) {
+  nlohmann::ordered_json document;
+  document["theorem"] = {
+      {"name", "CONFIG-VERSION"},
+      {"displayName", "CONFIG-VERSION"},
+      {"description", "Version of Engine"},
+      {"categories", nlohmann::json::array()},
+      {"tags", nlohmann::json::array({"CONFIG"})},
+  };
+  document["engine"] = input_state.engine.name();
+  document["version"] = version;
+  document["storageVariant"] = to_string(input_state.storage_variant);
+  return document.dump(2);
+}
 }
 
 void run_theorem(const Theorem& theorem, RunCtx& state) {
-  state.proofs.push_back(std::make_unique<Proof>(theorem, state));
-  auto& proof = *state.proofs.back();
+  auto proof = std::make_unique<Proof>(theorem, state);
   try {
-    theorem.func(proof);
-    proof.writeCsv("RunStatus", "OK", Unit::Status);
+    theorem.func(*proof);
+    proof->setRunStatus("OK");
+    persistProofOutput(*proof, state);
+    state.proofs.push_back(std::move(proof));
   } catch (const std::exception& e) {
-    const auto render_error = tryRenderProof(proof);
-    proof.writeCsv("RunStatus", std::string(classifyRunStatus(e.what())), Unit::Status);
-    proof.writeCsv("ErrorMessage", renderFailureMessage(e, render_error), Unit::Text);
+    const auto render_error = tryRenderProof(*proof);
+    proof->setRunStatus(std::string(classifyRunStatus(e.what())));
+    proof->setErrorMessage(renderFailureMessage(e, render_error));
+    persistProofOutput(*proof, state);
+    state.proofs.push_back(std::move(proof));
     throw;
   } catch (...) {
-    const auto render_error = tryRenderProof(proof);
-    proof.writeCsv("RunStatus", "ERROR", Unit::Status);
-    proof.writeCsv("ErrorMessage", renderFailureMessage("Unknown non-std exception", render_error), Unit::Text);
+    const auto render_error = tryRenderProof(*proof);
+    proof->setRunStatus("ERROR");
+    proof->setErrorMessage(renderFailureMessage("Unknown non-std exception", render_error));
+    persistProofOutput(*proof, state);
+    state.proofs.push_back(std::move(proof));
     throw;
   }
 }
@@ -78,16 +109,7 @@ void writeVersion(RunCtx& input_state) {
     PLOGW << "Failed to read engine version for proof output with unknown non-std exception";
   }
 
-  input_state.writeCsv("CONFIG-VERSION",
-                       std::vector<std::string_view>{input_state.engine.name(),
-                                                     "0",
-                                                     allCategoriesAsString(),
-                                                     "CONFIG",
-                                                     "CONFIG-VERSION",
-                                                     "Version of Engine",
-                                                     "version",
-                                                     version,
-                                                     "version"});
+  input_state.writeProofJson("CONFIG-VERSION", configVersionJson(input_state, version));
   PLOGI << "The Version of the engine is: " << version;
 }
 
@@ -99,6 +121,11 @@ bool prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
     ux::PreAmpleTheorem(input_state.console, theorem->name);
     try {
       run_theorem(*theorem, input_state);
+    } catch (const DatasetBootstrapException& e) {
+      all_succeeded = false;
+      PLOGE << "Theorem '" << theorem->name << "' failed: " << e.what();
+      PLOGE << "Stopping run because dataset bootstrap did not complete successfully.";
+      break;
     } catch (const std::exception& e) {
       all_succeeded = false;
       PLOGE << "Theorem '" << theorem->name << "' failed: " << e.what();

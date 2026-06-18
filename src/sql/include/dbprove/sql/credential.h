@@ -59,11 +59,12 @@ public:
 class CredentialAccessToken {
 public:
   explicit CredentialAccessToken(const Engine& engine, std::string endpoint_url, std::string database,
-                                 std::string token);
+                                 std::string token, std::string data_bucket_uri = "s3://sql-arena");
   explicit CredentialAccessToken(const Engine& engine);
   const std::string token;
   const std::string database;
   const std::string endpoint_url;
+  const std::string data_bucket_uri;
 };
 
 

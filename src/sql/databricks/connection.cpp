@@ -65,7 +65,7 @@ namespace sql::databricks
         std::ostringstream sql;
         sql << "SELECT COUNT(DISTINCT constraint_name) AS c "
                "FROM information_schema.table_constraints "
-               "WHERE table_schema = 'tpch' "
+               "WHERE table_schema = 'tpch_sf1' "
                "AND constraint_name IN (";
         for (size_t i = 0; i < kDatabricksTpchConstraintNames.size(); ++i) {
             if (i > 0) {
@@ -441,11 +441,12 @@ namespace sql::databricks
         // TODO: should have a general way to map table to its location
 
         const auto [schema_name, table_name] = splitTable(table);
+        const auto base_uri = token_.data_bucket_uri + "/tpch/sf1";
 
         const std::string statement =
                  "INSERT INTO " + std::string(table) + "\n" +
                  "SELECT * \n"
-                 "FROM parquet.`s3://sql-arena-data/tpc-h/sf1/" + table_name + ".parquet`";
+                 "FROM parquet.`" + base_uri + "/" + table_name + ".parquet`";
 
         PLOGI << "Executing INSERT INTO for table " << table;
         execute(statement);
@@ -453,7 +454,7 @@ namespace sql::databricks
 
     const ConnectionBase::TypeMap& Connection::typeMap() const
     {
-        static const TypeMap map = {{"INT", "BIGINT"}};
+        static const TypeMap map = {{SqlTypeKind::INT, "BIGINT"}};
         return map;
     }
 
@@ -479,7 +480,7 @@ namespace sql::databricks
 
     bool Connection::shouldSkipDatasetTuning(std::string_view dataset)
     {
-        if (dataset != "tpch") {
+        if (dataset != "tpch_sf1") {
             return false;
         }
 

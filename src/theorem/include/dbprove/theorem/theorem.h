@@ -1,5 +1,6 @@
 #pragma once
 #include <dbprove/generator/generator_state.h>
+#include <dbprove/common/storage_variant.h>
 #include <dbprove/sql/explain/plan.h>
 #include <vector>
 #include <string>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <ostream>
 #include <filesystem>
+#include <stdexcept>
 
 #include "dbprove/sql/connection_factory.h"
 #include "dbprove/sql/sql_type.h"
@@ -26,6 +28,11 @@ class Data;
 class DataExplain;
 class DataQuery;
 using TheoremFunction = std::function<void(Proof& state)>;
+
+class DatasetBootstrapException : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
 
 /**
 * The type of Theorem
@@ -133,6 +140,25 @@ enum class Unit {
 
 constexpr inline std::string_view to_string(const Unit unit) { return magic_enum::enum_name(unit); }
 
+struct RuntimeSummary {
+  std::optional<int64_t> best_us;
+  std::optional<int64_t> avg_us;
+  std::optional<int64_t> min_us;
+  std::optional<int64_t> max_us;
+  std::optional<double> stddev_us;
+};
+
+struct QueryProofData {
+  std::optional<std::string> sql;
+  std::optional<std::string> start_time;
+  std::optional<std::string> status;
+  std::optional<std::string> error_message;
+  std::optional<std::string> plan;
+  std::optional<int64_t> time_us;
+  std::map<std::string, int64_t> operator_rows;
+  std::map<std::string, std::map<std::string, int64_t>> mis_estimates;
+};
+
 /**
  * A Proof is the holder of all data that is the result of proving a theorem
  */
@@ -161,18 +187,27 @@ public:
   [[nodiscard]] std::optional<uint32_t> queryTimeoutSeconds() const;
   [[nodiscard]] size_t timingRuns() const;
   [[nodiscard]] const std::optional<std::string>& parquetDir() const;
-  /**
-   * Write data into the csv stream for later merging and processing
-   * @param key Unique name (in the context of the  theorem) of the measurement
-   * @param value The measurement. Can be of any type, but must cast to string
-   * @param unit Unit of measurement
-   */
-  void writeCsv(const std::string& key, std::string value, Unit unit) const;
-  [[nodiscard]] std::ostream& csv() const;
+  QueryProofData& beginQuery(std::string sql);
+  QueryProofData& ensureQuery();
+  void setCurrentQueryStartTime(std::string start_time);
+  void setCurrentQueryPlan(std::string plan);
+  void setCurrentQueryBestRuntimeMicroseconds(int64_t time_us);
+  void setRuntimeSummaryMicroseconds(int64_t best_us, int64_t avg_us, int64_t min_us, int64_t max_us,
+                                     double stddev_us);
+  void setCurrentQueryOperatorRows(const std::string& operation, int64_t rows);
+  void setCurrentQueryMisEstimate(const std::string& operation, const std::string& magnitude, int64_t count);
+  void setRunStatus(std::string status);
+  void setErrorMessage(std::string error_message);
+  [[nodiscard]] std::string toJson() const;
 
 private:
   RunCtx& state;
   bool rendered_ = false;
+  std::vector<QueryProofData> queries_;
+  std::optional<size_t> current_query_index_;
+  RuntimeSummary runtime_summary_;
+  std::optional<std::string> run_status_;
+  std::optional<std::string> error_message_;
 };
 
 
@@ -181,11 +216,14 @@ class Theorem {
   std::set<Category> categories_ = {};
   std::string tags_string_;
   std::string categories_string_;
+  std::optional<dbprove::StorageVariant> required_storage_variant_;
 
 public:
   Theorem(std::string theorem, std::string description, const TheoremFunction& func,
-          std::optional<sql::RowCount> expected_row_count = std::nullopt)
+          std::optional<sql::RowCount> expected_row_count = std::nullopt,
+          std::optional<std::string> display_name = std::nullopt)
     : name(std::move(theorem))
+    , display_name_(display_name.has_value() ? std::move(*display_name) : name)
     , description(std::move(description))
     , expected_row_count_(expected_row_count)
     , func(func) {
@@ -219,11 +257,24 @@ public:
     return expected_row_count_;
   }
 
+  void requireStorageVariant(const dbprove::StorageVariant variant) {
+    required_storage_variant_ = variant;
+  }
+
+  [[nodiscard]] std::optional<dbprove::StorageVariant> requiredStorageVariant() const {
+    return required_storage_variant_;
+  }
+
+  [[nodiscard]] const std::string& displayName() const {
+    return display_name_;
+  }
+
   std::string name;
   std::string description;
   TheoremFunction func;
 
 private:
+  std::string display_name_;
   std::optional<sql::RowCount> expected_row_count_;
 };
 
@@ -233,33 +284,30 @@ private:
  * It is also where the proofs are kept for returning to caller
  */
 class RunCtx {
-public:
-  class CsvWriter;
 private:
-  std::unique_ptr<CsvWriter> legacy_writer;
   std::filesystem::path proof_directory_path_;
-  bool write_csv_header_ = true;
 
 public:
   const sql::Engine& engine;
+  std::string engine_version;
+  dbprove::StorageVariant storage_variant;
   const sql::Credential& credentials;
   generator::GeneratorState& generator;
   sql::ConnectionFactory factory;
   std::ostream& console;
-  std::ostream& csv;
   bool artifact_mode = false;
   std::optional<uint32_t> query_timeout_seconds;
   size_t timing_runs = 3;
   std::optional<std::string> parquet_dir;
   std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
-  void writeCsv(std::string_view proof_name, const std::vector<std::string_view>& values) const;
+  void writeProofJson(std::string_view proof_name, std::string_view content) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,
-         std::ostream& console, std::ostream& csv, std::optional<std::string> connection_artifacts_path = std::nullopt,
+         std::ostream& console, std::string engine_version, std::optional<std::string> connection_artifacts_path = std::nullopt,
+         dbprove::StorageVariant storage_variant = dbprove::StorageVariant::Native,
          std::optional<uint32_t> query_timeout_seconds = std::nullopt,
          size_t timing_runs = 3,
          std::optional<std::string> parquet_dir = std::nullopt,
-         bool write_csv_header = true,
          std::optional<std::filesystem::path> proof_directory = std::nullopt,
          bool artifact_mode = false);
 

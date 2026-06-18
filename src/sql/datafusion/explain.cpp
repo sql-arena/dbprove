@@ -727,6 +727,7 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
 }  // namespace
 
 std::unique_ptr<Plan> Connection::explain(std::string_view statement, std::optional<std::string_view> name) {
+  const std::lock_guard<std::recursive_mutex> lock(driverMutex());
   const std::string artifact_name =
       name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
 

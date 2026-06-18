@@ -663,7 +663,7 @@ def wait_for_engine_ready(engine: dict[str, str | bool]) -> int:
     last_error = "unknown error"
     while time.time() < deadline:
         try:
-            with urlopen("http://localhost:8080/v1/info", timeout=2) as response:
+            with urlopen("http://localhost:65432/v1/info", timeout=2) as response:
                 if response.status == 200:
                     marker = subprocess.run(
                         compose_cmd("exec", "-T", "trino-iceberg", "sh", "-lc", "test -f /tmp/trino-bootstrap-ready"),

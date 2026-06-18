@@ -217,9 +217,12 @@ Important points:
   `tpch.sf1.orders_scale_*` as Iceberg tables and uses `add_files` to register
   the staged parquet files.
 - The runner waits for both:
-  - `http://localhost:8080/v1/info`
+  - `http://localhost:65432/v1/info`
   - `/tmp/trino-bootstrap-ready`
   before treating Trino as ready.
+- Docker-exposed engines all bind the same host port, `65432`. That is
+  intentional: `dbprove --docker` expects to run one engine container at a
+  time, and a port collision makes accidental multi-engine overlap fail loudly.
 - The benchmark query itself is no longer used as Trino warmup. Warmup is now a
   lightweight `SELECT 1 ... LIMIT 1` against `lineitem_25x` so an early
   benchmark OOM does not get misclassified as a bootstrap problem.

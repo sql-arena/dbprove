@@ -112,7 +112,10 @@ sql::postgresql::Connection::Connection(const CredentialPassword& credential, co
 }
 
 const sql::ConnectionBase::TypeMap& sql::postgresql::Connection::typeMap() const {
-  static const TypeMap map = {{"DOUBLE", "FLOAT8"}, {"STRING", "VARCHAR"}};
+  static const TypeMap map = {
+      {SqlTypeKind::DOUBLE, "FLOAT8"},
+      {SqlTypeKind::STRING, "TEXT"},
+  };
   return map;
 }
 

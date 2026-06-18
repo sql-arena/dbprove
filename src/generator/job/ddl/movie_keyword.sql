@@ -1,5 +1,5 @@
 CREATE TABLE job.movie_keyword (
-    id integer NOT NULL PRIMARY KEY,
-    movie_id integer NOT NULL,
-    keyword_id integer NOT NULL
+    id INT NOT NULL,
+    movie_id INT NOT NULL,
+    keyword_id INT NOT NULL
 );

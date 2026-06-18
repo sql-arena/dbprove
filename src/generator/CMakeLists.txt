@@ -17,20 +17,8 @@ target_include_directories(${_targetName}
 
 target_sources(${_targetName}
         PRIVATE
-        date_range.cpp
         generator_state.cpp
         generated_table.cpp
-        tpch/tpch_types.cpp
-        tpch/tpch_container.cpp
-        tpch/tpch_table_gen.cpp
-        tpch/tpch_text.cpp
-        tpch/tpch_phone.cpp
-        job/job.cpp
-        test/simple_test_generator.cpp
-        tpch/download_shims.cpp
-        PRIVATE FILE_SET internal TYPE HEADERS FILES
-        tpch/tpch_types.h
-        tpch/tpch_container.h
 )
 find_package(google_cloud_cpp_storage CONFIG REQUIRED)
 find_package(libzip CONFIG REQUIRED)
@@ -76,7 +64,3 @@ target_embed_files(${_targetName} SQL_FILES
         job/ddl/role_type.sql
         job/ddl/title.sql
 )
-
-if (DBPROVE_ENABLE_TESTING)
-    add_subdirectory("test")
-endif ()

@@ -1,6 +1,7 @@
 #include "theorem.h"
 #include "runner.h"
 #include "dbprove_theorem/embedded_sql.h"
+#include <dbprove/generator/job.h>
 #include <dbprove/generator/tpch.h>
 #include "init.h"
 #include "../query.h"
@@ -8,8 +9,6 @@
 #include <array>
 
 using namespace dbprove::theorem;
-
-void dbprove_force_link_job_generators();
 
 namespace {
 
@@ -41,7 +40,7 @@ void register_job(std::string_view job_name, std::string_view sql) {
 } // namespace
 
 Proof& tpch_ensure_basics(Proof& proof) {
-  proof.ensureDataset("tpch");
+  proof.ensureDataset("tpch_sf1");
   return proof;
 }
 
@@ -160,7 +159,11 @@ void register_tpch(unsigned query_number, const TheoremFunction& func,
   if (handroll) {
     q += "HR";
   }
-  auto& t = addTheorem("TPCH-" + q, "TPC-H " + q + " Analysis", func, expected_row_count);
+  auto& t = addTheorem("PLAN-TPC-H-" + q,
+                       "TPC-H " + q + " Analysis",
+                       func,
+                       expected_row_count,
+                       "TPCH-" + q);
   categoriseTheorem(t, Category::PLAN);
   tagTheorem(t, Tag("TPC-H"));
 }
@@ -172,7 +175,6 @@ void init() {
   if (is_initialised) {
     return;
   }
-  dbprove_force_link_job_generators();
   register_tpch(1, tpch_q01, 4);
   register_tpch(2, tpch_q02, 495);
   register_tpch(3, tpch_q03, 10);

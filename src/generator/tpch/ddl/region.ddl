@@ -1,6 +1,6 @@
-CREATE TABLE tpch.region
+CREATE TABLE tpch_sf1.region
 (
     r_regionkey INT NOT NULL,
-    r_name      VARCHAR(25) NOT NULL,
-    r_comment   VARCHAR(152) NOT NULL
+    r_name      TEXT NOT NULL,
+    r_comment   TEXT NOT NULL
 );

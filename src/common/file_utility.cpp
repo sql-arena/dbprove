@@ -28,8 +28,10 @@ std::optional<path> discover_project_root_from(path start) {
 }
 
 path make_directory(const std::string& directory) {
-  const auto currentWorkingDir = current_path();
-  const auto directoryToMake = currentWorkingDir / directory;
+  const path requestedPath(directory);
+  const auto directoryToMake = requestedPath.is_absolute()
+                             ? requestedPath
+                             : current_path() / requestedPath;
 
   if (!exists(directoryToMake)) {
     try {

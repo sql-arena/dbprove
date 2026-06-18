@@ -4,8 +4,8 @@ SELECT 100.00 * SUM(CASE
                             THEN l_extendedprice * (1 - l_discount)
                         ELSE 0
     END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue
-FROM tpch.lineitem
-INNER JOIN tpch.part
+FROM tpch_sf1.lineitem
+INNER JOIN tpch_sf1.part
     ON l_partkey = p_partkey
 WHERE l_shipdate >= '1996-02-01'
   AND l_shipdate < '1996-03-01'

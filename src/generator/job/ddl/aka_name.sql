@@ -1,10 +1,10 @@
 CREATE TABLE job.aka_name (
-    id integer NOT NULL PRIMARY KEY,
-    person_id integer NOT NULL,
-    name text NOT NULL,
-    imdb_index character varying(12),
-    name_pcode_cf character varying(5),
-    name_pcode_nf character varying(5),
-    surname_pcode character varying(5),
-    md5sum character varying(32)
+    id INT NOT NULL,
+    person_id INT NOT NULL,
+    name TEXT NOT NULL,
+    imdb_index TEXT,
+    name_pcode_cf TEXT,
+    name_pcode_nf TEXT,
+    surname_pcode TEXT,
+    md5sum TEXT
 );

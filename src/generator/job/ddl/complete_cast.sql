@@ -1,6 +1,6 @@
 CREATE TABLE job.complete_cast (
-    id integer NOT NULL PRIMARY KEY,
-    movie_id integer,
-    subject_id integer NOT NULL,
-    status_id integer NOT NULL
+    id INT NOT NULL,
+    movie_id INT,
+    subject_id INT NOT NULL,
+    status_id INT NOT NULL
 );

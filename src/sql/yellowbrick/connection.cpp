@@ -11,14 +11,66 @@
 #include "sort.h"
 #include "group_by.h"
 #include "sequence.h"
+#include "include/dbprove/sql/parsed_table.h"
 #include "sql_exceptions.h"
 #include "explain/plan.h"
+#include <sstream>
 
 namespace sql::explain {
 class GroupBy;
 }
 
 namespace sql::yellowbrick {
+namespace {
+std::string defaultTypeName(const SqlTypeKind kind) {
+  switch (kind) {
+    case SqlTypeKind::SMALLINT:
+      return "SMALLINT";
+    case SqlTypeKind::INT:
+      return "INT";
+    case SqlTypeKind::BIGINT:
+      return "BIGINT";
+    case SqlTypeKind::REAL:
+      return "REAL";
+    case SqlTypeKind::DOUBLE:
+      return "DOUBLE";
+    case SqlTypeKind::DECIMAL:
+      return "DECIMAL";
+    case SqlTypeKind::STRING:
+      return "TEXT";
+    case SqlTypeKind::DATE:
+      return "DATE";
+    case SqlTypeKind::TIME:
+      return "TIME";
+    case SqlTypeKind::DATETIME:
+      return "DATETIME";
+    case SqlTypeKind::SQL_NULL:
+      return "NULL";
+    case SqlTypeKind::UNKNOWN:
+      return "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
+std::string renderType(const SqlTypeMeta& type, const ConnectionBase::TypeMap& type_map) {
+  std::string rendered = type_map.contains(type.kind)
+                       ? std::string(type_map.at(type.kind))
+                       : defaultTypeName(type.kind);
+
+  if (type.kind == SqlTypeKind::STRING && std::holds_alternative<SqlTypeModifier::String>(type.modifier.value)) {
+    const auto length = std::get<SqlTypeModifier::String>(type.modifier.value).length;
+    return rendered + "(" + std::to_string(length) + ")";
+  }
+
+  if (type.kind == SqlTypeKind::DECIMAL && std::holds_alternative<SqlTypeModifier::Decimal>(type.modifier.value)) {
+    const auto decimal = std::get<SqlTypeModifier::Decimal>(type.modifier.value);
+    return rendered + "(" + std::to_string(decimal.precision) + ", " + std::to_string(decimal.scale) + ")";
+  }
+
+  return rendered;
+}
+}
+
 Connection::Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path)
   : postgresql::Connection(credential, engine, std::move(artifacts_path)) {
 }
@@ -33,11 +85,40 @@ std::string Connection::version() {
   return "Unknown";
 }
 
-std::string Connection::translateDialectDdl(const std::string_view ddl) const {
-  const std::string pg = postgresql::Connection::translateDialectDdl(ddl);
-  const std::regex re(";");
-  auto r = std::regex_replace(pg, re, " DISTRIBUTE REPLICATE;");
-  return r;
+void Connection::constructTable(const std::string_view ddl,
+                                const std::span<const std::filesystem::path> source_stems,
+                                const dbprove::StorageVariant storage_variant) {
+  static_cast<void>(storage_variant);
+
+  if (source_stems.empty()) {
+    throw std::runtime_error("constructTable requires at least one staged source file stem");
+  }
+
+  const auto parsed = ParsedTable(ddl);
+  const auto& table = parsed.tableName();
+  std::ostringstream out;
+  out << "CREATE TABLE " << table << "\n(\n";
+  for (size_t i = 0; i < parsed.columns().size(); ++i) {
+    const auto& column = parsed.columns()[i];
+    out << "    " << column.name << " " << renderType(column.type, typeMap());
+    out << (column.is_null ? " NULL" : " NOT NULL");
+    if (i + 1 < parsed.columns().size()) {
+      out << ",";
+    }
+    out << "\n";
+  }
+  out << ")\nDISTRIBUTE REPLICATE;";
+  const auto create_table = out.str();
+  execute(create_table);
+
+  std::vector<std::filesystem::path> csv_paths;
+  csv_paths.reserve(source_stems.size());
+  for (const auto& stem : source_stems) {
+    auto csv_path = stem;
+    csv_path += ".csv";
+    csv_paths.push_back(std::move(csv_path));
+  }
+  bulkLoad(table, csv_paths);
 }
 
 using namespace pugi;

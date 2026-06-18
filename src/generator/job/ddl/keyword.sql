@@ -1,5 +1,5 @@
 CREATE TABLE job.keyword (
-    id integer NOT NULL PRIMARY KEY,
-    keyword text NOT NULL,
-    phonetic_code character varying(5)
+    id INT NOT NULL,
+    keyword TEXT NOT NULL,
+    phonetic_code TEXT
 );

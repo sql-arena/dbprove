@@ -1874,6 +1874,17 @@ bool flipJoinChildrenPlanNodes(PlanNode& root) {
     if (node.childCount() < 2) {
       continue;
     }
+    if (node.raw_json.is_object()) {
+      const auto strictness = to_upper(node.raw_json.value("Strictness", ""));
+      if (strictness == "SEMI" || strictness == "ANTI") {
+        const auto type = to_upper(node.raw_json.value("Type", ""));
+        if (type == "RIGHT") {
+          node.raw_json["Type"] = "LEFT";
+        } else if (type == "LEFT") {
+          node.raw_json["Type"] = "RIGHT";
+        }
+      }
+    }
     node.reverseChildren();
     ++flipped;
   }

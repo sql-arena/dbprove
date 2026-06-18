@@ -8,12 +8,12 @@ which is a rather beefy library
 
 ## Execution Plan Parsing
 
-This document tracks the ongoing understanding of PostgreSQL query plans, retrieved via `EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON)`.
+This document describes how dbprove interprets PostgreSQL query plans retrieved via `EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON)`.
 
 ### Plan Sources
 
 The `explain` method in the PostgreSQL driver implements the following flow:
-1.  **Artifact Check**: It first checks for a cached JSON plan in the specified artifacts directory (if the `-a/--artifacts` flag is used).
+1.  **Artifact Check**: It first checks for a cached JSON plan in the specified artifacts directory when `dbprove` is run with `--artefact-dir`.
 2.  **EXPLAIN Command**: If no artifact is found, it executes `EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON) <statement>`.
     -   `ANALYZE`: Executes the query and displays actual run times and other statistics.
     -   `VERBOSE`: Displays additional information, such as the output column list for each node.
@@ -22,11 +22,12 @@ The `explain` method in the PostgreSQL driver implements the following flow:
 4.  **JSON Parsing**: The resulting JSON string is parsed using `nlohmann::json`.
 
 #### Plan Artifacts
-To make analysis and debugging easier, you can cache PostgreSQL plan artifacts using the `-a/--artifacts <path>` flag. 
+By default, `dbprove` writes PostgreSQL plan artifacts into `proof/[Engine]/[Version]/artefacts`.
+To replay from a specific artifact directory, use:
 ```bash
-dbprove -e postgres ... -a ./my_artifacts
+dbprove -e postgres ... --artefact-dir ./my_artifacts
 ```
-When this flag is used, `dbprove` will first check the specified directory for cached files. If found, it will skip all remote calls and use the local files. If not found, it will perform the full explain flow and save the results for next time.
+When this flag is used, `dbprove` will first check the specified directory for cached files. Missing required artifacts cause the run to fail.
 
 ### JSON Format Structure
 
@@ -79,21 +80,3 @@ The parser applies several logic adjustments to normalize PostgreSQL plans:
     -   For `Nested Loop` joins involving an index, the join condition is extracted from the `Index Cond` of the inner side scan.
     -   `Filter` conditions and `Join Filter` conditions are cleaned and assigned to the node.
 5.  **Bitmap Scan Collapsing**: PostgreSQL's complex bitmap index scan trees (BitmapAnd/Or) are collapsed into a single `SCAN` node to keep the canonical plan readable while still indicating the index-based access.
-
-### Running with Docker
-
-To start a PostgreSQL instance for testing:
-```bash
-cd docker
-docker-compose up -d postgresql
-```
-
-Default credentials:
--   **User**: `postgres`
--   **Password**: `postgres`
--   **Database**: `bench`
-
-Data is persisted in `run/mount/postgresql`.
-
-Note that when benchmarking, you will need to change the default configuration of PostgreSQL, the reference script is
-in `configure.sql`. For testing the connector, use `configure_test.sql`

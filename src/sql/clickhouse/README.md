@@ -2,58 +2,6 @@
 
 Uses the native ClickHouse protocol to talk with ClickHouse.
 
-## New Session Bootstrap
-
-If the task is "ClickHouse explain rendering", load context in this order:
-
-1. `ai-rules.md` at the repo root for contributor and AI-agent coding preferences.
-2. `src/sql/clickhouse/README.md` (this file) for behavior and edge cases.
-3. `src/sql/clickhouse/explain.cpp` for actual parser and post-processing logic.
-4. `src/sql/clickhouse/plan_node.cpp` for `Expression.Actions` parsing and cross-node expression wiring.
-5. `src/sql/clickhouse/query_tree_parser.{h,cpp}` for query-tree relation extraction (`IN`/`NOT IN`, correlated `EXISTS`).
-6. `src/sql/clickhouse/ast_parser.{h,cpp}` for set literal extraction from AST.
-7. `src/sql/clickhouse/expression_node.{h,cpp}` for `ExpressionNode` tree rendering (`renderSql`, `renderUser`, executable SQL).
-8. `src/sql/explain/join.cpp` for join SQL reconstruction behavior shared across engines.
-
-Fast entry points inside `src/sql/clickhouse/explain.cpp`:
-
-- `Connection::explain(...)`: artifact load/fetch and full parse pipeline.
-- `fetchClickHouseExplainJson(...)`, `fetchClickHouseExplainAst(...)`, `fetchClickHouseExplainQueryTree(...)`: explain artifact fetch/store.
-- `buildResolvedJsonPlanTreeFromExplainJson(...)`: resolved `PlanNode` tree build + shape rewrites before canonical lowering.
-- `createExplainNodeFromResolvedPlanNode(...)`, `buildExplainNode(...)`, `buildExplainPlan(...)`: `PlanNode` to canonical `sql::explain::Node` lowering.
-- `flattenCreatingSetWrappersPlanNodes(...)`, `flipJoinChildrenPlanNodes(...)`, `pruneBroadcastPlanNodes(...)`: active pre-lowering structural passes.
-
-Fast entry points outside `explain.cpp` that matter during ClickHouse explain work:
-
-- `Connection::fetchAll(...)` in `connection.cpp`: used by explain artifact fetches and by `Plan::fixActuals(...)`; `DBPROVE_ACTUALS` queries temporarily set `max_execution_time` and restore it afterward.
-- `buildResolvedPlanNodeTree(...)` in `plan_node.cpp`: parses raw JSON into `PlanNode`/`ExpressionNode`, wires references bottom-up, validates the tree, wires common-buffer lineage, and assigns aliases before canonical lowering.
-- `stripClickHouseTypedLiterals(...)` in `literals.cpp`: normalizes engine-specific typed literal spellings before SQL rendering and AST set recovery.
-
-## Initial Debugging Workflow (`dump_clickhouse_plan_tree.sh`)
-
-Use `./dump_clickhouse_plan_tree.sh` for first-pass debugging of ClickHouse plan parsing.
-
-What it does:
-- Builds target `clickhouse_plan_tree_dump` if needed.
-- Loads a ClickHouse plan artifact JSON.
-- Prints the resolved `PlanNode`/`ExpressionNode` tree (node ids, headers, actions, outputs, keys, clauses, aggregates).
-
-Build directory behavior:
-- Script default is `BUILD_DIR=./build`.
-- Override with `BUILD_DIR=/path/to/cmake-build ./dump_clickhouse_plan_tree.sh ...`.
-- This matters when using CMake presets that build under `out/build/...`.
-
-Input resolution behavior:
-- Accepts `QNN`, `TPCH-QNN`, or a direct artifact path.
-- `Q1` is normalized to `Q01`.
-- Resolution order is: direct existing path -> `<artifacts-dir>/TPCH-QNN.json` -> `<artifacts-dir>/<input>.json`.
-- `--artifacts-dir` defaults to `./run/artifacts/clickhouse`.
-- Underlying binary currently accepts one positional input plus optional `--artifacts-dir`; extra args fail fast.
-
-Important scope note:
-- The dump tool calls `buildResolvedPlanNodeTree(...)` directly.
-- It shows resolved ClickHouse plan tree state (including expression wiring and common-buffer linkage), but it does not run the canonical `Connection::explain(...)` rewrite pipeline.
-
 ## Execution Plan Parsing
 
 This document tracks the current parsing model for ClickHouse plans in `dbprove`.
@@ -73,7 +21,7 @@ Both are needed:
 
 ### Artefacts
 
-With `-a/--artifacts`, ClickHouse explain now caches:
+By default, ClickHouse explain now caches under `proof/[Engine]/[Version]/artefacts`:
 - `clickhouse_<name>.json`
 - `clickhouse_<name>.ast`
 - `clickhouse_<name>.query_tree`
@@ -327,45 +275,14 @@ Actuals SQL aliasing notes:
 - For ClickHouse `Expression` projections, function expressions with stable `alias_user` are emitted as `expr AS alias` so parent nested nodes can reference internal slots (`aN`) safely.
 - For forwarded projections, executable source selection is child-aware: prefer the first lineage-derived candidate that the immediate child actually exposes, rather than the first semantic alias seen in the reference chain.
 
-### Validation Status
-
-As of 2026-03-18, running
-
-```bash
-DBPROVE_ACTUALS_TIMEOUT_SEC=30 dbprove -e clickhouse -T PLAN
-```
-
-against the local ClickHouse 26.1 setup completes the full TPC-H `PLAN` sweep without:
-
-- `PlanNode` validation failures
-- `fixActuals failed`
-- correlated `CommonSubplan` errors
-- zeroed-out actual rowcounts on the previously failing Q15 / Q21 / Q22 paths
-
 ### Known Limitations
 
 - Set recovery from AST currently targets tuple literal patterns and may need extension for future AST variants.
 - `SORT` and `GROUP BY` keys/aggregates are still read from JSON metadata fields (`Sort Description`, `Keys`, `Aggregates`) rather than expression actions.
 - `fixActuals(...)` depends on reconstructed SQL being valid for each subtree shape; unusual expressions/functions may still require parser updates when that path is used.
 
-### Test Coverage Notes
-
-- `src/sql/test/explain.cpp` currently exercises explain rendering for PostgreSQL and DuckDB.
-- ClickHouse explain behavior is validated mainly through theorem runs and artifact-driven debugging.
-- When changing ClickHouse explain parsing, prefer re-running with `-a/--artifacts` to capture and replay plan inputs.
-
 ### Literal / Function Normalization Notes
 
 ClickHouse may emit typed numeric literals in expressions (for example `15_UInt16`, `25_UInt16`).
 Typed literals and synthetic `__tableX.` qualifiers are normalized before canonical rendering.
 No string/regex fallback rewrites are used for wiring; matching is exact and field-driven from machine-generated JSON.
-
-## Running with Docker
-
-To start a ClickHouse instance for testing:
-```bash
-cd docker
-docker-compose up -d clickhouse
-```
-
-Data is persisted in `run/mount/clickhouse`.

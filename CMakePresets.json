@@ -73,14 +73,14 @@
         "DBPROVE_ENABLE_TESTING": "OFF",
         "DBPROVE_DUCKDB_ONLY": "ON",
         "VCPKG_TARGET_TRIPLET": "arm64-linux-release",
-        "VCPKG_MANIFEST_DIR": "${sourceDir}/docker/duckdb",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/docker/duckdb/local/iceberg",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_ubuntu_arm64_prebuilt_duckdb",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/vcpkg_overlays",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/local/iceberg/vcpkg_overlays",
         "CMAKE_BUILD_TYPE": "Release"
       },
       "environment": {
         "VCPKG_ROOT": "${sourceDir}/extern/vcpkg",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/vcpkg_overlays",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/docker/duckdb/local/iceberg/vcpkg_overlays",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/overlay-triplets"
       }
     },

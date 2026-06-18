@@ -264,7 +264,10 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 }
 
 const ConnectionBase::TypeMap& Connection::typeMap() const {
-  static const TypeMap map = {{"DOUBLE", "FLOAT(53)"}, {"STRING", "VARCHAR"}};
+  static const TypeMap map = {
+      {SqlTypeKind::DOUBLE, "FLOAT(53)"},
+      {SqlTypeKind::STRING, "VARCHAR(MAX)"},
+  };
   return map;
 }
 

@@ -16,7 +16,7 @@ old built-in `tpch` connector anymore. The active join-scale path uses:
 
 The driver still rewrites repo SQL into Trino's dialect where needed:
 
-- `tpch.<table>` references are rewritten to `sf1.<table>` when the configured catalog is `tpch`
+- `tpch_sf1.<table>` references are rewritten against the configured `tpch` catalog/schema
 - `LEFT(x, n)` is rewritten to `SUBSTRING(x, 1, n)`
 - bare ISO date strings like `'1998-10-01'` are rewritten to `DATE '1998-10-01'`
 
@@ -63,22 +63,3 @@ Operator families currently handled for TPC-H PLAN theorem coverage include:
 
 Trino's JSON explain does not provide actual row counts in the same way as engines with `EXPLAIN ANALYZE` integrations, so canonical plans are built primarily from estimated row counts.
 The Trino driver now reconstructs executable subtree SQL well enough to gather actual row counts across the full TPC-H `PLAN` workload in the containerized setup used by this repo.
-
-### Running with Docker
-
-To start a Trino instance for testing:
-```bash
-cd docker
-docker compose up -d trino
-```
-
-The Web UI is available at `http://localhost:8080`.
-
-For the join-scale benchmark, container startup now:
-
-- copies the host materialized parquet tree into `/mnt/tpch-tmpfs/join_scale`
-- bootstraps Iceberg tables through Nessie
-- writes `/tmp/trino-bootstrap-ready` when the benchmark catalog is ready
-
-The benchmark runner waits for both the HTTP health endpoint and that bootstrap
-marker before treating Trino as ready.

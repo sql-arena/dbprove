@@ -16,6 +16,9 @@ public:
   void execute(std::string_view statement) override;
   std::unique_ptr<ResultBase> fetchAll(std::string_view statement) override;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
+  void constructTable(std::string_view ddl,
+                      std::span<const std::filesystem::path> source_stems,
+                      dbprove::StorageVariant storage_variant) override;
   std::string version() override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   void close() override;

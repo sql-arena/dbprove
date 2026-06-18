@@ -9,7 +9,9 @@ namespace sql::yellowbrick
     public:
         Connection(const CredentialPassword& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt);
         std::string version() override;
-        std::string translateDialectDdl(const std::string_view ddl) const override;
+        void constructTable(std::string_view ddl,
+                            std::span<const std::filesystem::path> source_stems,
+                            dbprove::StorageVariant storage_variant) override;
         std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
         void analyse(std::string_view table_name) override;
     };

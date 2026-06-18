@@ -6,6 +6,7 @@ target_sources(${_targetName}
         credential.h
         engine.h
         integer_type_def.h
+        parsed_table.h
         result_base.h
         row_base.h
         row_iterator.h
@@ -16,4 +17,3 @@ target_sources(${_targetName}
         explain/node_type.h
         explain/column.h
 )
-

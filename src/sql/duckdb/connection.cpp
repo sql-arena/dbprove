@@ -15,6 +15,22 @@
 namespace sql::duckdb {
 namespace {
 constexpr std::string_view kDuckDbMemoryLimitSql = "SET memory_limit = '2GB'";
+
+std::string sqlStringLiteral(const std::string_view value) {
+  std::string escaped;
+  escaped.reserve(value.size() + 2);
+  escaped.push_back('\'');
+  for (const char ch : value) {
+    if (ch == '\'') {
+      escaped += "''";
+      continue;
+    }
+    escaped.push_back(ch);
+  }
+  escaped.push_back('\'');
+  return escaped;
+}
+
 }
 
 void handleDuckError(::duckdb::QueryResult* result) {
@@ -214,8 +230,10 @@ void Connection::bulkLoad(const std::string_view table, const std::vector<std::f
   validateSourcePaths(source_paths);
 
   for (const auto& path : source_paths) {
-    std::string copy_statement = "COPY " + std::string(table) + " FROM '" + path.string() + "'" "\nWITH (FORMAT 'csv', "
-                                 "DELIM '|', " "AUTO_DETECT true, " "HEADER true, " "STRICT_MODE false " ")";
+    const std::string copy_statement =
+        "COPY " + std::string(table) + " FROM " + sqlStringLiteral(path.string()) + " "
+        "WITH (FORMAT csv, DELIM '|', AUTO_DETECT false, HEADER true, "
+        "QUOTE '\"', ESCAPE '\"', NEW_LINE '\\n')";
     auto result = impl_->execute(copy_statement);
   }
 }

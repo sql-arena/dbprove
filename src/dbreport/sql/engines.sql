@@ -1,2 +1,0 @@
-SELECT DISTINCT engine
-FROM proof;

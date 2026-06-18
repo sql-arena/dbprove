@@ -1,4 +1,4 @@
 CREATE TABLE job.company_type (
-    id integer NOT NULL PRIMARY KEY,
-    kind character varying(32) NOT NULL
+    id INT NOT NULL,
+    kind TEXT NOT NULL
 );

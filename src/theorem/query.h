@@ -10,6 +10,7 @@
 namespace dbprove::theorem {
 struct QueryStats {
   std::chrono::time_point<std::chrono::steady_clock> start_time;
+  std::chrono::time_point<std::chrono::system_clock> start_wall_time;
   std::chrono::microseconds duration;
   bool success = true;
   size_t rows_affected = 0;
@@ -86,6 +87,7 @@ public:
     thread_stats_.push_back({});
     QueryStats& stat = thread_stats_.back();
     stat.start_time = std::chrono::steady_clock::now();
+    stat.start_wall_time = std::chrono::system_clock::now();
     return thread_stats_.back();
   }
 

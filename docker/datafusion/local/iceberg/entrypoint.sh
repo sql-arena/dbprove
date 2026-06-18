@@ -4,7 +4,6 @@ set -euo pipefail
 bootstrap_sql="/workspace/datafusion-bootstrap.sql"
 ready_marker="/tmp/datafusion-bootstrap-ready"
 host_ready_marker="/workspace/datafusion-ready"
-tpch_root="${DATAFUSION_TPCH_ROOT:-/opt/tpch-source/sf1}"
 
 stage_tpch_tables() {
   if [[ -d /opt/table-data-source/tpch_sf1 ]]; then

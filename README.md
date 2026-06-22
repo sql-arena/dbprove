@@ -54,6 +54,7 @@ Common flags:
 - `--artefact-dir <path>` replays required plan artefacts from an existing directory instead of generating them live.
 - `--data-bucket <uri>` overrides the default source bucket used for shared input data.
 - `--download-dir <path>` overrides where downloaded table data is staged locally. By default this is `./table_data` under the directory where `dbprove` is invoked.
+- `--publish <name>` publishes the proof results from `./proof/` to the `dbprove-results` repository. See [Publishing results](#publishing-results) below.
 
 Docker credential contract:
 
@@ -123,6 +124,25 @@ dbprove -e Databricks ... --artefact-dir ./my_artifacts
 When this flag is used, `dbprove` will check the specified directory for cached files (named `databricks_<hash>.json` and `databricks_<hash>.raw_explain`). It will then run without needing the engine to be up.
 If a required artifact is missing, the run fails.
 
+
+## Publishing results
+
+After a successful run, `dbprove` writes proof result JSON files under `./proof/<engine>/<version>/` relative to the working directory. The `--publish <name>` flag copies those results into the `dbprove-results` repository so they can be reviewed and shared.
+
+`dbprove` searches upward from the current working directory to locate a directory named `dbprove-results` and verifies that it is a git repository before proceeding. The `<name>` argument identifies the publisher and becomes a subdirectory under each engine-version path in the results repo:
+
+```
+dbprove-results/engine/<Engine>/<version>/<name>/
+```
+
+Usage (run from the same `run/` directory used for theorem runs):
+
+```bash
+cd run
+../out/build/osx-arm-base/src/dbprove/dbprove --publish thomas
+```
+
+All JSON files from every engine and version found under `./proof/` are copied to the corresponding paths in the results repo. If an engine or version directory does not yet exist in the results repo it is created. A partial version-string match is attempted when an exact directory name is not found.
 
 # Coding Guidelines
 Detailed coding guidelines for contributors and AI agents are maintained in [ai-rules.md](ai-rules.md).

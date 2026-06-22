@@ -158,6 +158,102 @@ std::optional<dbprove::StorageVariant> theoremStorageVariantRequirement(const st
   return required_variant;
 }
 
+std::optional<fs::path> findResultsRepo() {
+  fs::path dir = fs::current_path();
+  while (true) {
+    const auto candidate = dir / "dbprove-results";
+    if (fs::is_directory(candidate)) {
+      return candidate;
+    }
+    const auto parent = dir.parent_path();
+    if (parent == dir) break;
+    dir = parent;
+  }
+  return std::nullopt;
+}
+
+int publishResults(const std::string& publisher) {
+  const fs::path proof_dir = "proof";
+  if (!fs::is_directory(proof_dir)) {
+    PLOGE << "Source directory '" << fs::absolute(proof_dir).string() << "' not found.";
+    return 1;
+  }
+
+  const auto results_repo_opt = findResultsRepo();
+  if (!results_repo_opt) {
+    PLOGE << "'dbprove-results' directory not found in any ancestor of '"
+          << fs::current_path().string() << "'.";
+    return 1;
+  }
+  const auto& results_repo = *results_repo_opt;
+  if (!fs::exists(results_repo / ".git")) {
+    PLOGE << "'" << results_repo.string() << "' is not a git repository.";
+    return 1;
+  }
+
+  PLOGI << "Publishing as '" << publisher << "' to " << results_repo.string();
+
+  for (const auto& engine_entry : fs::directory_iterator(proof_dir)) {
+    if (!engine_entry.is_directory()) continue;
+    const auto engine_name = engine_entry.path().filename().string();
+    PLOGI << "Processing engine: " << engine_name;
+
+    for (const auto& version_entry : fs::directory_iterator(engine_entry.path())) {
+      if (!version_entry.is_directory()) continue;
+      const auto version = version_entry.path().filename().string();
+      if (version == "logs") continue;
+      PLOGI << "  Version: " << version;
+
+      const fs::path engines_root = results_repo / "engine";
+      fs::path target_engine_dir = engines_root / engine_name;
+      if (!fs::is_directory(target_engine_dir) && fs::is_directory(engines_root)) {
+        const auto engine_lower = to_lower(engine_name);
+        for (const auto& e : fs::directory_iterator(engines_root)) {
+          if (e.is_directory() && to_lower(e.path().filename().string()) == engine_lower) {
+            target_engine_dir = e.path();
+            break;
+          }
+        }
+      }
+      if (!fs::is_directory(target_engine_dir)) {
+        PLOGI << "    Engine directory '" << engine_name << "' not found in results repo. Creating it.";
+        fs::create_directories(target_engine_dir);
+      }
+
+      fs::path target_version_dir = target_engine_dir / version;
+      if (!fs::is_directory(target_version_dir)) {
+        for (const auto& v : fs::directory_iterator(target_engine_dir)) {
+          if (!v.is_directory()) continue;
+          const auto vname = v.path().filename().string();
+          if (vname == "README.md" || vname == "submission.md") continue;
+          if (vname.find(version) != std::string::npos) {
+            target_version_dir = v.path();
+            PLOGI << "    Matched version " << version << " to " << vname;
+            break;
+          }
+        }
+      }
+      if (!fs::is_directory(target_version_dir)) {
+        PLOGI << "    Version folder '" << version << "' not found. Creating it.";
+        fs::create_directories(target_version_dir);
+      }
+
+      const fs::path dest_dir = target_version_dir / publisher;
+      PLOGI << "    Destination: " << dest_dir.string();
+      fs::create_directories(dest_dir);
+
+      for (const auto& item : fs::directory_iterator(version_entry.path())) {
+        fs::copy(item.path(), dest_dir / item.path().filename(),
+                 fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+      }
+      PLOGI << "    Copied data to " << dest_dir.string();
+    }
+  }
+
+  PLOGI << "Done.";
+  return 0;
+}
+
 bool requiresMountedTpchParquet(const sql::Engine& engine, const dbprove::StorageVariant variant) {
   if (variant != dbprove::StorageVariant::Iceberg) {
     return false;
@@ -275,6 +371,7 @@ int main(int argc, char** argv) {
   bool docker_mode = false;
   bool prepare_ee_join_scale = false;
   bool list_theorems = false;
+  std::optional<std::string> publish_as = std::nullopt;
 
   app.set_help_flag("-?", "--help");
   app.add_option(
@@ -282,6 +379,7 @@ int main(int argc, char** argv) {
       engine_arg);
 
   app.add_flag("-L,--list", list_theorems, "List available theorems");
+  app.add_option("--publish", publish_as, "Publish proof results to the dbprove-results repo as this publisher name");
   app.add_flag("-v, --verbose", verbose, "Log to stdout");
   app.add_flag("--docker", docker_mode, "Run against the local docker-managed engine image/service");
 
@@ -330,6 +428,12 @@ int main(int argc, char** argv) {
     ux::Terminal::configure();
     listTheorems(std::cout);
     return 0;
+  }
+
+  if (publish_as) {
+    const auto log_level = verbose ? plog::debug : plog::info;
+    plog::init<plog::DBProveFormatter>(log_level, plog::streamStdOut);
+    return publishResults(*publish_as);
   }
 
   const sql::Engine engine(engine_arg);

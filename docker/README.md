@@ -62,7 +62,7 @@ The first AWS-oriented SQL Server native image root is:
 
 - `mssql/aws/native/`
 
-Those are the engines used by `scripts/run_scale.py`.
+Those are the engines used for EE scale benchmarks.
 
 ## Current Benchmarking Model
 
@@ -375,7 +375,7 @@ benchmark flow:
 
 ## Notes For Future Updates
 
-- Keep this README aligned with `scripts/run_scale.py`.
+- Keep this README aligned with the EE scale theorem suite.
 - If the DuckDB image flow changes again, update the “DuckDB” section here
   immediately.
 - If a container stops being part of the benchmark path, say so here explicitly

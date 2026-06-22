@@ -110,7 +110,7 @@ Databricks connectivity relies on a browser-based authentication flow for some f
 #### Databricks Authentication
 Before running Databricks-related commands that require a browser session, run the authentication script:
 ```bash
-./authenticate_databricks.sh
+./scripts/authenticate_databricks.sh
 ```
 This script will open a browser window using Playwright. Complete the login and 2FA process, then close the browser. Your session will be saved in a local profile (`~/.databricks-playwright-profile`) and reused by `dbprove`.
 

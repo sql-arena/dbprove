@@ -46,6 +46,7 @@ We map SQL Server operators to the canonical `sql::explain::Node` types:
 | :--- | :--- | :--- |
 | `Index Scan` / `Table Scan` | `SCAN` | Base table access. Mapped to `Scan` with `SCAN` strategy. If `Storage="ColumnStore"`, always use `SCAN` strategy even for `IndexScan` elements. |
 | `Index Seek` | `SCAN` | Base table access with a predicate. Mapped to `Scan` with `SEEK` strategy. |
+| `RID Lookup` | `SCAN` | Row-id based lookup. Mapped to `Scan` with `SEEK` strategy. |
 | `Filter` | `FILTER` | Predicate application. Mapped to `Selection`. |
 | `Top` | `LIMIT` | Limit clause. Mapped to `Limit`. |
 | `Sort` | `SORT` | Ordering. Mapped to `Sort`. |

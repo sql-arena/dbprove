@@ -1,8 +1,13 @@
 services:
-  nessie:
-    image: ghcr.io/projectnessie/nessie:latest
+  iceberg-catalog:
+    build: ./iceberg
+    image: dbprove-iceberg:latest
     ports:
       - "19120:19120"
+      - "19130:19130"
+    volumes:
+      - ../run/table_data:/opt/dbprove/table_data:ro
+      - ../run/mount/iceberg:/opt/dbprove/warehouse
 
   postgresql-native:
     build: ./postgresql/local/native
@@ -56,15 +61,15 @@ services:
     image: dbprove-trino:latest
     mem_limit: 7g
     depends_on:
-      - nessie
+      - iceberg-catalog
     ports:
       - "65432:8080"
     tmpfs:
       - /mnt/tpch-tmpfs:size=4g,uid=1000,gid=1000,mode=755
     volumes:
       - ../run/mount/trino:/data/trino
-      - ../run/materialized/join_scale:/opt/join-scale-source:ro
-      - ../run/table_data:/opt/table-data-source:ro
+      - ../run/table_data:/opt/dbprove/table_data:ro
+      - ../run/mount/iceberg:/opt/dbprove/warehouse
 
   datafusion-iceberg:
     build: ./datafusion/local/iceberg
@@ -74,5 +79,4 @@ services:
       - /mnt/tpch-tmpfs:size=4g
     volumes:
       - ../run/mount/datafusion:/workspace
-      - ../run/materialized/join_scale:/opt/join-scale-source:ro
-      - ../run/table_data:/opt/table-data-source:ro
+      - ../run/table_data:/opt/dbprove/table_data:ro

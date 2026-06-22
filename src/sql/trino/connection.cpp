@@ -4,7 +4,6 @@
 #include "result.h"
 #include "sql_exceptions.h"
 
-#include <dbprove/common/table_data_conventions.h>
 #include <dbprove/common/string.h>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -118,38 +117,6 @@ std::string renderType(const SqlTypeMeta& type, const ConnectionBase::TypeMap& t
   return rendered;
 }
 
-std::string localParquetUriForStem(const std::filesystem::path& stem) {
-  std::vector<std::string> components;
-  bool seen_table_data = false;
-  for (const auto& part : stem) {
-    const auto name = part.string();
-    if (name.empty() || name == ".") {
-      continue;
-    }
-    if (!seen_table_data) {
-      if (name == dbprove::common::kTableDataDirectoryName) {
-        seen_table_data = true;
-      }
-      continue;
-    }
-    components.push_back(name);
-  }
-
-  if (components.empty()) {
-    components.push_back(stem.filename().string());
-  }
-
-  std::ostringstream out;
-  out << "local:///";
-  for (size_t i = 0; i < components.size(); ++i) {
-    if (i > 0) {
-      out << "/";
-    }
-    out << components[i];
-  }
-  out << ".parquet";
-  return out.str();
-}
 }
 
 class Connection::Pimpl {
@@ -476,9 +443,10 @@ void Connection::bulkLoad(const std::string_view, const std::vector<std::filesys
 
 void Connection::constructTable(std::string_view ddl,
                                 const std::span<const std::filesystem::path> source_stems,
-                                const dbprove::StorageVariant storage_variant) {
+                                const dbprove::StorageVariant storage_variant,
+                                const IcebergRegistrationCallback register_iceberg_table) {
   if (storage_variant != dbprove::StorageVariant::Iceberg) {
-    ConnectionBase::constructTable(ddl, source_stems, storage_variant);
+    ConnectionBase::constructTable(ddl, source_stems, storage_variant, register_iceberg_table);
     return;
   }
 
@@ -486,40 +454,10 @@ void Connection::constructTable(std::string_view ddl,
     throw std::runtime_error("constructTable requires at least one staged source file stem");
   }
 
-  const auto parsed = ParsedTable(ddl);
-  const auto& table = parsed.tableName();
-  const auto split = dbprove::common::splitQualifiedTableName(table);
-
-  if (!split.schema_name.empty()) {
-    execute("CREATE SCHEMA IF NOT EXISTS " + split.schema_name
-            + "\nWITH (location = 'local:///warehouse/" + split.schema_name + "')");
+  if (register_iceberg_table == nullptr) {
+    throw std::runtime_error("Trino iceberg table construction requires an iceberg registration callback");
   }
-
-  std::ostringstream out;
-  out << "CREATE TABLE " << table << " (\n";
-  for (size_t i = 0; i < parsed.columns().size(); ++i) {
-    const auto& column = parsed.columns()[i];
-    out << "    " << column.name << " " << renderType(column.type, typeMap());
-    out << (column.is_null ? " NULL" : " NOT NULL");
-    if (i + 1 < parsed.columns().size()) {
-      out << ",";
-    }
-    out << "\n";
-  }
-  out << ")\nWITH (\n  format = 'PARQUET'\n)";
-  const auto create_table = out.str();
-  PLOGI << create_table;
-  execute(create_table);
-
-  for (const auto& stem : source_stems) {
-    const auto add_files =
-        "ALTER TABLE " + table + " EXECUTE add_files(\n"
-        "  location => '" + localParquetUriForStem(stem) + "',\n"
-        "  format => 'PARQUET'\n"
-        ")";
-    PLOGI << add_files;
-    execute(add_files);
-  }
+  register_iceberg_table(ddl, source_stems);
 }
 
 std::string Connection::version() {

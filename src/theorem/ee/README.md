@@ -56,12 +56,12 @@ and the scaled `orders` variants only as CTE cross joins.
 
 Instead, `dbprove --prepare-ee-join-scale` materializes on the host:
 
-- `run/materialized/join_scale/lineitem_25x/lineitem_25x.parquet`
-- `run/materialized/join_scale/orders_scale_01/...`
-- `run/materialized/join_scale/orders_scale_02/...`
-- `run/materialized/join_scale/orders_scale_03/...`
+- `run/table_data/scale/lineitem_25x/lineitem_25x.parquet`
+- `run/table_data/scale/orders_scale_01/...`
+- `run/table_data/scale/orders_scale_02/...`
+- `run/table_data/scale/orders_scale_03/...`
 - ...
-- `run/materialized/join_scale/orders_scale_20/...`
+- `run/table_data/scale/orders_scale_20/...`
 
 Why this matters:
 

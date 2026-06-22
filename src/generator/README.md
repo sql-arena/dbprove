@@ -2,7 +2,7 @@
 
 Data is "generated" by downloading CSV and Parquet files from a well known bucket location.
 
-The register generation, you call:
+To register a table, you call:
 
 ```c
 REGISTER_TABLE('[table]', '[schema]', [ddl], [expected row count], [expected_file_count]);
@@ -52,7 +52,15 @@ These naming and path conventions are shared with engine loaders through
 construct mounted file paths, or implement bulk load without duplicating the
 rules.
 
-If the requested storage variant is `iceberg` the table is set up to point directly at the object storage.
+If the requested storage variant is `iceberg` the table is set up to point at a
+shared Iceberg-oriented mount instead of bulk-loaded CSV.
+
+For docker-backed runs with `--variant iceberg`, the generator also ensures the
+local `iceberg-catalog` sidecar is running before dataset bootstrap. That
+sidecar owns the shared local Nessie-backed Iceberg catalog and exposes a small
+HTTP registration wrapper. The generator calls that wrapper with parsed table
+metadata and staged file stems so parquet files can be registered into Iceberg
+without exposing Trino-specific commands to the rest of `dbprove`.
 
 ## ConnectionFactory contract
 
@@ -75,7 +83,7 @@ generator calls them as part of `ensure(...)` and `ensureDataset(...)`:
 - `tableRowCount(table_name)`
   Used to detect whether a table already exists and whether its row count
   matches the registered expectation.
-- `constructTable(ddl, source_stems, storage_variant)`
+- `constructTable(ddl, source_stems, storage_variant, register_iceberg_table)`
   Used only when the table is missing.
   The Generator provides generic DDL that the engine may translate or ignore.
   `source_stems` are the canonical staged file paths without `.csv` or
@@ -86,6 +94,11 @@ generator calls them as part of `ensure(...)` and `ensureDataset(...)`:
   - append `.csv` and call `bulkLoad(...)`
   - append `.parquet` and create an external or mounted table
   - choose behavior based on `storage_variant`
+  - call `register_iceberg_table(...)` when the engine wants staged parquet
+    files registered with the local iceberg sidecar
+
+For docker-backed Iceberg runs, those staged stems are mounted into the
+container tree at `/opt/dbprove/table_data`.
 
 So the generic ensure flow is:
 

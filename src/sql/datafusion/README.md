@@ -8,8 +8,8 @@ Its job is to:
 
 - build `datafusion-cli` from source
 - build a small Rust `datafusion-plan-json` helper against the same DataFusion version
-- mount staged host parquet files under `/opt/table-data-source`
-- prepare join-scale support tables in `/workspace/datafusion-bootstrap.sql`
+- mount staged host parquet files under `/opt/dbprove/table_data`
+- prepare `scale` support tables in `/workspace/datafusion-bootstrap.sql`
 - enable `datafusion.execution.collect_statistics`
 - expose a helper that emits the physical execution plan as JSON
 

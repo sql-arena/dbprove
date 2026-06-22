@@ -2,22 +2,28 @@
 set -euo pipefail
 
 stage_tpch_tables() {
-  if [[ -d /opt/table-data-source/tpch_sf1 ]]; then
-    cp -R /opt/table-data-source/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
+  if [[ -d /opt/dbprove/table_data/tpch_sf1 ]]; then
+    cp -R /opt/dbprove/table_data/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
     return
   fi
 
   local tables=(region nation supplier customer part partsupp orders lineitem)
   for table in "${tables[@]}"; do
-    cp "/opt/table-data-source/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
+    cp "/opt/dbprove/table_data/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
   done
+}
+
+stage_scale_tables() {
+  if [[ -d /opt/dbprove/table_data/scale ]]; then
+    cp -R /opt/dbprove/table_data/scale/. /mnt/tpch-tmpfs/scale/
+  fi
 }
 
 prepare_tpch_tmpfs() {
   rm -f /tmp/trino-bootstrap-ready
-  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1
-  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1 /data/trino/spill
-  cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+  rm -rf /mnt/tpch-tmpfs/scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1
+  mkdir -p /mnt/tpch-tmpfs/scale /mnt/tpch-tmpfs/warehouse /mnt/tpch-tmpfs/tpch_sf1 /data/trino/spill
+  stage_scale_tables
   stage_tpch_tables
 }
 

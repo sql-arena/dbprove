@@ -163,7 +163,7 @@ BEGIN
         SELECT
             format('%I.%I', st.schemaname, st.relname) AS qualified_name
         FROM pg_stat_all_tables st
-        WHERE st.schemaname = 'tpch'
+        WHERE st.schemaname = 'tpch_sf1'
           AND (
               COALESCE(st.last_analyze, st.last_autoanalyze) IS NULL
               OR st.n_mod_since_analyze > 0

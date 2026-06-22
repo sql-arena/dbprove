@@ -1,6 +1,6 @@
 CREATE TABLE job.aka_title (
     id INT NOT NULL,
-    movie_id INT NOT NULL,
+    movie_id INT,
     title TEXT NOT NULL,
     imdb_index TEXT,
     kind_id INT NOT NULL,

@@ -84,6 +84,14 @@ Current local engine defaults:
 - PostgreSQL, SQL Server, and ClickHouse default to `native`.
 - Trino and DataFusion default to `iceberg`.
 
+Docker lifecycle assumptions:
+
+- `dbprove --docker` starts by killing every container it manages. This cleanup is name-based and includes the local Iceberg sidecar.
+- If the selected docker storage variant is `iceberg`, `dbprove` starts the local `iceberg-catalog` sidecar first and waits for its health endpoint to return success before continuing.
+- After that, `dbprove` starts exactly one engine-specific managed container and then runs the selected theorems.
+- When the run ends, `dbprove` shuts down the managed docker project cleanly.
+- There is no in-process recovery path. If cleanup, sidecar startup, sidecar health, engine startup, engine readiness, or theorem execution fails, `dbprove` exits with an error describing the failing step.
+
 Examples:
 
 ```bash

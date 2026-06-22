@@ -28,6 +28,8 @@ class ConnectionBase {
 
 public:
   using TypeMap = std::map<SqlTypeKind, std::string_view>;
+  using IcebergRegistrationCallback = void (*)(std::string_view ddl,
+                                               std::span<const std::filesystem::path> source_stems);
   virtual ~ConnectionBase() = default;
 
   explicit ConnectionBase(const Credential& credential, const Engine& engine, std::optional<std::string> artifacts_path = std::nullopt)
@@ -81,10 +83,13 @@ public:
    * @param ddl Registered logical DDL for the table.
    * @param source_stems Canonical staged file paths without `.csv` / `.parquet`.
    * @param storage_variant Active storage variant for this run.
+   * @param register_iceberg_table Optional callback used by engines that register
+   * staged parquet files with the local iceberg sidecar.
    */
   virtual void constructTable(std::string_view ddl,
                               std::span<const std::filesystem::path> source_stems,
-                              dbprove::StorageVariant storage_variant);
+                              dbprove::StorageVariant storage_variant,
+                              IcebergRegistrationCallback register_iceberg_table = nullptr);
 
   virtual void createSchema(std::string_view schema_name);
 

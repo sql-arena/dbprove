@@ -6,23 +6,29 @@ ready_marker="/tmp/datafusion-bootstrap-ready"
 host_ready_marker="/workspace/datafusion-ready"
 
 stage_tpch_tables() {
-  if [[ -d /opt/table-data-source/tpch_sf1 ]]; then
-    cp -R /opt/table-data-source/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
+  if [[ -d /opt/dbprove/table_data/tpch_sf1 ]]; then
+    cp -R /opt/dbprove/table_data/tpch_sf1/. /mnt/tpch-tmpfs/tpch_sf1/
     return
   fi
 
   local tables=(region nation supplier customer part partsupp orders lineitem)
   for table in "${tables[@]}"; do
-    cp "/opt/table-data-source/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
+    cp "/opt/dbprove/table_data/${table}.parquet" "/mnt/tpch-tmpfs/tpch_sf1/${table}.parquet"
   done
+}
+
+stage_scale_tables() {
+  if [[ -d /opt/dbprove/table_data/scale ]]; then
+    cp -R /opt/dbprove/table_data/scale/. /mnt/tpch-tmpfs/scale/
+  fi
 }
 
 prepare_tmpfs() {
   rm -f "${ready_marker}"
   rm -f "${host_ready_marker}"
-  rm -rf /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/tpch_sf1
-  mkdir -p /mnt/tpch-tmpfs/join_scale /mnt/tpch-tmpfs/tpch_sf1 /workspace/datafusion-spill
-  cp -R /opt/join-scale-source/. /mnt/tpch-tmpfs/join_scale/
+  rm -rf /mnt/tpch-tmpfs/scale /mnt/tpch-tmpfs/tpch_sf1
+  mkdir -p /mnt/tpch-tmpfs/scale /mnt/tpch-tmpfs/tpch_sf1 /workspace/datafusion-spill
+  stage_scale_tables
   stage_tpch_tables
 }
 
@@ -31,23 +37,24 @@ write_bootstrap_sql() {
 
   cat >> "${bootstrap_sql}" <<'SQL'
 CREATE SCHEMA IF NOT EXISTS tpch_sf1;
+CREATE SCHEMA IF NOT EXISTS scale;
 
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch_sf1.lineitem_25x (
+CREATE EXTERNAL TABLE IF NOT EXISTS scale.lineitem_25x (
   l_orderkey BIGINT,
   l_suppkey BIGINT,
   l_linenumber BIGINT,
   lineitem_replica_id BIGINT
 )
 STORED AS PARQUET
-LOCATION '/mnt/tpch-tmpfs/join_scale/lineitem_25x/lineitem_25x.parquet';
+LOCATION '/mnt/tpch-tmpfs/scale/lineitem_25x/lineitem_25x.parquet';
 
 SQL
 
-  for parquet_dir in /mnt/tpch-tmpfs/join_scale/orders_scale_*; do
+  for parquet_dir in /mnt/tpch-tmpfs/scale/orders_scale_*; do
     [[ -d "${parquet_dir}" ]] || continue
     table_name="$(basename "${parquet_dir}")"
     cat >> "${bootstrap_sql}" <<SQL
-CREATE EXTERNAL TABLE IF NOT EXISTS tpch_sf1.${table_name} (
+CREATE EXTERNAL TABLE IF NOT EXISTS scale.${table_name} (
   join_key BIGINT,
   o_orderkey BIGINT,
   orders_replica_id BIGINT,
@@ -61,7 +68,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS tpch_sf1.${table_name} (
   o_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/mnt/tpch-tmpfs/join_scale/${table_name}/${table_name}.parquet';
+LOCATION '/mnt/tpch-tmpfs/scale/${table_name}/${table_name}.parquet';
 
 SQL
   done

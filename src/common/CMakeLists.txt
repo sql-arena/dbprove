@@ -13,7 +13,9 @@ target_sources(${_targetName}
         aws_bucket.cpp
 )
 find_package(magic_enum CONFIG REQUIRED)
+find_package(CURL REQUIRED)
 target_link_libraries(${_targetName}
         PUBLIC
-        magic_enum::magic_enum)
+        magic_enum::magic_enum
+        CURL::libcurl)
 add_subdirectory(include/dbprove/common)

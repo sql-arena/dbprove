@@ -26,7 +26,8 @@ public:
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   void constructTable(std::string_view ddl,
                       std::span<const std::filesystem::path> source_stems,
-                      dbprove::StorageVariant storage_variant) override;
+                      dbprove::StorageVariant storage_variant,
+                      IcebergRegistrationCallback register_iceberg_table = nullptr) override;
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   void analyse(std::string_view table_name) override;
   std::string version() override;

@@ -206,6 +206,47 @@ void listTheorems(std::ostream& out) {
   ux::Header(out, "Available Theorems");
   ux::TheoremListTable(out, rows);
 }
+
+void cleanupManagedDockerState() {
+  common::DockerRunner managed_runner;
+  managed_runner.ensureDaemonRunning();
+
+  const auto managed_remove = managed_runner.removeContainersByNamePrefix(common::kDbproveManagedComposeProjectName);
+  if (!managed_remove.succeeded()) {
+    throw std::runtime_error("Failed to remove managed docker containers:\n" + managed_remove.output);
+  }
+
+  common::DockerRunner legacy_runner(common::get_project_root(), std::string(common::kDbproveLegacyComposeProjectName));
+  const auto legacy_remove = legacy_runner.removeContainersByNamePrefix(common::kDbproveLegacyComposeProjectName);
+  if (!legacy_remove.succeeded()) {
+    throw std::runtime_error("Failed to remove legacy managed docker containers:\n" + legacy_remove.output);
+  }
+
+  const auto managed_down = managed_runner.downComposeProject();
+  if (!managed_down.succeeded()) {
+    throw std::runtime_error("Failed to clean managed docker compose project:\n" + managed_down.output);
+  }
+
+  const auto legacy_down = legacy_runner.downComposeProject();
+  if (!legacy_down.succeeded()) {
+    throw std::runtime_error("Failed to clean legacy docker compose project:\n" + legacy_down.output);
+  }
+}
+
+void startLocalIcebergCatalog() {
+  common::DockerRunner docker;
+  const auto build = docker.buildComposeService("iceberg-catalog");
+  if (!build.succeeded()) {
+    throw std::runtime_error("Failed to build local iceberg catalog service:\n" + build.output);
+  }
+
+  const auto up = docker.upComposeService("iceberg-catalog");
+  if (!up.succeeded()) {
+    throw std::runtime_error("Failed to start local iceberg catalog service:\n" + up.output);
+  }
+
+  docker.waitForHttpOk("http://127.0.0.1:19130/healthz", std::chrono::seconds(180));
+}
 }
 
 int main(int argc, char** argv) {
@@ -375,7 +416,11 @@ int main(int argc, char** argv) {
                                        ? *effective_docker_variant
                                        : engine.defaultStorageVariant().value_or(dbprove::StorageVariant::Native);
 
-  auto generator_state = configureDataGeneration(engine, data_bucket_uri, download_dir_override, effective_storage_variant);
+  auto generator_state = configureDataGeneration(
+      engine,
+      data_bucket_uri,
+      download_dir_override,
+      effective_storage_variant);
 
   PLOGI << "Generating into directory: " << generator_state.basePath();
 
@@ -384,10 +429,17 @@ int main(int argc, char** argv) {
 
   std::unique_ptr<common::DockerComposeSession> docker_session;
   if (docker_mode && !artifact_mode) {
+    cleanupManagedDockerState();
+
     if (requiresMountedTpchParquet(engine, *effective_docker_variant)) {
       PLOGI << "Pre-staging TPCH CSV/parquet inputs under " << generator_state.basePath()
             << " before starting docker-managed " << engine.name();
       generator_state.ensureDatasetFiles("tpch_sf1");
+    }
+
+    if (*effective_docker_variant == dbprove::StorageVariant::Iceberg) {
+      PLOGI << "Starting local iceberg catalog sidecar";
+      startLocalIcebergCatalog();
     }
 
     const auto service_config = engine.dockerServiceConfig(*effective_docker_variant);

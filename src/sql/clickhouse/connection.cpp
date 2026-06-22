@@ -260,8 +260,10 @@ void Connection::bulkLoad(const std::string_view table, const std::vector<std::f
 
 void Connection::constructTable(const std::string_view ddl,
                                 const std::span<const std::filesystem::path> source_stems,
-                                const dbprove::StorageVariant storage_variant) {
+                                const dbprove::StorageVariant storage_variant,
+                                const IcebergRegistrationCallback register_iceberg_table) {
   static_cast<void>(storage_variant);
+  static_cast<void>(register_iceberg_table);
 
   if (source_stems.empty()) {
     throw std::runtime_error("constructTable requires at least one staged source file stem");

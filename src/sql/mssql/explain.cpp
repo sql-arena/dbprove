@@ -506,7 +506,13 @@ static std::string findSeekCondition(const xml_node& inner_rel_op, const MssqlEx
 
 
 bool isScanOp(const std::string& physical_op) {
-  const std::set<std::string> scan_ops = {"Clustered Index Scan", "Clustered Index Seek", "Index Scan", "Index Seek", "Table Scan"};
+  const std::set<std::string> scan_ops = {
+      "Clustered Index Scan",
+      "Clustered Index Seek",
+      "Index Scan",
+      "Index Seek",
+      "RID Lookup",
+      "Table Scan"};
   return scan_ops.contains(physical_op);
 }
 
@@ -1009,7 +1015,7 @@ std::pair<std::unique_ptr<Node>, std::vector<xml_node>> createNodeFromXML(const 
     node = handleSort(node_xml, ctx, children);
   } else if (logical_op == "Segment") {
     node = handleSegment(node_xml, ctx, children);
-  } else if (logical_op == "Aggregate") {
+  } else if (logical_op == "Aggregate" || logical_op == "Partial Aggregate") {
     node = handleAggregate(node_xml, ctx, physical_op, children);
   } else if (logical_op.find("Join") != std::string::npos || physical_op == "Hash Match" || physical_op == "Adaptive Join" || physical_op == "Nested Loops") {
     node = handleJoin(node_xml, ctx, physical_op, logical_op, children);

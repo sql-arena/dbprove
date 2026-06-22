@@ -2,6 +2,10 @@
 
 This directory contains the containerized engine setups used by `dbprove`.
 
+The shared local Iceberg catalog sidecar now lives under:
+
+- `docker/iceberg/`
+
 The directory shape now reserves a provider layer under each engine:
 
 - `docker/<engine>/local/...` for local runs
@@ -76,9 +80,9 @@ Before a benchmark run, `dbprove --prepare-ee-join-scale` materializes:
 - `orders_scale_*` parquet datasets for scales
   `1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20`
 
-Those host-side parquet files live under:
+Those host-side parquet files live under the standard staged dataset tree:
 
-- `run/materialized/join_scale/`
+- `run/table_data/scale/`
 
 At benchmark runtime, each engine stages the host materialized tree into its
 local tmpfs before executing any measured query.
@@ -104,12 +108,14 @@ containers aligned:
 
 And for storage:
 
-- DuckDB copies the materialized parquet tree into `/mnt/tpch-tmpfs/join_scale`.
-- DataFusion copies the materialized parquet tree into `/mnt/tpch-tmpfs/join_scale`.
-- Trino copies the materialized parquet tree into `/mnt/tpch-tmpfs/join_scale`,
-  then registers it into Iceberg tables in a Nessie catalog.
+- Iceberg-oriented containers share a common host-data mount path inside the
+  container: `/opt/dbprove/table_data`
+- DuckDB copies the staged `scale` dataset into `/mnt/tpch-tmpfs/scale`.
+- DataFusion copies the staged `scale` dataset into `/mnt/tpch-tmpfs/scale`.
+- Trino copies the staged `scale` dataset into `/mnt/tpch-tmpfs/scale`, then
+  registers it into Iceberg tables in a Nessie catalog.
 - The Trino tmpfs mount is created with `uid=1000,gid=1000,mode=755` so the
-  non-root Trino process can recreate `/mnt/tpch-tmpfs/join_scale` and
+  non-root Trino process can recreate `/mnt/tpch-tmpfs/scale` and
   `/mnt/tpch-tmpfs/warehouse` reliably across container restarts.
 - The tmpfs staging area is `4g`, because the full materialized join-scale
   parquet tree is about `1.9g`.
@@ -182,7 +188,7 @@ Important points:
 
 - The image is built from source.
 - Each invocation is launched through `docker run`, not a long-lived compose service.
-- The DataFusion driver mounts `run/materialized/join_scale` into the container.
+- The DataFusion driver mounts `run/table_data` into the container.
 - Startup copies the materialized parquet tree into tmpfs.
 - `bootstrap.sql` registers `lineitem_25x` and the `orders_scale_*` parquet-backed tables.
 - This container is used both for theorem runs and for plan/debug work.
@@ -219,15 +225,21 @@ Important points:
 
 - It is managed as a compose service, but for benchmark fairness the runner
   restarts Trino between scales.
-- It uses the `Iceberg` connector with a `Nessie` catalog.
-- Startup copies the materialized join-scale parquet tree into tmpfs.
-- A bootstrap step creates `tpch.sf1.lineitem_25x` and
-  `tpch.sf1.orders_scale_*` as Iceberg tables and uses `add_files` to register
-  the staged parquet files.
+- It uses the `Iceberg` connector with a Nessie catalog sidecar (`iceberg-catalog`).
+- Startup touches `/tmp/trino-bootstrap-ready` once Trino is ready to accept queries.
+- Table registration is driven dynamically by `GeneratorState::registerIcebergTable`
+  via the `iceberg-catalog` sidecar's `/register-table` endpoint; no static bootstrap
+  SQL runs at container startup.
+- The runner waits for `http://127.0.0.1:19130/healthz` (the iceberg-catalog sidecar)
+  before loading datasets, which in turn blocks until Trino's internal Nessie instance
+  is ready.
+- Staged parquet files are read by Trino via the `local:///table_data/...` URI scheme,
+  which resolves relative to `local.location=/opt/dbprove` in the catalog config, meaning
+  `/opt/dbprove/table_data/...` inside the `iceberg-catalog` container.
 - The runner waits for both:
   - `http://localhost:65432/v1/info`
   - `/tmp/trino-bootstrap-ready`
-  before treating Trino as ready.
+  before treating the external Trino service as query-ready.
 - Docker-exposed engines all bind the same host port, `65432`. That is
   intentional: `dbprove --docker` expects to run one engine container at a
   time, and a port collision makes accidental multi-engine overlap fail loudly.

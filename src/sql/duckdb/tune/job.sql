@@ -130,32 +130,13 @@ CREATE TABLE job.title (
     production_year integer,
     imdb_id integer,
     phonetic_code character varying(5),
-    episode_of_id integer REFERENCES job.title(id),
+    episode_of_id integer,
     season_nr integer,
     episode_nr integer,
     series_years character varying(49),
     md5sum character varying(32)
 );
-INSERT INTO job.title
-SELECT
-    id,
-    title,
-    imdb_index,
-    kind_id,
-    production_year,
-    imdb_id,
-    phonetic_code,
-    NULL AS episode_of_id,
-    season_nr,
-    episode_nr,
-    series_years,
-    md5sum
-FROM job.title__old;
-
-UPDATE job.title AS dst
-SET episode_of_id = src.episode_of_id
-FROM job.title__old AS src
-WHERE dst.id = src.id;
+INSERT INTO job.title SELECT * FROM job.title__old;
 
 CREATE TABLE job.aka_name (
     id integer NOT NULL PRIMARY KEY,

@@ -3,6 +3,7 @@
 #include "file_utility.h"
 
 #include <filesystem>
+#include <chrono>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -32,11 +33,11 @@ public:
   void ensureDaemonRunning() const;
   [[nodiscard]] DockerCommandResult runDocker(const std::vector<std::string>& args) const;
   [[nodiscard]] DockerCommandResult runCompose(const std::vector<std::string>& args) const;
-  [[nodiscard]] DockerCommandResult runComposeFile(const std::vector<std::string>& args) const;
   [[nodiscard]] DockerCommandResult buildComposeService(std::string_view service) const;
   [[nodiscard]] DockerCommandResult upComposeService(std::string_view service, bool detached = true) const;
-  [[nodiscard]] DockerCommandResult downComposeFile(bool remove_orphans = true) const;
   [[nodiscard]] DockerCommandResult downComposeProject(bool remove_orphans = true) const;
+  [[nodiscard]] DockerCommandResult removeContainersByNamePrefix(std::string_view prefix) const;
+  void waitForHttpOk(std::string_view url, std::chrono::seconds timeout) const;
   [[nodiscard]] DockerCommandResult buildImage(const std::filesystem::path& dockerfile,
                                                std::string_view tag,
                                                const std::filesystem::path& context,
@@ -61,7 +62,6 @@ public:
   void stop() noexcept;
 
 private:
-  void cleanupPreviousRuns();
   void ensureMountDirectory(std::string_view service);
   [[nodiscard]] static std::string tailOutput(const std::string& output, size_t max_chars = 4000);
   [[nodiscard]] static std::string commandErrorMessage(std::string_view action,

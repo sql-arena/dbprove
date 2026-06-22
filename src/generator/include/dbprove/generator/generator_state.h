@@ -107,6 +107,8 @@ public:
   static bool contains(std::string_view table_name);
   static bool containsDataset(std::string_view dataset_name);
   [[nodiscard]] const std::filesystem::path& basePath() const { return basePath_; }
+  static void registerIcebergTable(std::string_view ddl,
+                                   std::span<const std::filesystem::path> source_stems);
 
   static constexpr std::string_view columnSeparator() { return colSeparator_; }
   static constexpr std::string_view rowSeparator() { return rowSeparator_; }

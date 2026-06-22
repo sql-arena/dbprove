@@ -63,7 +63,7 @@ std::filesystem::path defaultSourceParquetDir() {
 }
 
 std::filesystem::path defaultMaterializedParquetDir() {
-  return dbprove::common::get_project_root() / "run" / "materialized" / "join_scale";
+  return dbprove::common::get_project_root() / "run" / "table_data" / std::string(kScaleSchema);
 }
 
 std::string ordersScaleTableName(const int orders_scale) {

@@ -5,18 +5,23 @@
 #include <zip.h>
 
 #include "dbprove/common/aws_bucket.h"
+#include "dbprove/common/docker.h"
 #include "dbprove/common/file_utility.h"
 #include "dbprove/common/table_data_conventions.h"
 #include "dbprove/generator/test.h"
 #include "dbprove/sql/connection_factory.h"
+#include "dbprove/sql/parsed_table.h"
 #include "generated_table.h"
 #include <dbprove/sql/sql.h>
 #include <dbprove/ux/ux.h>
+#include <curl/curl.h>
 #include <google/cloud/storage/client.h>
+#include <nlohmann/json.hpp>
 #include <plog/Log.h>
 
 namespace generator {
 namespace {
+using json = nlohmann::json;
 
 struct ParsedBucketLocation {
   CloudProvider provider;
@@ -196,6 +201,50 @@ void downloadObject(CloudProvider provider, std::string_view bucket_uri, std::st
                            ", but no supported object-store provider is configured");
 }
 
+size_t writeHttpResponse(const char* ptr, const size_t size, const size_t nmemb, void* userdata) {
+  auto* buffer = static_cast<std::string*>(userdata);
+  buffer->append(ptr, size * nmemb);
+  return size * nmemb;
+}
+
+void ensureCurl() {
+  static const auto init = []() {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    return true;
+  }();
+  static_cast<void>(init);
+}
+
+std::string sqlTypeKindName(const sql::SqlTypeKind kind) {
+  switch (kind) {
+    case sql::SqlTypeKind::SMALLINT:
+      return "SMALLINT";
+    case sql::SqlTypeKind::INT:
+      return "INT";
+    case sql::SqlTypeKind::BIGINT:
+      return "BIGINT";
+    case sql::SqlTypeKind::REAL:
+      return "REAL";
+    case sql::SqlTypeKind::DOUBLE:
+      return "DOUBLE";
+    case sql::SqlTypeKind::DECIMAL:
+      return "DECIMAL";
+    case sql::SqlTypeKind::STRING:
+      return "STRING";
+    case sql::SqlTypeKind::DATE:
+      return "DATE";
+    case sql::SqlTypeKind::TIME:
+      return "TIME";
+    case sql::SqlTypeKind::DATETIME:
+      return "DATETIME";
+    case sql::SqlTypeKind::SQL_NULL:
+      return "SQL_NULL";
+    case sql::SqlTypeKind::UNKNOWN:
+      return "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
 }  // namespace
 
 std::map<std::string_view, GeneratedTable*>& available_tables() {
@@ -273,6 +322,7 @@ void GeneratorState::ensureDataset(const std::string_view dataset_name, sql::Con
   }
 
   const auto& tables = available_datasets().at(dataset_name);
+
   if (tables.empty()) {
     return;
   }
@@ -297,6 +347,76 @@ void GeneratorState::ensureDataset(const std::string_view dataset_name, sql::Con
   }
 
   ensure(std::span<const std::string_view>(tables), conn);
+}
+
+void GeneratorState::registerIcebergTable(const std::string_view ddl,
+                                          const std::span<const std::filesystem::path> source_stems) {
+  if (source_stems.empty()) {
+    throw std::runtime_error("registerIcebergTable requires at least one staged source file stem");
+  }
+
+  const auto parsed = sql::ParsedTable(ddl);
+  json payload;
+  payload["table_name"] = parsed.tableName();
+  payload["source_stems"] = json::array();
+  payload["columns"] = json::array();
+
+  for (const auto& stem : source_stems) {
+    payload["source_stems"].push_back(stem.string());
+  }
+
+  for (const auto& column : parsed.columns()) {
+    json column_json{
+        {"name", column.name},
+        {"kind", sqlTypeKindName(column.type.kind)},
+        {"is_null", column.is_null},
+    };
+    if (column.type.kind == sql::SqlTypeKind::STRING &&
+        std::holds_alternative<sql::SqlTypeModifier::String>(column.type.modifier.value)) {
+      column_json["string_length"] = std::get<sql::SqlTypeModifier::String>(column.type.modifier.value).length;
+    }
+    if (column.type.kind == sql::SqlTypeKind::DECIMAL &&
+        std::holds_alternative<sql::SqlTypeModifier::Decimal>(column.type.modifier.value)) {
+      const auto decimal = std::get<sql::SqlTypeModifier::Decimal>(column.type.modifier.value);
+      column_json["decimal_precision"] = decimal.precision;
+      column_json["decimal_scale"] = decimal.scale;
+    }
+    payload["columns"].push_back(std::move(column_json));
+  }
+
+  ensureCurl();
+  CURL* curl = curl_easy_init();
+  if (!curl) {
+    throw std::runtime_error("Failed to initialize curl for local iceberg registration");
+  }
+
+  const auto payload_text = payload.dump();
+  std::string response_body;
+  curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+
+  curl_easy_setopt(curl, CURLOPT_URL, "http://127.0.0.1:19130/register-table");
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload_text.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(payload_text.size()));
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeHttpResponse);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+
+  const auto curl_result = curl_easy_perform(curl);
+  long status_code = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+
+  if (curl_result != CURLE_OK) {
+    throw std::runtime_error("Local iceberg registration request failed for table "
+                             + parsed.tableName() + ": " + curl_easy_strerror(curl_result));
+  }
+  if (status_code < 200 || status_code >= 300) {
+    throw std::runtime_error("Local iceberg registration failed for table " + parsed.tableName()
+                             + " with HTTP " + std::to_string(status_code) + ": " + response_body);
+  }
 }
 
 void GeneratorState::ensureDatasetFiles(const std::string_view dataset_name) {
@@ -388,7 +508,7 @@ sql::RowCount GeneratorState::load(const std::string_view table_name, sql::Conne
   const auto source_stems = expectedSourceStems(basePath_, t);
 
   PLOGI << "Constructing table: " << table_name << "...";
-  conn.constructTable(t.ddl, source_stems, storageVariant());
+  conn.constructTable(t.ddl, source_stems, storageVariant(), &GeneratorState::registerIcebergTable);
 
   if (expected_rows == 0) {
     PLOGI << "Table: " << table_name << " constructed with unknown expected row count; skipping full COUNT(*) verification.";

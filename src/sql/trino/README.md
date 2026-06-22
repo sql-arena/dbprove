@@ -11,7 +11,7 @@ old built-in `tpch` connector anymore. The active join-scale path uses:
 
 - Trino `481`
 - the `Iceberg` connector
-- a `Nessie` catalog
+- a shared `Nessie` catalog sidecar
 - parquet files staged into local tmpfs inside the Trino container
 
 The driver still rewrites repo SQL into Trino's dialect where needed:
@@ -23,6 +23,15 @@ The driver still rewrites repo SQL into Trino's dialect where needed:
 That keeps the theorem SQL mostly engine-agnostic from the caller's point of
 view even though the backing catalog is now Iceberg/Nessie instead of the
 built-in sample TPC-H source.
+
+For docker-backed Iceberg runs, staged host data is mounted into the container
+at `/opt/dbprove/table_data`, and the shared Nessie sidecar is reached as the
+`iceberg-catalog` compose service on port `19130`. Table registration is driven
+dynamically by `GeneratorState::registerIcebergTable`, which POSTs parsed table
+metadata and staged file stems to the sidecar's `/register-table` endpoint. The
+sidecar translates those into Trino `CREATE TABLE` + `add_files` calls against
+the internal Nessie catalog, resolving `local:///table_data/...` paths relative
+to `local.location=/opt/dbprove` in the Trino catalog config.
 
 ## Explain Support
 

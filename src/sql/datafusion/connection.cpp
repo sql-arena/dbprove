@@ -17,9 +17,9 @@
 
 #include "result.h"
 #include "sql_exceptions.h"
+#include <dbprove/common/docker.h>
 #include <dbprove/common/file_utility.h>
 #include <dbprove/common/table_data_conventions.h>
-#include <dbprove/common/docker.h>
 #include <dbprove/common/string.h>
 #include <nlohmann/json.hpp>
 #ifdef _WIN32
@@ -133,7 +133,7 @@ class PersistentCliSession {
     return composeExecPrefix() +
            " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc " +
            shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
-                       "-r /workspace/datafusion-bootstrap.sql");
+                       "-b 1000000 -r /workspace/datafusion-bootstrap.sql");
   }
 
   static std::string trimLine(std::string line) {
@@ -698,13 +698,14 @@ void Connection::bulkLoad(const std::string_view table, const std::vector<std::f
 
 void Connection::constructTable(std::string_view ddl,
                                 const std::span<const std::filesystem::path> source_stems,
-                                const dbprove::StorageVariant storage_variant) {
+                                const dbprove::StorageVariant storage_variant,
+                                const IcebergRegistrationCallback register_iceberg_table) {
   const std::lock_guard<std::recursive_mutex> lock(driverMutex());
   const auto parsed = ParsedTable(ddl);
   const auto& table = parsed.tableName();
 
   if (storage_variant != dbprove::StorageVariant::Iceberg) {
-    ConnectionBase::constructTable(ddl, source_stems, storage_variant);
+    ConnectionBase::constructTable(ddl, source_stems, storage_variant, register_iceberg_table);
     return;
   }
 

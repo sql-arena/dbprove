@@ -14,6 +14,7 @@ target_sources(${_targetName} PRIVATE
 
 target_link_libraries(${_targetName}
         PRIVATE
+        dbprove::generator
         dbprove::sql::core
         dbprove::sql::driver
         CURL::libcurl

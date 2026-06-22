@@ -1,7 +1,7 @@
 # Rules for AI agents
 
 # Introduction
-This project aims to validate variuos database and test what types of functionality
+This project aims to validate various database and test what types of functionality
 they possess. It also seeks to performance profile various, basic operations.
 
 ## Terminology

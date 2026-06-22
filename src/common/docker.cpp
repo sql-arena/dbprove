@@ -3,6 +3,7 @@
 #include "include/dbprove/common/file_utility.h"
 #include "include/dbprove/common/string.h"
 
+#include <curl/curl.h>
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -24,6 +25,20 @@ constexpr auto dbprove_pclose = _pclose;
 constexpr auto dbprove_popen = popen;
 constexpr auto dbprove_pclose = pclose;
 #endif
+
+size_t writeHttpResponse(const char* ptr, const size_t size, const size_t nmemb, void* userdata) {
+  auto* buffer = static_cast<std::string*>(userdata);
+  buffer->append(ptr, size * nmemb);
+  return size * nmemb;
+}
+
+void ensureCurlGlobalInit() {
+  static const auto initialized = []() {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    return true;
+  }();
+  static_cast<void>(initialized);
+}
 }
 
 DockerRunner::DockerRunner(std::filesystem::path project_root, std::string compose_project_name)
@@ -95,17 +110,6 @@ DockerCommandResult DockerRunner::runCompose(const std::vector<std::string>& arg
   return runCommand(joinArgs(command));
 }
 
-DockerCommandResult DockerRunner::runComposeFile(const std::vector<std::string>& args) const {
-  std::vector<std::string> command = {
-      "docker",
-      "compose",
-      "-f",
-      compose_file_.string(),
-  };
-  command.insert(command.end(), args.begin(), args.end());
-  return runCommand(joinArgs(command));
-}
-
 DockerCommandResult DockerRunner::buildComposeService(const std::string_view service) const {
   return runCompose({"build", std::string(service)});
 }
@@ -127,12 +131,73 @@ DockerCommandResult DockerRunner::downComposeProject(const bool remove_orphans) 
   return runCompose(args);
 }
 
-DockerCommandResult DockerRunner::downComposeFile(const bool remove_orphans) const {
-  std::vector<std::string> args = {"down"};
-  if (remove_orphans) {
-    args.emplace_back("--remove-orphans");
+DockerCommandResult DockerRunner::removeContainersByNamePrefix(const std::string_view prefix) const {
+  const auto list_result = runDocker({
+      "ps",
+      "-a",
+      "--filter",
+      "name=" + std::string(prefix),
+      "--format",
+      "{{.Names}}",
+  });
+  if (!list_result.succeeded()) {
+    return list_result;
   }
-  return runComposeFile(args);
+
+  std::istringstream input(list_result.output);
+  std::vector<std::string> names;
+  for (std::string line; std::getline(input, line);) {
+    line = trim_string(line);
+    if (!line.empty()) {
+      names.push_back(line);
+    }
+  }
+
+  if (names.empty()) {
+    return DockerCommandResult{};
+  }
+
+  std::vector<std::string> args = {"rm", "-f"};
+  args.insert(args.end(), names.begin(), names.end());
+  return runDocker(args);
+}
+
+void DockerRunner::waitForHttpOk(const std::string_view url, const std::chrono::seconds timeout) const {
+  ensureCurlGlobalInit();
+
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  std::string last_error = "no successful HTTP response received";
+  while (std::chrono::steady_clock::now() < deadline) {
+    CURL* curl = curl_easy_init();
+    if (curl == nullptr) {
+      throw std::runtime_error("Failed to initialize curl while probing " + std::string(url));
+    }
+
+    std::string response_body;
+    curl_easy_setopt(curl, CURLOPT_URL, std::string(url).c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 1000L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeHttpResponse);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+
+    const auto curl_result = curl_easy_perform(curl);
+    long status_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+    curl_easy_cleanup(curl);
+
+    if (curl_result == CURLE_OK && status_code == 200) {
+      return;
+    }
+
+    if (curl_result != CURLE_OK) {
+      last_error = curl_easy_strerror(curl_result);
+    } else {
+      last_error = "HTTP " + std::to_string(status_code) + ": " + response_body;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+
+  throw std::runtime_error("Timed out waiting for HTTP 200 from " + std::string(url) + ": " + last_error);
 }
 
 DockerCommandResult DockerRunner::buildImage(const std::filesystem::path& dockerfile,
@@ -202,7 +267,6 @@ DockerComposeSession::~DockerComposeSession() {
 
 void DockerComposeSession::start(const std::string_view service) {
   runner_.ensureDaemonRunning();
-  cleanupPreviousRuns();
   ensureMountDirectory(service);
 
   const auto build_result = runner_.buildComposeService(service);
@@ -226,14 +290,6 @@ void DockerComposeSession::stop() noexcept {
   active_ = false;
 }
 
-void DockerComposeSession::cleanupPreviousRuns() {
-  static_cast<void>(runner_.downComposeFile());
-  static_cast<void>(runner_.downComposeProject());
-
-  DockerRunner legacy_runner(runner_.projectRoot(), std::string(kDbproveLegacyComposeProjectName));
-  static_cast<void>(legacy_runner.downComposeProject());
-}
-
 void DockerComposeSession::ensureMountDirectory(const std::string_view service) {
   std::string mount_name(service);
   const auto suffix = mount_name.find('-');
@@ -244,6 +300,7 @@ void DockerComposeSession::ensureMountDirectory(const std::string_view service) 
   if (mount_name == "postgresql"
       || mount_name == "clickhouse"
       || mount_name == "mssql"
+      || mount_name == "iceberg"
       || mount_name == "trino"
       || mount_name == "datafusion") {
     static_cast<void>(make_directory((runner_.projectRoot() / "run" / "mount" / mount_name).string()));

@@ -19,7 +19,8 @@ public:
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   void constructTable(std::string_view ddl,
                       std::span<const std::filesystem::path> source_stems,
-                      dbprove::StorageVariant storage_variant) override;
+                      dbprove::StorageVariant storage_variant,
+                      IcebergRegistrationCallback register_iceberg_table = nullptr) override;
   const TypeMap& typeMap() const override;
   std::string version() override;
   void createSchema(std::string_view schema_name) override;

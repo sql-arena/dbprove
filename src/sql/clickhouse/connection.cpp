@@ -6,6 +6,7 @@
 #include "block_holder.h"
 #include "group_by.h"
 #include "join.h"
+#include "literals.h"
 #include "projection.h"
 #include "row.h"
 #include "scan.h"
@@ -330,5 +331,9 @@ void Connection::declareForeignKey(std::string_view fk_table, std::span<std::str
 
 void Connection::analyse(std::string_view table_name) {
   // ClickHouse has no need for Analyse because it doesn't have a planner.
+}
+
+std::string Connection::transformActualsSQL(std::string sql) const {
+  return stripClickHouseTypedLiterals(std::move(sql));
 }
 }

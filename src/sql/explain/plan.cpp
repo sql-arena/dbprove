@@ -403,7 +403,7 @@ void Plan::render(std::ostream& out, size_t max_width, RenderMode mode) const {
 
 void Plan::fixActuals(sql::ConnectionBase& connection) {
   for (auto& node : planTree().depth_first()) {
-    const auto sql = node.actualsSql();
+    const auto sql = connection.transformActualsSQL(node.actualsSql());
     try {
       node.rows_actual = static_cast<RowCount>(connection.fetchScalar(sql).asInt8());
     } catch (const std::exception& e) {

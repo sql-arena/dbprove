@@ -305,6 +305,7 @@ public:
   std::optional<std::string> parquet_dir;
   std::optional<std::string> config;
   std::set<std::string> ensured_datasets;
+  std::set<std::string> failed_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeProofJson(std::string_view proof_name, std::string_view content) const;
   RunCtx(const sql::Engine& engine, const sql::Credential& credentials, generator::GeneratorState& generator,

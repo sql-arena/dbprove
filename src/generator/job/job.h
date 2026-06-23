@@ -4,7 +4,7 @@
 #include <dbprove/generator/sql_resources.h>
 
 REGISTER_TABLE("aka_name", "job", resource::aka_name_sql, 901343, 1);
-REGISTER_TABLE("aka_title", "job", resource::aka_title_sql, 361472, 1);
+REGISTER_TABLE("aka_title", "job", resource::aka_title_sql, 361379, 1);
 REGISTER_TABLE("cast_info", "job", resource::cast_info_sql, 36244344, 1);
 REGISTER_TABLE("char_name", "job", resource::char_name_sql, 3140339, 1);
 REGISTER_TABLE("comp_cast_type", "job", resource::comp_cast_type_sql, 4, 1);

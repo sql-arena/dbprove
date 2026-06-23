@@ -56,6 +56,9 @@ Proof& Proof::ensureDataset(const std::string& dataset) {
     PLOGD << "Dataset '" << dataset << "' already ensured in this run; skipping ensure, summary, and tuning.";
     return *this;
   }
+  if (state.failed_datasets.contains(dataset)) {
+    throw DatasetBootstrapException("Dataset '" + dataset + "' bootstrap previously failed; skipping.");
+  }
 
   try {
     auto conn = state.factory.create();
@@ -83,6 +86,7 @@ Proof& Proof::ensureDataset(const std::string& dataset) {
       PLOGI << "Dataset tuning complete for '" << dataset << "'";
     }
   } catch (const std::exception& e) {
+    state.failed_datasets.insert(dataset);
     throw DatasetBootstrapException("Dataset '" + dataset + "' bootstrap failed: " + e.what());
   }
 

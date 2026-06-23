@@ -12,6 +12,7 @@ services:
   postgresql-native:
     build: ./postgresql/local/native
     image: dbprove-postgresql:latest
+    shm_size: '256m'
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
@@ -80,3 +81,4 @@ services:
     volumes:
       - ../run/mount/datafusion:/workspace
       - ../run/table_data:/opt/dbprove/table_data:ro
+      - ../run/table_data:/opt/table-data-source:ro

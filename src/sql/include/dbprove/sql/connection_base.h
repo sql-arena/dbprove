@@ -140,6 +140,8 @@ public:
     query_timeout_seconds_ = timeout_seconds;
   }
 
+  virtual std::string transformActualsSQL(std::string sql) const { return sql; }
+
   [[nodiscard]] std::optional<uint32_t> queryTimeoutSeconds() const {
     return query_timeout_seconds_;
   }

@@ -28,5 +28,6 @@ public:
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   void declareForeignKey(std::string_view fk_table, std::span<std::string_view> fk_columns, std::string_view pk_table,
                          std::span<std::string_view> pk_columns) override;
+  std::string transformActualsSQL(std::string sql) const override;
 };
 }

@@ -124,8 +124,6 @@ bool prove(const std::vector<const Theorem*>& theorems, RunCtx& input_state) {
     } catch (const DatasetBootstrapException& e) {
       all_succeeded = false;
       PLOGE << "Theorem '" << theorem->name << "' failed: " << e.what();
-      PLOGE << "Stopping run because dataset bootstrap did not complete successfully.";
-      break;
     } catch (const std::exception& e) {
       all_succeeded = false;
       PLOGE << "Theorem '" << theorem->name << "' failed: " << e.what();

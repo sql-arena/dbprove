@@ -15,13 +15,6 @@ using CategorySet = std::set<Category>;
 Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
                     std::optional<sql::RowCount> expected_row_count,
                     std::optional<std::string> display_name);
-inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func,
-                           std::optional<sql::RowCount> expected_row_count) {
-  return addTheorem(std::move(name), std::move(description), func, expected_row_count, std::nullopt);
-}
-inline Theorem& addTheorem(std::string name, std::string description, const TheoremFunction& func) {
-  return addTheorem(std::move(name), std::move(description), func, std::nullopt, std::nullopt);
-}
 void categoriseTheorem(Theorem& theorem, Category category);
 /**
  * Theorems can be tagged so they are easy to group up

@@ -27,11 +27,13 @@ void run_job_query(Proof& proof, const std::string_view sql) {
 }
 
 void register_job(std::string_view job_name, std::string_view sql) {
-  auto& theorem = addTheorem("JOB-" + std::string(job_name),
+  auto& theorem = addTheorem("PLAN-JOB-" + std::string(job_name),
                              "Join Order Benchmark " + std::string(job_name) + " Analysis",
                              [sql](Proof& proof) {
                                run_job_query(job_ensure_basics(proof), sql);
-                             });
+                             },
+                             std::nullopt,
+                             "JOB-" + std::string(job_name));
   categoriseTheorem(theorem, Category::PLAN);
   tagTheorem(theorem, Tag("JOB"));
   tagTheorem(theorem, Tag("IMDB"));

@@ -372,6 +372,7 @@ int main(int argc, char** argv) {
   bool prepare_ee_join_scale = false;
   bool list_theorems = false;
   std::optional<std::string> publish_as = std::nullopt;
+  std::optional<std::string> config_str = std::nullopt;
 
   app.set_help_flag("-?", "--help");
   app.add_option(
@@ -421,6 +422,8 @@ int main(int argc, char** argv) {
                  query_timeout_seconds, "Query timeout in seconds (0 disables timeout)")->default_val(0);
   app.add_option("--timing-runs",
                  timing_runs, "Number of measured executions per query theorem")->default_val(3);
+  app.add_option("-c,--config",
+                 config_str, "Free-text string written to the 'config' field of proof JSON output")->envname("DBPROVE_CONFIG");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -600,7 +603,8 @@ int main(int argc, char** argv) {
                                      timing_runs,
                                      parquet_dir,
                                      proof_directory,
-                                     artifact_mode};
+                                     artifact_mode,
+                                     config_str};
 
   return theorem::prove(theorems, input_state) ? 0 : 1;
 }

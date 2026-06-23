@@ -303,6 +303,7 @@ public:
   std::optional<uint32_t> query_timeout_seconds;
   size_t timing_runs = 3;
   std::optional<std::string> parquet_dir;
+  std::optional<std::string> config;
   std::set<std::string> ensured_datasets;
   std::vector<std::unique_ptr<Proof>> proofs;
   void writeProofJson(std::string_view proof_name, std::string_view content) const;
@@ -313,7 +314,8 @@ public:
          size_t timing_runs = 3,
          std::optional<std::string> parquet_dir = std::nullopt,
          std::optional<std::filesystem::path> proof_directory = std::nullopt,
-         bool artifact_mode = false);
+         bool artifact_mode = false,
+         std::optional<std::string> config = std::nullopt);
 
   ~RunCtx();
 };

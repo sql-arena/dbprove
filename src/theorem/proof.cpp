@@ -180,6 +180,9 @@ std::string Proof::toJson() const {
   document["engine"] = state.engine.name();
   document["version"] = state.engine_version;
   document["storageVariant"] = to_string(state.storage_variant);
+  if (state.config.has_value()) {
+    document["config"] = *state.config;
+  }
   document["queries"] = nlohmann::json::array();
 
   if (runtime_summary_.best_us.has_value() || runtime_summary_.avg_us.has_value() || runtime_summary_.min_us.has_value() ||

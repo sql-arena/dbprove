@@ -47,7 +47,8 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
                std::optional<uint32_t> query_timeout_seconds, const size_t timing_runs,
                std::optional<std::string> parquet_dir,
                const std::optional<std::filesystem::path> proof_directory,
-               const bool artifact_mode)
+               const bool artifact_mode,
+               std::optional<std::string> config)
   : proof_directory_path_(proof_directory.value_or(std::filesystem::path{}))
   , engine(engine)
   , engine_version(std::move(engine_version))
@@ -56,6 +57,7 @@ RunCtx::RunCtx(const sql::Engine& engine, const sql::Credential& credentials, ge
   , generator(generator)
   , factory(engine, credentials, connection_artifacts_path)
   , console(console)
+  , config(std::move(config))
   , artifact_mode(artifact_mode)
   , query_timeout_seconds(query_timeout_seconds)
   , timing_runs(timing_runs)

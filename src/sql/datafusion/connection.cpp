@@ -552,6 +552,14 @@ class Connection::Pimpl {
 #endif
   }
 
+  void executeDDLInPersistentSession(std::string_view ddl) {
+#ifndef _WIN32
+    // DDL produces no output in quiet mode, so append SELECT 1 as a sentinel
+    // that yields a confirmable JSON response after the DDL is processed.
+    session().runJsonQuery(std::string(ddl) + "; SELECT 1");
+#endif
+  }
+
 #ifndef _WIN32
   PersistentCliSession& session() {
     if (!session_) {
@@ -718,12 +726,12 @@ void Connection::constructTable(std::string_view ddl,
   const auto create_table = "CREATE EXTERNAL TABLE IF NOT EXISTS " + std::string(table)
                           + " STORED AS PARQUET LOCATION '" + parquet_path.string() + "'";
   if (!split.schema_name.empty()) {
-    execute("CREATE SCHEMA IF NOT EXISTS " + split.schema_name);
-    appendBootstrapStatement("CREATE SCHEMA IF NOT EXISTS " + split.schema_name);
+    const auto create_schema = "CREATE SCHEMA IF NOT EXISTS " + split.schema_name;
+    appendBootstrapStatement(create_schema);
+    impl_->executeDDLInPersistentSession(create_schema);
   }
-  execute(create_table);
   appendBootstrapStatement(create_table);
-  impl_->resetSession();
+  impl_->executeDDLInPersistentSession(create_table);
 }
 
 void Connection::analyse(std::string_view table_name) {

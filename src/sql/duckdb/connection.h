@@ -18,5 +18,6 @@ public:
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   std::string version() override;
   void close() override;
+  bool shouldSkipDatasetTuning(std::string_view dataset) override;
 };
 } // namespace sql::duckdb

@@ -116,7 +116,7 @@ std::string literalToString(const json& literal) {
   if (literal.contains("nullValue")) {
     return "NULL";
   }
-  return literal.dump();
+  return std::string(kUnknownExpression);
 }
 
 std::string binaryOperatorToString(std::string_view op) {
@@ -303,7 +303,13 @@ std::string expressionToString(const json& expression) {
       return name + "()";
     }
   }
-  return expression.dump();
+  if (expression.contains("isNullExpr")) {
+    return expressionToString(expression["isNullExpr"]["expr"]) + " IS NULL";
+  }
+  if (expression.contains("isNotNullExpr")) {
+    return expressionToString(expression["isNotNullExpr"]["expr"]) + " IS NOT NULL";
+  }
+  return std::string(kUnknownExpression);
 }
 
 std::vector<Column> columnsFromExpressions(const json& expressions, const json* aliases = nullptr) {

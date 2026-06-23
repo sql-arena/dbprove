@@ -252,4 +252,10 @@ std::string Connection::version() {
 void Connection::close() {
   impl_->close();
 }
+
+bool Connection::shouldSkipDatasetTuning(std::string_view dataset) {
+  const auto sql = "SELECT COUNT(*) FROM duckdb_constraints() WHERE schema_name = "
+                   + sqlStringLiteral(dataset) + " AND constraint_type = 'FOREIGN KEY'";
+  return fetchScalar(sql).get<SqlBigInt>().get() > 0;
+}
 }

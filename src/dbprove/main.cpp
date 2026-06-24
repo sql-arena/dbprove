@@ -357,6 +357,7 @@ int main(int argc, char** argv) {
   std::optional<std::string> host = std::nullopt;
   std::optional<std::string> token = std::nullopt;
   std::string data_bucket_uri = "s3://sql-arena";
+  std::optional<std::string> region = std::nullopt;
   std::optional<std::string> download_dir_override = std::nullopt;
   std::optional<std::string> artefact_directory_override = std::nullopt;
   std::optional<std::string> log_directory_override = std::nullopt;
@@ -399,6 +400,9 @@ int main(int argc, char** argv) {
   app.add_option("--data-bucket",
                  data_bucket_uri,
                  "Bucket URI for benchmark data, for example s3://sql-arena or gs://sql-arena-data")->default_val("s3://sql-arena");
+  app.add_option("--region",
+                 region,
+                 "Region suffix for the benchmark data bucket (e.g. us-east → s3://sql-arena-us-east). Overrides --data-bucket.");
   app.add_option("--download-dir",
                  download_dir_override,
                  "Directory for downloaded source data such as staged CSV and zip files");
@@ -426,6 +430,14 @@ int main(int argc, char** argv) {
                  config_str, "Free-text string written to the 'config' field of proof JSON output")->envname("DBPROVE_CONFIG");
 
   CLI11_PARSE(app, argc, argv);
+
+  if (region && app.count("--data-bucket") > 0) {
+    std::cerr << "Error: --region and --data-bucket are mutually exclusive." << std::endl;
+    return 1;
+  }
+  if (region) {
+    data_bucket_uri = "s3://sql-arena-" + *region;
+  }
 
   if (list_theorems) {
     ux::Terminal::configure();
@@ -494,6 +506,13 @@ int main(int argc, char** argv) {
 
   if (requested_docker_variant.has_value() && !docker_mode) {
     throw std::runtime_error("--variant requires --docker");
+  }
+
+  if (engine.type() == sql::Engine::Type::Databricks
+      && requested_docker_variant == dbprove::StorageVariant::Iceberg) {
+    throw std::runtime_error(
+        "Databricks does not support the 'iceberg' storage variant. "
+        "Only 'native' (Delta) is supported.");
   }
 
   if (requested_docker_variant.has_value() && theorem_required_variant.has_value()

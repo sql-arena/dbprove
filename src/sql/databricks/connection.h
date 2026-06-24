@@ -18,6 +18,9 @@ public:
   std::unique_ptr<explain::Plan> explain(std::string_view statement, std::optional<std::string_view> name = std::nullopt) override;
   std::string version() override;
   nlohmann::json queryHistory(const std::string& statement_id) const;
+  void constructTable(std::string_view ddl, std::span<const std::filesystem::path> source_stems,
+                      dbprove::StorageVariant storage_variant,
+                      IcebergRegistrationCallback register_iceberg_table = nullptr) override;
   void bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) override;
   const TypeMap& typeMap() const override;
   std::optional<RowCount> tableRowCount(const std::string_view table) override;

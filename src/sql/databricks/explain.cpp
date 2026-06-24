@@ -464,16 +464,33 @@ namespace sql::databricks
                     }
 
                     for (const auto& attr : outputs) {
-                        if (ctx.attribute_to_scan.contains(attr)) {
-                            const auto& info = ctx.attribute_to_scan.at(attr);
-                            PLOGD << "Replicating Scan " << info.table_name << " for Reused Exchange via attribute " << attr;
-                            auto node = std::make_unique<Scan>(info.table_name);
-                            if (!info.filter.empty()) {
-                                node->setFilter(info.filter);
+                        auto lookup = [&](const std::string& key) -> const ExplainContext::ScanInfo* {
+                            auto it = ctx.attribute_to_scan.find(key);
+                            return it != ctx.attribute_to_scan.end() ? &it->second : nullptr;
+                        };
+                        const ExplainContext::ScanInfo* info = lookup(attr);
+                        if (!info) {
+                            // Reused Exchange output attributes may carry a table alias prefix
+                            // (e.g. "l3.l_orderkey") while scans register bare names ("l_orderkey")
+                            const auto dot = attr.find('.');
+                            if (dot != std::string::npos) {
+                                info = lookup(attr.substr(dot + 1));
                             }
-                            node->rows_estimated = info.rows_estimated;
-                            node->rows_actual = info.rows_actual;
-                            return node;
+                        }
+                        if (info) {
+                            PLOGD << "Replicating Scan " << info->table_name << " for Reused Exchange via attribute " << attr;
+                            auto scan = std::make_unique<Scan>(info->table_name);
+                            if (!info->filter.empty()) {
+                                scan->setFilter(info->filter);
+                            }
+                            scan->rows_estimated = info->rows_estimated;
+                            scan->rows_actual = info->rows_actual;
+                            auto dist = std::make_unique<Distribute>(Distribute::Strategy::HASH,
+                                                                     std::vector<Column>{});
+                            dist->rows_estimated = info->rows_estimated;
+                            dist->rows_actual = info->rows_actual;
+                            dist->addChild(std::move(scan));
+                            return dist;
                         }
                     }
                 }
@@ -490,6 +507,13 @@ namespace sql::databricks
         std::unique_ptr<Node> node;
         std::string tag = safeGetString(node_json, "tag");
         PLOGD << "Node tag: " << tag;
+
+        // "Shuffle" named nodes include PhotonShuffleExchangeSink (tag prefix "UNKNOWN.")
+        // and SHUFFLE_QUERY_STAGE_EXEC — both carry exchange semantics and must be handled
+        // before the generic STAGE early-return below.
+        if (name == "Shuffle") {
+            return handleExchange(name, node_json);
+        }
 
         if (name == "Arrow Conversion" || name == "Columnar to Row" || name == "Columnar To Row" ||
             name == "Result Query Stage" || name == "Arrow Result Stage" || name == "Whole Stage Codegen" ||

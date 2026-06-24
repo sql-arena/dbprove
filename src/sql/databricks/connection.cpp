@@ -3,6 +3,7 @@
 #include "row.h"
 #include "dbprove/sql/sql_exceptions.h"
 #include <dbprove/sql/sql.h>
+#include <dbprove/sql/parsed_table.h>
 
 #include <iostream>
 #include <curl/curl.h>
@@ -26,6 +27,57 @@ namespace sql::databricks
     constexpr unsigned kHistoryLookupRetries = 15;
     constexpr auto kHistoryLookupDelay = std::chrono::seconds(2);
     constexpr size_t kDatabricksLogPayloadLimit = 512;
+    constexpr std::array<std::string_view, 48> kDatabricksJobConstraintNames = {
+        "dbprove_fk_aka_name_name",
+        "dbprove_fk_aka_title_episode_title",
+        "dbprove_fk_aka_title_kind_type",
+        "dbprove_fk_aka_title_title",
+        "dbprove_fk_cast_info_char_name",
+        "dbprove_fk_cast_info_name",
+        "dbprove_fk_cast_info_role_type",
+        "dbprove_fk_cast_info_title",
+        "dbprove_fk_complete_cast_status_type",
+        "dbprove_fk_complete_cast_subject_type",
+        "dbprove_fk_complete_cast_title",
+        "dbprove_fk_movie_companies_company_name",
+        "dbprove_fk_movie_companies_company_type",
+        "dbprove_fk_movie_companies_title",
+        "dbprove_fk_movie_info_idx_info_type",
+        "dbprove_fk_movie_info_idx_title",
+        "dbprove_fk_movie_info_info_type",
+        "dbprove_fk_movie_info_title",
+        "dbprove_fk_movie_keyword_keyword",
+        "dbprove_fk_movie_keyword_title",
+        "dbprove_fk_movie_link_link_type",
+        "dbprove_fk_movie_link_linked_title",
+        "dbprove_fk_movie_link_title",
+        "dbprove_fk_person_info_info_type",
+        "dbprove_fk_person_info_name",
+        "dbprove_fk_title_episode_title",
+        "dbprove_fk_title_kind_type",
+        "dbprove_pk_aka_name",
+        "dbprove_pk_aka_title",
+        "dbprove_pk_cast_info",
+        "dbprove_pk_char_name",
+        "dbprove_pk_comp_cast_type",
+        "dbprove_pk_company_name",
+        "dbprove_pk_company_type",
+        "dbprove_pk_complete_cast",
+        "dbprove_pk_info_type",
+        "dbprove_pk_keyword",
+        "dbprove_pk_kind_type",
+        "dbprove_pk_link_type",
+        "dbprove_pk_movie_companies",
+        "dbprove_pk_movie_info",
+        "dbprove_pk_movie_info_idx",
+        "dbprove_pk_movie_keyword",
+        "dbprove_pk_movie_link",
+        "dbprove_pk_name",
+        "dbprove_pk_person_info",
+        "dbprove_pk_role_type",
+        "dbprove_pk_title",
+    };
+
     constexpr std::array<std::string_view, 18> kDatabricksTpchConstraintNames = {
         "fk_customer_nation",
         "fk_lineitem_orders",
@@ -60,21 +112,32 @@ namespace sql::databricks
         return truncateForLog(payload.dump(), limit);
     }
 
-    static std::string databricksTpchConstraintCheckSql()
+    template<typename T>
+    static std::string databricksConstraintCheckSql(const std::string_view schema, const T& names)
     {
         std::ostringstream sql;
         sql << "SELECT COUNT(DISTINCT constraint_name) AS c "
                "FROM information_schema.table_constraints "
-               "WHERE table_schema = 'tpch_sf1' "
+               "WHERE table_schema = '" << schema << "' "
                "AND constraint_name IN (";
-        for (size_t i = 0; i < kDatabricksTpchConstraintNames.size(); ++i) {
+        for (size_t i = 0; i < names.size(); ++i) {
             if (i > 0) {
                 sql << ", ";
             }
-            sql << "'" << kDatabricksTpchConstraintNames[i] << "'";
+            sql << "'" << names[i] << "'";
         }
         sql << ")";
         return sql.str();
+    }
+
+    static std::string databricksTpchConstraintCheckSql()
+    {
+        return databricksConstraintCheckSql("tpch_sf1", kDatabricksTpchConstraintNames);
+    }
+
+    static std::string databricksJobConstraintCheckSql()
+    {
+        return databricksConstraintCheckSql("job", kDatabricksJobConstraintNames);
     }
 
     static std::string trimCopy(const std::string_view input)
@@ -302,7 +365,8 @@ namespace sql::databricks
                 {"statement", std::string(query)},
                 {"warehouse_id", warehouse_id_},
                 {"wait_timeout", std::to_string(kStatementWaitTimeoutSeconds) + "s"},
-                {"disposition", "INLINE"}
+                {"disposition", "INLINE"},
+                {"catalog", "sql-arena"}
             };
 
             if (!tags.empty()) {
@@ -408,7 +472,28 @@ namespace sql::databricks
         const auto statements = splitStatements(statement);
         for (const auto& stmt : statements) {
             auto response = impl_->sendQuery(stmt);
-            handleDatabricksResponse(token_, response);
+            try {
+                handleDatabricksResponse(token_, response);
+            } catch (const std::runtime_error& e) {
+                // Databricks Unity Catalog has a known bug where DROP CONSTRAINT IF EXISTS
+                // returns INTERNAL_ERROR for constraints that are stuck in broken metadata
+                // state. Since IF EXISTS is requesting idempotent behavior, treat this as a
+                // soft warning and continue — subsequent ADD CONSTRAINT will either succeed
+                // or be suppressed by the ALREADY_EXISTS handler.
+                const std::string upper_stmt = [&] {
+                    std::string s(stmt);
+                    std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::toupper(c); });
+                    return s;
+                }();
+                const bool is_drop_if_exists =
+                    upper_stmt.find("DROP CONSTRAINT IF EXISTS") != std::string::npos;
+                if (is_drop_if_exists && std::string(e.what()).find("INTERNAL_ERROR") != std::string::npos) {
+                    PLOGW << "DROP CONSTRAINT IF EXISTS returned INTERNAL_ERROR (Unity Catalog metadata issue, continuing): "
+                          << truncateForLog(stmt);
+                    continue;
+                }
+                throw;
+            }
         }
     }
 
@@ -436,20 +521,104 @@ namespace sql::databricks
         return out;
     }
 
+    void Connection::constructTable(const std::string_view ddl,
+                                    const std::span<const std::filesystem::path> source_stems,
+                                    const dbprove::StorageVariant /*storage_variant*/,
+                                    const IcebergRegistrationCallback /*register_iceberg_table*/)
+    {
+        // Verify the sql-arena catalog exists; if not, the user must create it manually.
+        const auto catalogs = fetchAll("SHOW CATALOGS LIKE 'sql-arena'");
+        if (catalogs->rowCount() == 0) {
+            throw std::runtime_error(
+                "Catalog 'sql-arena' not found in Databricks. "
+                "Please create it with: CREATE CATALOG `sql-arena`");
+        }
+
+        const auto parsed = ParsedTable(ddl);
+        const auto [schema_name, table_name] = splitTable(parsed.tableName());
+        auto schema_path = schema_name;
+        std::replace(schema_path.begin(), schema_path.end(), '_', '/');
+        const auto s3_location = token_.data_bucket_uri + "/" + schema_path + "/" + table_name;
+
+        // Render a column type using the engine's typeMap. Must be inline because renderType
+        // is file-static in connection_base.cpp and not accessible here.
+        // STRING with a length modifier uses VARCHAR(N); unbounded STRING uses the mapped name.
+        const auto& tmap = typeMap();
+        auto renderColType = [&](const SqlTypeMeta& type) -> std::string {
+            auto it = tmap.find(type.kind);
+            std::string base;
+            if (it != tmap.end()) {
+                base = std::string(it->second);
+            } else {
+                switch (type.kind) {
+                    case SqlTypeKind::SMALLINT:  base = "SMALLINT"; break;
+                    case SqlTypeKind::INT:        base = "INT"; break;
+                    case SqlTypeKind::BIGINT:     base = "BIGINT"; break;
+                    case SqlTypeKind::REAL:       base = "REAL"; break;
+                    case SqlTypeKind::DOUBLE:     base = "DOUBLE"; break;
+                    case SqlTypeKind::DECIMAL:    base = "DECIMAL"; break;
+                    case SqlTypeKind::STRING:     base = "STRING"; break;
+                    case SqlTypeKind::DATE:       base = "DATE"; break;
+                    case SqlTypeKind::TIME:       base = "TIME"; break;
+                    case SqlTypeKind::DATETIME:   base = "TIMESTAMP"; break;
+                    default:                      base = "STRING"; break;
+                }
+            }
+            if (type.kind == SqlTypeKind::STRING &&
+                std::holds_alternative<SqlTypeModifier::String>(type.modifier.value)) {
+                const auto length = std::get<SqlTypeModifier::String>(type.modifier.value).length;
+                return "VARCHAR(" + std::to_string(length) + ")";
+            }
+            if (type.kind == SqlTypeKind::DECIMAL &&
+                std::holds_alternative<SqlTypeModifier::Decimal>(type.modifier.value)) {
+                const auto dec = std::get<SqlTypeModifier::Decimal>(type.modifier.value);
+                return base + "(" + std::to_string(dec.precision) + ", " + std::to_string(dec.scale) + ")";
+            }
+            return base;
+        };
+
+        // Create the table with DDL-declared column types so that FK/PK constraints work reliably.
+        // CTAS would infer types from parquet, which may differ across tables for logically-equivalent
+        // columns (e.g. INT32 vs INT64 for integer IDs). Explicit types + INSERT coerces parquet
+        // values to match, making FK constraint type-checking consistent across all tables.
+        std::ostringstream col_defs;
+        const auto& cols = parsed.columns();
+        for (size_t i = 0; i < cols.size(); ++i) {
+            const auto& col = cols[i];
+            col_defs << "    " << col.name << " " << renderColType(col.type);
+            if (!col.is_null) col_defs << " NOT NULL";
+            if (i + 1 < cols.size()) col_defs << ",";
+            col_defs << "\n";
+        }
+        const std::string create_sql =
+            "CREATE TABLE IF NOT EXISTS `" + schema_name + "`.`" + table_name + "` (\n" +
+            col_defs.str() + ")";
+        PLOGI << "Creating Databricks managed Delta table: " << create_sql;
+        execute(create_sql);
+
+        // Build UNION ALL select from exact per-stem S3 parquet paths. Exact paths (not directory
+        // or glob) avoid picking up non-parquet files or stale _delta_log directories.
+        std::string select_expr;
+        for (size_t i = 0; i < source_stems.size(); ++i) {
+            const auto parquet_path = s3_location + "/" + source_stems[i].filename().string() + ".parquet";
+            if (i == 0) {
+                select_expr = "SELECT * FROM parquet.`" + parquet_path + "`";
+            } else {
+                select_expr += " UNION ALL SELECT * FROM parquet.`" + parquet_path + "`";
+            }
+        }
+        const std::string insert_sql =
+            "INSERT INTO `" + schema_name + "`.`" + table_name + "` " + select_expr;
+        PLOGI << "Loading data into Databricks table: " << insert_sql;
+        execute(insert_sql);
+    }
+
     void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths)
     {
-        // TODO: should have a general way to map table to its location
-
-        const auto [schema_name, table_name] = splitTable(table);
-        const auto base_uri = token_.data_bucket_uri + "/tpch/sf1";
-
-        const std::string statement =
-                 "INSERT INTO " + std::string(table) + "\n" +
-                 "SELECT * \n"
-                 "FROM parquet.`" + base_uri + "/" + table_name + ".parquet`";
-
-        PLOGI << "Executing INSERT INTO for table " << table;
-        execute(statement);
+        // ROTTEN: this code predates constructTable and assumes a hardcoded tpch/sf1 path.
+        // For Databricks, all data loading is handled by constructTable via external Delta tables
+        // pointing directly at S3 — bulkLoad should never be called for this engine.
+        throw std::runtime_error("bulkLoad is not supported for Databricks; use constructTable");
     }
 
     const ConnectionBase::TypeMap& Connection::typeMap() const
@@ -480,17 +649,27 @@ namespace sql::databricks
 
     bool Connection::shouldSkipDatasetTuning(std::string_view dataset)
     {
-        if (dataset != "tpch_sf1") {
-            return false;
-        }
+        struct DatasetCheck {
+            std::string_view name;
+            std::function<std::string()> sql;
+            int64_t expected;
+        };
+        const std::array checks = {
+            DatasetCheck{"tpch_sf1", databricksTpchConstraintCheckSql, static_cast<int64_t>(kDatabricksTpchConstraintNames.size())},
+            DatasetCheck{"job",      databricksJobConstraintCheckSql,  static_cast<int64_t>(kDatabricksJobConstraintNames.size())},
+        };
 
-        try {
-            const auto present_constraints = fetchScalar(databricksTpchConstraintCheckSql()).asInt8();
-            return present_constraints == static_cast<int64_t>(kDatabricksTpchConstraintNames.size());
-        } catch (const std::exception& e) {
-            PLOGD << "Failed to check existing Databricks TPCH constraints before tuning: " << e.what();
-            return false;
+        for (const auto& check : checks) {
+            if (dataset != check.name) continue;
+            try {
+                const auto present = fetchScalar(check.sql()).asInt8();
+                return present == check.expected;
+            } catch (const std::exception& e) {
+                PLOGD << "Failed to check existing Databricks constraints for '" << dataset << "' before tuning: " << e.what();
+                return false;
+            }
         }
+        return false;
     }
 
     std::string Connection::version()

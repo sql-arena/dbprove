@@ -451,6 +451,7 @@ sql::RowCount GeneratorState::generate(const std::string_view table_name) {
   const auto csv_paths = expectedCsvPaths(basePath_, t);
   const auto parquet_paths = expectedParquetPaths(basePath_, t);
   const auto schema_path = dbprove::common::schemaObjectPath(t.dataset);
+  const auto base_table_name = dbprove::common::splitQualifiedTableName(table_name).table_name;
 
   dbprove::common::make_directory(basePath_.string());
 
@@ -464,7 +465,7 @@ sql::RowCount GeneratorState::generate(const std::string_view table_name) {
     const auto csv_file_name = stem + ".csv";
     const auto zip_object_name = stem + ".csv.zip";
     const auto parquet_object_name = stem + ".parquet";
-    const auto relative_object_prefix = schema_path.empty() ? std::string() : schema_path + "/";
+    const auto relative_object_prefix = (schema_path.empty() ? std::string() : schema_path + "/") + base_table_name + "/";
     const auto zip_object_path = relative_object_prefix + zip_object_name;
     const auto parquet_object_path = relative_object_prefix + parquet_object_name;
     const auto zip_cache_path = downloadCachePath(basePath_, t.dataset, zip_object_name);

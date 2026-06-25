@@ -330,7 +330,7 @@ std::optional<Engine::DockerServiceConfig> Engine::dockerServiceConfig(const dbp
       return std::nullopt;
     case Type::Trino:
       if (variant == dbprove::StorageVariant::Iceberg) {
-        return DockerServiceConfig{"trino-iceberg", std::chrono::seconds(180)};
+        return DockerServiceConfig{"trino-iceberg", std::chrono::seconds(600)};
       }
       return std::nullopt;
     default:

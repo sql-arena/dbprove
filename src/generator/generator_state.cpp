@@ -281,8 +281,18 @@ void GeneratorState::ensure(std::span<const std::string_view> table_names, sql::
     PLOGD << "Ensuring table: " << table_name;
 
     if (!table(table_name).is_generated) {
-      PLOGD << "Table: " << table_name << " is not marked as generated. Preparing input...";
-      generate(table_name);
+      const auto parquet_paths = expectedParquetPaths(basePath_, table(table_name));
+      const bool all_parquet_ready = !parquet_paths.empty()
+          && std::ranges::all_of(parquet_paths, fileExistsAndNonEmpty);
+      if (all_parquet_ready) {
+        // Pre-materialized parquet (e.g. scale tables from --prepare-ee-join-scale)
+        PLOGI << "Pre-materialized parquet found for " << table_name << "; skipping download";
+        table(table_name).parquet_paths = parquet_paths;
+        table(table_name).is_generated = true;
+      } else {
+        PLOGD << "Table: " << table_name << " is not marked as generated. Preparing input...";
+        generate(table_name);
+      }
     }
 
     auto existing_rows = cn->tableRowCount(table_name);

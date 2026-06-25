@@ -46,13 +46,13 @@ CREATE EXTERNAL TABLE IF NOT EXISTS scale.lineitem_25x (
   lineitem_replica_id BIGINT
 )
 STORED AS PARQUET
-LOCATION '/mnt/tpch-tmpfs/scale/lineitem_25x/lineitem_25x.parquet';
+LOCATION '/mnt/tpch-tmpfs/scale/lineitem_25x.parquet';
 
 SQL
 
-  for parquet_dir in /mnt/tpch-tmpfs/scale/orders_scale_*; do
-    [[ -d "${parquet_dir}" ]] || continue
-    table_name="$(basename "${parquet_dir}")"
+  for parquet_file in /mnt/tpch-tmpfs/scale/orders_scale_*.parquet; do
+    [[ -f "${parquet_file}" ]] || continue
+    table_name="$(basename "${parquet_file}" .parquet)"
     cat >> "${bootstrap_sql}" <<SQL
 CREATE EXTERNAL TABLE IF NOT EXISTS scale.${table_name} (
   join_key BIGINT,
@@ -68,7 +68,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS scale.${table_name} (
   o_comment VARCHAR
 )
 STORED AS PARQUET
-LOCATION '/mnt/tpch-tmpfs/scale/${table_name}/${table_name}.parquet';
+LOCATION '/mnt/tpch-tmpfs/scale/${table_name}.parquet';
 
 SQL
   done

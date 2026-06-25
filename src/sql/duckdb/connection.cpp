@@ -227,14 +227,27 @@ std::unique_ptr<ResultBase> Connection::fetchAll(const std::string_view statemen
 }
 
 void Connection::bulkLoad(const std::string_view table, const std::vector<std::filesystem::path> source_paths) {
-  validateSourcePaths(source_paths);
+  if (source_paths.empty()) {
+    throw std::invalid_argument("No source paths provided for bulk load");
+  }
 
   for (const auto& path : source_paths) {
+    // When CSV is absent but parquet exists at the same stem (e.g. scale tables
+    // materialized by --prepare-ee-join-scale), load from parquet instead.
+    if (path.extension() == ".csv" && !std::filesystem::exists(path)) {
+      auto parquet_path = path;
+      parquet_path.replace_extension(".parquet");
+      if (std::filesystem::exists(parquet_path)) {
+        [[maybe_unused]] auto res = impl_->execute("COPY " + std::string(table) + " FROM " + sqlStringLiteral(parquet_path.string()) + " (FORMAT parquet)");
+        continue;
+      }
+    }
+    validateSourcePaths({path});
     const std::string copy_statement =
         "COPY " + std::string(table) + " FROM " + sqlStringLiteral(path.string()) + " "
         "WITH (FORMAT csv, DELIM '|', AUTO_DETECT false, HEADER true, "
         "QUOTE '\"', ESCAPE '\"', NEW_LINE '\\n')";
-    auto result = impl_->execute(copy_statement);
+    [[maybe_unused]] auto res = impl_->execute(copy_statement);
   }
 }
 

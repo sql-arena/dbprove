@@ -3,6 +3,7 @@
 #include "init.h"
 #include "query.h"
 
+#include <dbprove/generator/scale.h>
 #include <dbprove/common/file_utility.h>
 #include <dbprove/sql/connection_factory.h>
 #include <dbprove/sql/credential.h>
@@ -75,10 +76,10 @@ std::string ordersScaleTableName(const int orders_scale) {
 
 std::vector<std::filesystem::path> expectedMaterializedFiles(const std::filesystem::path& root) {
   std::vector<std::filesystem::path> files;
-  files.push_back(root / "lineitem_25x" / "lineitem_25x.parquet");
+  files.push_back(root / "lineitem_25x.parquet");
   for (const int orders_scale : kOrdersScales) {
     const auto table_name = ordersScaleTableName(orders_scale);
-    files.push_back(root / table_name / (table_name + ".parquet"));
+    files.push_back(root / (table_name + ".parquet"));
   }
   return files;
 }
@@ -334,10 +335,6 @@ void prepareJoinScaleArtifacts(std::ostream& console, const std::optional<std::s
 
   std::filesystem::remove_all(output_root);
   std::filesystem::create_directories(output_root);
-  std::filesystem::create_directories(output_root / "lineitem_25x");
-  for (const int orders_scale : kOrdersScales) {
-    std::filesystem::create_directories(output_root / ordersScaleTableName(orders_scale));
-  }
 
   const auto duckdb_file = output_root / "materialize.duckdb";
   sql::ConnectionFactory factory(
@@ -348,13 +345,13 @@ void prepareJoinScaleArtifacts(std::ostream& console, const std::optional<std::s
   console << "Materializing lineitem_25x into " << output_root << '\n';
   conn->execute(lineitemMaterializationSql(
       source_dir,
-      output_root / "lineitem_25x" / "lineitem_25x.parquet"));
+      output_root / "lineitem_25x.parquet"));
 
   for (const int orders_scale : kOrdersScales) {
     console << "Materializing " << ordersScaleTableName(orders_scale) << '\n';
     conn->execute(ordersMaterializationSql(
         source_dir,
-        output_root / ordersScaleTableName(orders_scale) / (ordersScaleTableName(orders_scale) + ".parquet"),
+        output_root / (ordersScaleTableName(orders_scale) + ".parquet"),
         orders_scale));
   }
   conn->close();

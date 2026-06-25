@@ -205,7 +205,7 @@ public:
 
   [[nodiscard]] long requestTimeoutSeconds(const std::optional<std::chrono::steady_clock::time_point>& deadline) const {
     if (!deadline.has_value()) {
-      return 300L;
+      return 600L;
     }
     const auto now = std::chrono::steady_clock::now();
     if (now >= *deadline) {
@@ -351,15 +351,25 @@ public:
 
     json page = httpRequest(baseUrl() + "/v1/statement", rewritten, deadline);
 
+    // Extract query ID from the initial response for reliable cancellation via /v1/query/{id}.
+    std::string query_id;
+    if (page.contains("id") && page["id"].is_string()) {
+      query_id = page["id"].get<std::string>();
+    }
+
+    const auto cancelCurrentQuery = [&]() {
+      if (!query_id.empty()) {
+        cancelQuery(baseUrl() + "/v1/query/" + query_id);
+      } else if (page.contains("nextUri") && !page["nextUri"].is_null()) {
+        cancelQuery(page["nextUri"].get<std::string>());
+      }
+    };
+
     TrinoQueryResult result;
     while (true) {
-      std::optional<std::string> next_uri_to_cancel;
-      if (page.contains("nextUri") && !page["nextUri"].is_null()) {
-        next_uri_to_cancel = page["nextUri"].get<std::string>();
-      }
-
       if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
-        throwTimeout(next_uri_to_cancel, *timeout_seconds);
+        cancelCurrentQuery();
+        throwTimeout(std::nullopt, *timeout_seconds);
       }
 
       if (page.contains("error")) {
@@ -393,9 +403,11 @@ public:
       try {
         page = httpRequest(next_uri, std::nullopt, deadline);
       } catch (const ConnectionException& e) {
-        if (timeout_seconds.has_value() &&
-            std::string_view(e.what()).find("Timeout was reached") != std::string_view::npos) {
-          throwTimeout(next_uri, *timeout_seconds);
+        if (std::string_view(e.what()).find("Timeout was reached") != std::string_view::npos) {
+          cancelCurrentQuery();
+          if (timeout_seconds.has_value()) {
+            throwTimeout(std::nullopt, *timeout_seconds);
+          }
         }
         throw;
       }

@@ -780,6 +780,7 @@ namespace sql::databricks
         std::unique_ptr<Node> node;
         bool is_root = true;
         bool is_subquery_root = false;
+        bool join_build_right = false; // true when JOIN_BUILD_SIDE=Right (children need swap to put build first)
     };
 
     void preScanScansForReusedExchange(const json& graph_json, ExplainContext& ctx)
@@ -821,9 +822,25 @@ namespace sql::databricks
 
             try {
                 auto node = createNodeFromSparkType(name, node_json, ctx);
+
+                bool join_build_right = false;
+                if (node && node->type == NodeType::JOIN) {
+                    if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+                        for (const auto& meta : node_json["metaData"]) {
+                            if (!meta.is_object()) continue;
+                            if (safeGetString(meta, "key") == "JOIN_BUILD_SIDE") {
+                                join_build_right = (safeGetString(meta, "value") == "Right");
+                                PLOGD << "Join node " << id << " JOIN_BUILD_SIDE=" << safeGetString(meta, "value")
+                                      << " join_build_right=" << join_build_right;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (node) {
                     PLOGD << "Created node " << id << " (" << name << ") with tag " << tag;
-                    info_map[id] = {id, name, tag, std::move(node), true};
+                    info_map[id] = {id, name, tag, std::move(node), true, false, join_build_right};
                 } else {
                     PLOGD << "Skipped node " << id << " (" << name << ") with tag " << tag;
                     info_map[id] = {id, name, tag, nullptr, true};
@@ -1066,6 +1083,13 @@ namespace sql::databricks
             if (info_map[current_id].node) {
                 // If this is a real node, add children to it and return it
                 if (info_map[current_id].node->type != NodeType::SCAN) {
+                    // Databricks graph edges follow Spark text-plan order: [left/probe, right/build].
+                    // Our convention is firstChild()=build, lastChild()=probe.
+                    // For BuildRight joins reverse so build becomes first; BuildLeft is already correct.
+                    if (info_map[current_id].join_build_right && children_nodes.size() == 2) {
+                        PLOGD << "Reversing children for BuildRight join node " << current_id;
+                        std::swap(children_nodes[0], children_nodes[1]);
+                    }
                     for (auto& child_node : children_nodes) {
                         PLOGD << "Linking consumer " << current_id << " (" << info_map[current_id].name << ") to producer " << child_node->typeName();
                         

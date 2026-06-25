@@ -132,8 +132,9 @@ class PersistentCliSession {
   static std::string sessionCommand() {
     return composeExecPrefix() +
            " exec -T " + shell_quote(std::string(kDataFusionComposeService)) + " sh -lc " +
-           shell_quote("exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
-                       "-b 1000000 -r /workspace/datafusion-bootstrap.sql");
+           shell_quote("TMPDIR=/workspace/datafusion-spill "
+                       "exec /opt/datafusion-cli/bin/datafusion-cli --format json --quiet "
+                       "--mem-pool-type fair -b 100000 -m 7500m -r /workspace/datafusion-bootstrap.sql");
   }
 
   static std::string trimLine(std::string line) {
@@ -617,6 +618,7 @@ class Connection::Pimpl {
     try {
       return session().runJsonQuery(rewriteStatement(sql));
     } catch (const std::runtime_error& e) {
+      resetSession();
       throwForCommandError(credential_, sql, 1, e.what());
     }
 #endif

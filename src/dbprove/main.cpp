@@ -240,6 +240,10 @@ int publishResults(const std::string& publisher) {
 
       const fs::path dest_dir = target_version_dir / publisher;
       PLOGI << "    Destination: " << dest_dir.string();
+      if (fs::is_directory(dest_dir)) {
+        fs::remove_all(dest_dir);
+        PLOGI << "    Cleared existing destination.";
+      }
       fs::create_directories(dest_dir);
 
       for (const auto& item : fs::directory_iterator(version_entry.path())) {

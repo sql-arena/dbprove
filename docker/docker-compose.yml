@@ -60,7 +60,7 @@ services:
   trino-iceberg:
     build: ./trino/local/iceberg
     image: dbprove-trino:latest
-    mem_limit: 7g
+    mem_limit: 10g
     depends_on:
       - iceberg-catalog
     ports:
@@ -75,7 +75,7 @@ services:
   datafusion-iceberg:
     build: ./datafusion/local/iceberg
     image: dbprove-datafusion:latest
-    mem_limit: 7g
+    mem_limit: 20g
     tmpfs:
       - /mnt/tpch-tmpfs:size=4g
     volumes:

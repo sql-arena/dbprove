@@ -53,14 +53,14 @@ void run_tpch_query(Proof& proof, const std::string_view sql) {
 
 void register_plan_join_check(std::string_view theorem_name, std::string_view description,
                               std::string_view sql) {
-  auto& theorem = addTheorem("PLAN_JOIN_CHECK-" + std::string(theorem_name),
+  auto& theorem = addTheorem("PLAN-JOIN-" + std::string(theorem_name),
                              std::string(description),
                              [sql](Proof& proof) {
                                run_tpch_query(tpch_ensure_basics(proof), sql);
                              },
                              1);
   categoriseTheorem(theorem, Category::PLAN);
-  tagTheorem(theorem, Tag("PLAN_JOIN_CHECK"));
+  tagTheorem(theorem, Tag("PLAN-JOIN"));
   tagTheorem(theorem, Tag("join"));
 }
 
@@ -200,67 +200,54 @@ void init() {
   register_tpch(21, tpch_q21, 396);
   register_tpch(22, tpch_q22, 7);
 
-  register_plan_join_check("INNER-MATCH",
-                           "Count rows in the LINEITEM to PART inner join",
+  register_plan_join_check("LEFT",
+                           "LEFT JOIN",
                            resource::inner_match_sql);
-  register_plan_join_check("INNER-MATCH-FILTER-PART",
-                           "Count rows in the LINEITEM to PART inner join with a one-sided PART key filter",
+  register_plan_join_check("LEFT-SELECTIVE",
+                           "LEFT JOIN with selective filter",
                            resource::inner_match_filter_part_sql);
-  register_plan_join_check("LEFT-ORDERS-CUSTOMER",
-                           "Count rows after LEFT JOIN from ORDERS to CUSTOMER",
+  register_plan_join_check("LEFT-LEFT",
+                           "LEFT JOIN",
                            resource::left_orders_customer_sql);
-  register_plan_join_check("LEFT-ORDERS-CUSTOMER-FILTER-CUSTOMER",
-                           "Count rows after LEFT JOIN from ORDERS to CUSTOMER with a one-sided CUSTOMER key filter",
+  register_plan_join_check("LEFT-LEFT-SELECTIVE",
+                           "LEFT JOIN with selective filter",
                            resource::left_orders_customer_filter_customer_sql);
-  register_plan_join_check("LEFT-CUSTOMER-ORDERS",
-                           "Count rows after LEFT JOIN from CUSTOMER to ORDERS",
+  register_plan_join_check("LEFT-RIGHT",
+                           "RIGHT JOIN",
                            resource::left_customer_orders_sql);
-  register_plan_join_check("LEFT-CUSTOMER-ORDERS-FILTER-CUSTOMER",
-                           "Count rows after LEFT JOIN from CUSTOMER to ORDERS with a one-sided CUSTOMER key filter",
+  register_plan_join_check("LEFT-RIGHT-SELECTIVE",
+                           "RIGHT JOIN with selective filter",
                            resource::left_customer_orders_filter_customer_sql);
-  register_plan_join_check("FULL-ORDERS-CUSTOMER",
-                           "Count rows after FULL JOIN from ORDERS to CUSTOMER",
+  register_plan_join_check("FULL-LEFT",
+                           "LEFT JOIN",
                            resource::full_orders_customer_sql);
-  register_plan_join_check("FULL-ORDERS-CUSTOMER-FILTER-CUSTOMER",
-                           "Count rows after FULL JOIN from ORDERS to CUSTOMER with a one-sided CUSTOMER key filter",
+  register_plan_join_check("FULL-LEFT-SELECTIVE",
+                           "LEFT JOIN with selective filter",
                            resource::full_orders_customer_filter_customer_sql);
-  register_plan_join_check("SEMI-ORDERS-CUSTOMER",
-                           "Count ORDERS rows with a matching CUSTOMER via EXISTS",
+  register_plan_join_check("SEMI-LEFT",
+                           "SEMI LEFT",
                            resource::semi_orders_customer_sql);
-  register_plan_join_check("SEMI-ORDERS-CUSTOMER-FILTER-CUSTOMER",
-                           "Count ORDERS rows with a matching CUSTOMER via EXISTS with a one-sided CUSTOMER key filter",
+  register_plan_join_check("SEMI-LEFT-SELECTIVE",
+                           "SEMI LEFT with selective filter",
                            resource::semi_orders_customer_filter_customer_sql);
-  register_plan_join_check("SEMI-CUSTOMER-ORDERS",
-                           "Count CUSTOMER rows with a matching ORDERS row via EXISTS",
+  register_plan_join_check("SEMI-RIGHT",
+                           "SEMI RIGHT",
                            resource::semi_customer_orders_sql);
-  register_plan_join_check("SEMI-CUSTOMER-ORDERS-FILTER-CUSTOMER",
-                           "Count CUSTOMER rows with a matching ORDERS row via EXISTS with a one-sided CUSTOMER key filter",
+  register_plan_join_check("SEMI-RIGHT-SELECTIVE",
+                           "SEMI RIGHT with selective filter",
                            resource::semi_customer_orders_filter_customer_sql);
-  register_plan_join_check("SEMI-ORDERS-CUSTOMER-PLUS1",
-                           "Count ORDERS rows with a matching CUSTOMER via EXISTS on +1 adjusted keys",
-                           resource::semi_orders_customer_plus1_sql);
-  register_plan_join_check("SEMI-ORDERS-CUSTOMER-PLUS1-FILTER-CUSTOMER",
-                           "Count ORDERS rows with a matching CUSTOMER via EXISTS on +1 adjusted keys and a one-sided CUSTOMER key filter",
-                           resource::semi_orders_customer_plus1_filter_customer_sql);
-  register_plan_join_check("ANTI-ORDERS-CUSTOMER",
-                           "Count ORDERS rows without a matching CUSTOMER via NOT EXISTS",
+  register_plan_join_check("ANTI-LEFT",
+                           "ANTI LEFT",
                            resource::anti_orders_customer_sql);
-  register_plan_join_check("ANTI-ORDERS-CUSTOMER-FILTER-CUSTOMER",
-                           "Count ORDERS rows without a matching CUSTOMER via NOT EXISTS with a one-sided CUSTOMER key filter",
+  register_plan_join_check("ANTI-LEFT-SELECTIVE",
+                           "ANTI LEFT with selective filter",
                            resource::anti_orders_customer_filter_customer_sql);
-  register_plan_join_check("ANTI-CUSTOMER-ORDERS",
-                           "Count CUSTOMER rows without a matching ORDERS row via NOT EXISTS",
+  register_plan_join_check("ANTI-RIGHT",
+                           "ANTI RIGHT",
                            resource::anti_customer_orders_sql);
-  register_plan_join_check("ANTI-CUSTOMER-ORDERS-FILTER-CUSTOMER",
-                           "Count CUSTOMER rows without a matching ORDERS row via NOT EXISTS with a one-sided CUSTOMER key filter",
+  register_plan_join_check("ANTI-RIGHT-SELECTIVE",
+                           "ANTI RIGHT with selective filter",
                            resource::anti_customer_orders_filter_customer_sql);
-  register_plan_join_check("ANTI-ORDERS-CUSTOMER-PLUS1",
-                           "Count ORDERS rows without a matching CUSTOMER via NOT EXISTS on +1 adjusted keys",
-                           resource::anti_orders_customer_plus1_sql);
-  register_plan_join_check("ANTI-ORDERS-CUSTOMER-PLUS1-FILTER-CUSTOMER",
-                           "Count ORDERS rows without a matching CUSTOMER via NOT EXISTS on +1 adjusted keys and a one-sided CUSTOMER key filter",
-                           resource::anti_orders_customer_plus1_filter_customer_sql);
-
   for (const auto& [job_name, sql] : kJobQueries) {
     register_job(job_name, sql);
   }

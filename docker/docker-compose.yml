@@ -9,6 +9,18 @@ services:
       - ../run/table_data:/opt/dbprove/table_data:ro
       - ../run/mount/iceberg:/opt/dbprove/warehouse
 
+  cedardb-native:
+    build: ./cedardb/local/native
+    image: dbprove-cedardb:latest
+    environment:
+      - CEDARDB_USER=cedardb
+      - CEDARDB_PASSWORD=cedardb
+      - CEDARDB_DB=cedardb
+    ports:
+      - "65432:5432"
+    volumes:
+      - ../run/mount/cedardb:/var/lib/cedardb
+
   postgresql-native:
     build: ./postgresql/local/native
     image: dbprove-postgresql:latest

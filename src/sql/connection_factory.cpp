@@ -1,6 +1,7 @@
 #include "connection_factory.h"
 #include "duckdb/connection.h"
 #ifndef DBPROVE_DUCKDB_ONLY
+#include "cedardb/connection.h"
 #include "clickhouse/connection.h"
 #include "datafusion/connection.h"
 #include "databricks/connection.h"
@@ -26,6 +27,11 @@ std::unique_ptr<ConnectionBase> ConnectionFactory::create() {
         throw std::invalid_argument("Postgres engine requires a password credential");
       }
       return std::make_unique<postgresql::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
+    case Engine::Type::CedarDB:
+      if (!std::holds_alternative<CredentialPassword>(credential_)) {
+        throw std::invalid_argument("CedarDB engine requires a password credential");
+      }
+      return std::make_unique<cedardb::Connection>(std::get<CredentialPassword>(credential_), engine_, artifacts_path_);
     case Engine::Type::Yellowbrick:
       // TODO: Support other forms of authentication
       if (!std::holds_alternative<CredentialPassword>(credential_)) {

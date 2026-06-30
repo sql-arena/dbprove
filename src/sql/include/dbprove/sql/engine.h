@@ -26,7 +26,8 @@ public:
     Databricks,
     ClickHouse,
     Yellowbrick,
-    Trino
+    Trino,
+    CedarDB
   };
 
   explicit Engine(const Type type)
@@ -81,7 +82,9 @@ public:
       {"databricks", Type::Databricks},
       {"utopia", Type::Utopia},
       {"trino", Type::Trino},
-      {"presto", Type::Trino}
+      {"presto", Type::Trino},
+      {"cedardb", Type::CedarDB},
+      {"cedar", Type::CedarDB}
   };
 
   [[nodiscard]] std::string name() const;

@@ -37,6 +37,19 @@
       }
     },
     {
+      "name": "osx-arm-cedardb",
+      "inherits": [
+        "vendor-vcpkg"
+      ],
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg_installed_osx_arm",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
       "name": "osx-arm-release",
       "inherits": [
         "vendor-vcpkg"

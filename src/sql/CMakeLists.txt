@@ -69,6 +69,7 @@ target_embed_files(${_targetName} SQL_FILES information_schema/data_type.sql)
 # Drivers
 add_subdirectory("duckdb")
 if (NOT DBPROVE_DUCKDB_ONLY)
+    add_subdirectory("cedardb")
     add_subdirectory("mssql")
     add_subdirectory("odbc")
     add_subdirectory("postgresql")
@@ -102,6 +103,7 @@ target_link_libraries(${_targetName}
 if (NOT DBPROVE_DUCKDB_ONLY)
     target_link_libraries(${_targetName}
             PRIVATE
+            dbprove::sql::cedardb
             dbprove::sql::postgres
             dbprove::sql::utopia
             dbprove::sql::datafusion

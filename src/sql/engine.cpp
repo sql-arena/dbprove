@@ -52,7 +52,9 @@ Engine::Engine(const std::string_view name) {
                                                                {"clickhouse", Type::ClickHouse},
                                                                {"ch", Type::ClickHouse},
                                                                {"trino", Type::Trino},
-                                                               {"presto", Type::Trino}};
+                                                               {"presto", Type::Trino},
+                                                               {"cedardb", Type::CedarDB},
+                                                               {"cedar", Type::CedarDB}};
 
   const std::string name_lower = to_lower(name);
   if (!known_names.contains(name_lower)) {
@@ -83,6 +85,8 @@ std::string Engine::defaultDatabase(std::optional<std::string> database) const {
     }
     case Type::SQLServer:
       return "dbprove";
+    case Type::CedarDB:
+      return "postgres";
     case Type::DuckDB:
       return "duck.db";
     case Type::DataFusion:
@@ -116,7 +120,8 @@ std::string Engine::defaultHost(std::optional<std::string> host) const {
       }
       break;
     }
-    case Type::Postgres: {
+    case Type::Postgres:
+    case Type::CedarDB: {
       host = getEnvVar("PGHOST").value_or("localhost");
       break;
     }
@@ -147,6 +152,7 @@ uint16_t Engine::defaultPort(const uint16_t port, const bool docker_mode) const 
   uint16_t default_port = 0;
   switch (type()) {
     case Type::Postgres:
+    case Type::CedarDB:
       default_port = 5432;
       break;
     case Type::Yellowbrick: {
@@ -189,6 +195,7 @@ uint16_t Engine::defaultPort(const uint16_t port, const bool docker_mode) const 
 std::string Engine::defaultUsername(std::optional<std::string> username) const {
   switch (type()) {
     case Type::Postgres:
+    case Type::CedarDB:
       username = getEnvVar("PGUSER").value_or("postgres");
       break;
     case Type::Yellowbrick: {
@@ -265,6 +272,7 @@ Credential Engine::parseCredentials(const std::string& host, const uint16_t port
   switch (type()) {
     case Type::MariaDB:
     case Type::Postgres:
+    case Type::CedarDB:
     case Type::SQLServer:
     case Type::ClickHouse:
     case Type::Yellowbrick:
@@ -295,6 +303,7 @@ Credential Engine::parseCredentials(const std::string& host, const uint16_t port
 std::optional<dbprove::StorageVariant> Engine::defaultStorageVariant() const {
   switch (type()) {
     case Type::Postgres:
+    case Type::CedarDB:
     case Type::SQLServer:
     case Type::ClickHouse:
       return dbprove::StorageVariant::Native;
@@ -311,6 +320,11 @@ std::optional<Engine::DockerServiceConfig> Engine::dockerServiceConfig(const dbp
     case Type::Postgres:
       if (variant == dbprove::StorageVariant::Native) {
         return DockerServiceConfig{"postgresql-native", std::chrono::seconds(60)};
+      }
+      return std::nullopt;
+    case Type::CedarDB:
+      if (variant == dbprove::StorageVariant::Native) {
+        return DockerServiceConfig{"cedardb-native", std::chrono::seconds(60)};
       }
       return std::nullopt;
     case Type::SQLServer:
@@ -409,12 +423,12 @@ void Engine::waitForDockerReady(const Credential& credentials, const std::chrono
         }
       }
 
-      if (type() == Type::Postgres) {
+      if (type() == Type::Postgres || type() == Type::CedarDB) {
         const auto ready = docker.runCompose({
             "exec", "-T", service_name, "pg_isready", "-U", defaultUsername(std::nullopt),
         });
         if (!commandSucceeded(ready)) {
-          last_error = "PostgreSQL is not ready yet";
+          last_error = "PostgreSQL/CedarDB is not ready yet";
           std::this_thread::sleep_for(std::chrono::seconds(2));
           continue;
         }
@@ -462,7 +476,8 @@ std::string Engine::name() const {
                                                                    {Type::Databricks, "Databricks"},
                                                                    {Type::Yellowbrick, "Yellowbrick"},
                                                                    {Type::SQLServer, "SQL Server"},
-                                                                   {Type::Trino, "Trino"}};
+                                                                   {Type::Trino, "Trino"},
+                                                                   {Type::CedarDB, "CedarDB"}};
   if (!canonical_names.contains(type())) {
     throw std::invalid_argument("Could not map the type to its canonical name. Are you missing a map entry?");
   }
@@ -495,6 +510,8 @@ std::string Engine::internalName() const {
       return "yellowbrick";
     case Type::Trino:
       return "trino";
+    case Type::CedarDB:
+      return "cedardb";
   }
   throw std::invalid_argument("Unknown engine type");
 }

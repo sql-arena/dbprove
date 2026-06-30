@@ -13,9 +13,7 @@ services:
     build: ./cedardb/local/native
     image: dbprove-cedardb:latest
     environment:
-      - CEDARDB_USER=cedardb
-      - CEDARDB_PASSWORD=cedardb
-      - CEDARDB_DB=cedardb
+      - CEDAR_PASSWORD=cedardb
     ports:
       - "65432:5432"
     volumes:

@@ -32,27 +32,27 @@ static std::string renderExpr(const json& expr) {
   const auto kind = expr["expression"].get<std::string>();
 
   if (kind == "iuref") {
-    return expr.value("iu", "?");
+    return expr.value("iu", "");
   }
 
   if (kind == "const") {
     if (!expr.contains("value")) return "null";
     const auto& val = expr["value"];
     if (val.contains("null") && val["null"].get<bool>()) return "null";
-    if (!val.contains("value")) return "?";
+    if (!val.contains("value")) return "";
     const auto& v = val["value"];
     if (v.is_string()) return v.get<std::string>();
     if (v.is_number_integer()) return std::to_string(v.get<int64_t>());
     if (v.is_number_float()) return std::to_string(v.get<double>());
     if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
-    return "?";
+    return "";
   }
 
   if (kind == "compare") {
     const auto left = renderExpr(expr.contains("left") ? expr["left"] : json{});
     const auto right = renderExpr(expr.contains("right") ? expr["right"] : json{});
-    const auto dir = expr.value("direction", "=");
-    return left + " " + dir + " " + right;
+    if (left.empty() || right.empty()) return "";
+    return left + " " + expr.value("direction", "=") + " " + right;
   }
 
   if (kind == "cast") {
@@ -63,7 +63,94 @@ static std::string renderExpr(const json& expr) {
     return "$" + std::to_string(expr.value("id", 0) + 1);
   }
 
-  return "?";
+  if (kind == "and" || kind == "or") {
+    const auto sep = (kind == "and") ? " AND " : " OR ";
+    std::string result;
+    for (const auto& part : expr.value("input", json::array())) {
+      const auto s = renderExpr(part);
+      if (!s.empty()) {
+        if (!result.empty()) result += sep;
+        result += s;
+      }
+    }
+    return result;
+  }
+
+  if (kind == "mul" || kind == "sub" || kind == "div") {
+    const auto op = (kind == "mul") ? " * " : (kind == "sub") ? " - " : " / ";
+    const auto left = renderExpr(expr.contains("left") ? expr["left"] : json{});
+    const auto right = renderExpr(expr.contains("right") ? expr["right"] : json{});
+    if (left.empty() || right.empty()) return "";
+    return left + op + right;
+  }
+
+  if (kind == "extractyear") {
+    const auto input = renderExpr(expr.contains("input") ? expr["input"] : json{});
+    return input.empty() ? "" : "EXTRACT(YEAR FROM " + input + ")";
+  }
+
+  if (kind == "between") {
+    const auto& inputs = expr.value("input", json::array());
+    if (inputs.size() < 3) return "";
+    const auto val = renderExpr(inputs[0]);
+    const auto lo  = renderExpr(inputs[1]);
+    const auto hi  = renderExpr(inputs[2]);
+    if (val.empty() || lo.empty() || hi.empty()) return "";
+    return val + " BETWEEN " + lo + " AND " + hi;
+  }
+
+  if (kind == "in") {
+    const auto& inputs = expr.value("input", json::array());
+    if (inputs.empty()) return "";
+    const auto col = renderExpr(inputs[0]);
+    if (col.empty()) return "";
+    // values[] items are {type, value} objects (not const expressions)
+    std::string vals;
+    for (const auto& v : expr.value("values", json::array())) {
+      const auto& raw = v.value("value", json{});
+      std::string s;
+      if (raw.is_string())         s = raw.get<std::string>();
+      else if (raw.is_number_integer()) s = std::to_string(raw.get<int64_t>());
+      else if (raw.is_number_float())   s = std::to_string(raw.get<double>());
+      if (!s.empty()) { if (!vals.empty()) vals += ", "; vals += s; }
+    }
+    return vals.empty() ? "" : col + " IN (" + vals + ")";
+  }
+
+  if (kind == "contains") {
+    const auto& inputs = expr.value("input", json::array());
+    if (inputs.size() < 2) return "";
+    const auto str = renderExpr(inputs[0]);
+    const auto sub = renderExpr(inputs[1]);
+    if (str.empty() || sub.empty()) return "";
+    return str + " LIKE '%" + sub + "%'";
+  }
+
+  if (kind == "left") {
+    const auto& inputs = expr.value("input", json::array());
+    if (inputs.size() < 2) return "";
+    const auto str = renderExpr(inputs[0]);
+    const auto len = renderExpr(inputs[1]);
+    if (str.empty() || len.empty()) return "";
+    return "LEFT(" + str + ", " + len + ")";
+  }
+
+  if (kind == "searchedcase") {
+    std::string result = "CASE";
+    for (const auto& c : expr.value("cases", json::array())) {
+      const auto cond = renderExpr(c.value("condition", json{}));
+      const auto res  = renderExpr(c.value("result", json{}));
+      if (!cond.empty() && !res.empty())
+        result += " WHEN " + cond + " THEN " + res;
+    }
+    if (expr.contains("else")) {
+      const auto else_val = renderExpr(expr["else"]);
+      if (!else_val.empty()) result += " ELSE " + else_val;
+    }
+    return result + " END";
+  }
+
+  return ""; // unknown — return empty so callers skip
 }
 
 // ---------------------------------------------------------------------------
@@ -105,10 +192,15 @@ static std::string renderRestrictions(const json& node) {
                            && r["value"]["value"]["null"].get<bool>();
       clause = col + (is_null ? " IS NULL" : " IS NOT NULL");
     } else if (mode == "[]") {
-      clause = col + " BETWEEN " + renderExpr(r["value"]) + " AND " + renderExpr(r["upper"]);
+      const auto lo = renderExpr(r.value("value", json{}));
+      const auto hi = renderExpr(r.value("upper", json{}));
+      if (lo.empty() || hi.empty()) continue;
+      clause = col + " BETWEEN " + lo + " AND " + hi;
     } else {
       // =, >=, <=
-      clause = col + " " + mode + " " + renderExpr(r["value"]);
+      const auto val_str = renderExpr(r.value("value", json{}));
+      if (val_str.empty()) continue;
+      clause = col + " " + mode + " " + val_str;
     }
 
     if (!clause.empty()) {
@@ -275,6 +367,25 @@ static std::unique_ptr<Node> makeCedarNode(const json& j) {
     return std::make_unique<Union>(union_type);
   }
 
+  // ---- Pipeline breaker scan: materialized intermediate result ------------
+  // pipelineBreaker.input child holds the subplan that was materialized;
+  // scannedOperator reference (no child) is a leaf scan of that temp result.
+  if (op == "pipelinebreakerscan") {
+    // The subplan variant embeds the child as pipelineBreaker.input — handled
+    // transparently in buildCedarNode; returning nullptr triggers that fallback.
+    // The reference variant (scannedOperator) has no tree child — emit a Scan.
+    if (!j.contains("pipelineBreaker")) {
+      return std::make_unique<Scan>("<temp>", Scan::Strategy::SCAN);
+    }
+    return nullptr; // pass through to pipelineBreaker.input below
+  }
+
+  // ---- Late materialisation: fetch rows by TID after a sort/filter pass ---
+  // Transparent: children are attached via 'left' in buildCedarNode.
+  if (op == "latematerialization") {
+    return nullptr; // pass through to left child
+  }
+
   // ---- Window functions: not a canonical node; fold into input ------------
   // (handled in buildCedarNode by passing through to child)
 
@@ -288,8 +399,19 @@ static std::unique_ptr<Node> makeCedarNode(const json& j) {
 std::unique_ptr<Node> buildCedarNode(const json& node_json) {
   auto node = makeCedarNode(node_json);
 
-  // For skipped / unknown operators (window, etc.) pass through to child
+  // For skipped / unknown operators pass through to child
   if (node == nullptr) {
+    // pipelinebreakerscan with subplan: recurse into the materialized subtree
+    if (node_json.value("operator", "") == "pipelinebreakerscan"
+        && node_json.contains("pipelineBreaker")
+        && node_json["pipelineBreaker"].contains("input")) {
+      return buildCedarNode(node_json["pipelineBreaker"]["input"]);
+    }
+    // latematerialization: pass through to left child
+    if (node_json.value("operator", "") == "latematerialization"
+        && node_json.contains("left")) {
+      return buildCedarNode(node_json["left"]);
+    }
     if (node_json.contains("input")) {
       return buildCedarNode(node_json["input"]);
     }

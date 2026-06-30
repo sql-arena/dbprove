@@ -235,6 +235,9 @@ std::string Engine::defaultPassword(std::optional<std::string> password) const {
       return getEnvVar("CLICKHOUSE_PASSWORD").value_or("default");
     case Type::SQLServer:
       return "YourStrong!Passw0rd";
+    case Type::CedarDB:
+      password = getEnvVar("PGPASSWORD").value_or("cedardb");
+      break;
     case Type::MariaDB:
       password = getEnvVar("MYSQL_PWD");
     default:

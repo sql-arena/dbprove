@@ -52,6 +52,7 @@ sql::Credential parseCredentials(
     switch (engine.type()) {
       case sql::Engine::Type::MariaDB:
       case sql::Engine::Type::Postgres:
+      case sql::Engine::Type::CedarDB:
       case sql::Engine::Type::SQLServer:
       case sql::Engine::Type::ClickHouse:
       case sql::Engine::Type::Trino:

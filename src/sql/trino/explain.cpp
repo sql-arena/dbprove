@@ -8,6 +8,7 @@
 #include "connection.h"
 #include "distribution.h"
 #include "explain/plan.h"
+#include "fix_actuals.h"
 #include "group_by.h"
 #include "join.h"
 #include "limit.h"
@@ -1376,35 +1377,48 @@ std::unique_ptr<Node> buildExplainNode(const json& node_json, const std::map<std
   }
 
   if (name == "TableScan") {
-    std::unique_ptr<Node> node = std::make_unique<Scan>(parseTableName(descriptorString(node_json, "table")));
-    applyNodeMetadata(*node, node_json);
+    auto scan = std::make_unique<Scan>(parseTableName(descriptorString(node_json, "table")));
+    applyNodeMetadata(*scan, node_json);
 
     const auto projection_columns = parseProjectionColumns(node_json);
     const auto outputs = outputNames(node_json);
     if (!projection_columns.empty() && !projectionMatchesOutputs(projection_columns, outputs)) {
       auto projection = makeProjection(projection_columns);
       applyNodeMetadata(*projection, node_json);
-      projection->addChild(std::move(node));
-      node = std::move(projection);
+      projection->addChild(std::move(scan));
+      return projection;
     }
-    return node;
+    if (!outputs.empty()) {
+      scan->explicit_columns = outputs;
+    }
+    return scan;
   }
 
   if (name == "ScanFilter" || name == "ScanProject" || name == "ScanFilterProject") {
-    std::unique_ptr<Node> node = std::make_unique<Scan>(parseTableName(descriptorString(node_json, "table")));
-    applyNodeMetadata(*node, node_json);
+    auto scan = std::make_unique<Scan>(parseTableName(descriptorString(node_json, "table")));
+    applyNodeMetadata(*scan, node_json);
 
+    auto projection_columns = parseProjectionColumns(node_json);
+    const auto outputs = outputNames(node_json);
+    const bool needs_projection =
+        !projection_columns.empty() && !projectionMatchesOutputs(projection_columns, outputs);
+
+    std::unique_ptr<Node> node = std::move(scan);
     const auto filter = trim_string(descriptorString(node_json, "filterPredicate"));
     if (!filter.empty()) {
       auto selection = std::make_unique<Selection>(resolveNodeExpression(node_json, filter));
       applyNodeMetadata(*selection, node_json);
+      if (!needs_projection && !outputs.empty()) {
+        // Scan uses SELECT * so filter can reference all columns; limit exposed columns here.
+        selection->explicit_columns = outputs;
+      }
       selection->addChild(std::move(node));
       node = std::move(selection);
+    } else if (!needs_projection && !outputs.empty()) {
+      static_cast<Scan*>(node.get())->explicit_columns = outputs;
     }
 
-    auto projection_columns = parseProjectionColumns(node_json);
-    const auto outputs = outputNames(node_json);
-    if (!projection_columns.empty() && !projectionMatchesOutputs(projection_columns, outputs)) {
+    if (needs_projection) {
       auto projection = makeProjection(projection_columns);
       applyNodeMetadata(*projection, node_json);
       projection->addChild(std::move(node));
@@ -1584,31 +1598,27 @@ std::unique_ptr<Plan> buildExplainPlan(const json& explain_json) {
 std::unique_ptr<Plan> Connection::explain(const std::string_view statement, std::optional<std::string_view> name) {
   const std::string artifact_name =
       name.has_value() ? std::string(*name) : std::to_string(std::hash<std::string_view>{}(statement));
+  const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
+  const bool skip_actuals = skip_actuals_env != nullptr && std::string_view(skip_actuals_env) == "1";
+
   if (const auto cached_json = getArtefact(artifact_name, "json")) {
     PLOGI << "Using cached Trino execution plan artifact for: " << artifact_name;
     auto plan = buildExplainPlan(json::parse(*cached_json));
-    if (artifactReplayModeEnabled()) {
-      return plan;
-    }
-    const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
-    const bool skip_actuals = skip_actuals_env != nullptr && std::string_view(skip_actuals_env) == "1";
     if (!skip_actuals) {
-      plan->fixActuals(*this);
+      fixActualsFromExplainAnalyze(*plan, statement, *this);
     }
     return plan;
   }
 
+  if (artifactReplayModeEnabled()) {
+    throw std::runtime_error("Missing required artifact: " + artifact_name + ".json");
+  }
   const auto explain_sql = "EXPLAIN (FORMAT JSON)\n" + std::string(statement);
   const auto explain_string = fetchScalar(explain_sql).asString();
   storeArtefact(artifact_name, "json", explain_string);
   auto plan = buildExplainPlan(json::parse(explain_string));
-  if (artifactReplayModeEnabled()) {
-    return plan;
-  }
-  const auto* skip_actuals_env = std::getenv("DBPROVE_SKIP_ACTUALS");
-  const bool skip_actuals = skip_actuals_env != nullptr && std::string_view(skip_actuals_env) == "1";
   if (!skip_actuals) {
-    plan->fixActuals(*this);
+    fixActualsFromExplainAnalyze(*plan, statement, *this);
   }
   return plan;
 }

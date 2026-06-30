@@ -10,6 +10,7 @@ target_sources(${_targetName} PRIVATE
         result.cpp
         row.cpp
         explain.cpp
+        fix_actuals.cpp
 )
 
 target_link_libraries(${_targetName}

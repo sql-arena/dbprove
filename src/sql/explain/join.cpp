@@ -138,7 +138,8 @@ namespace sql::explain
             {"full", Type::FULL},
             {"full outer", Type::FULL},
             {"full join", Type::FULL},
-            {"full outer join", Type::FULL}
+            {"full outer join", Type::FULL},
+            {"cross", Type::INNER}
         };
 
         if (!type_map.contains(type_lower)) {

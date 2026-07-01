@@ -585,7 +585,8 @@ std::string cleanExpression(std::string expression, const EngineDialect* dialect
   // MSSQL specific: [db].[schema].[table].[column] -> [table].[column] or [alias].[column]
   
   // Let's use a similar regex as in cleanFilter but adapted for multiple engines if needed.
-  static const std::regex schema_prefix_regex(R"(([a-zA-Z_]\w*\.){2,})");
+  // Allow hyphens in catalog/schema names (e.g. Databricks catalog "sql-arena")
+  static const std::regex schema_prefix_regex(R"(([a-zA-Z_][\w-]*\.){2,})");
   expression = std::regex_replace(expression, schema_prefix_regex, "");
 
   // Remove casts

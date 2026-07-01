@@ -655,9 +655,10 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
 
   if (op == "hashJoin") {
     result = std::make_unique<Join>(parseJoinType(body), Join::Strategy::HASH, hashJoinCondition(body));
-    /* TODO: is this the wrong way around? */
-    result->addChild(buildCanonicalNode(body["left"]));
+    // DataFusion HashJoinExec always uses right as the build side.
+    // Our convention: firstChild()=build, lastChild()=probe.
     result->addChild(buildCanonicalNode(body["right"]));
+    result->addChild(buildCanonicalNode(body["left"]));
     applyDbproveRowCounts(*result, body);
     return result;
   }
@@ -668,8 +669,9 @@ std::unique_ptr<Node> buildCanonicalNode(const json& wrapper) {
       condition = joinFilterExpression(body["filter"]);
     }
     result = std::make_unique<Join>(parseJoinType(body), Join::Strategy::LOOP, condition);
-    result->addChild(buildCanonicalNode(body["left"]));
+    // DataFusion NestedLoopJoin: right is the inner (build) side.
     result->addChild(buildCanonicalNode(body["right"]));
+    result->addChild(buildCanonicalNode(body["left"]));
     applyDbproveRowCounts(*result, body);
     return result;
   }

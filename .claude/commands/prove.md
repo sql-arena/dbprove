@@ -11,14 +11,9 @@ Parse the arguments as: `<engine> [<theorem-selector>]`
 
 - Always run from `/Users/thomaskejser/source/dbprove-agent1/run`
 - Binary: `../out/build/osx-arm-base/src/dbprove/dbprove`
-- **DuckDB**: no container needed — run directly.
+- **DuckDB**: no container needed — run directly, no `--docker` flag.
 - **Databricks**: no container. Always pass `--region us-east` (bucket is `s3://sql-arena-us-east`).
-- **All other engines**: start the container first with docker compose, then run dbprove.
-  - Compose project: `dbprove-managed`
-  - Compose file: `/Users/thomaskejser/source/dbprove-agent1/docker/docker-compose.yml`
-  - Service name maps: postgresql→postgresql, clickhouse→clickhouse, datafusion→datafusion-iceberg, trino→trino
-  - Use: `docker compose -p dbprove-managed -f /Users/thomaskejser/source/dbprove-agent1/docker/docker-compose.yml up -d <service>`
-  - Wait for container to be ready before running dbprove (check with `ps` or a short `docker compose exec` probe).
+- **All other engines**: pass `--docker` and dbprove manages the container lifecycle itself. Do NOT manually run docker compose commands.
 - Use `timeout=600000` on the dbprove Bash call.
 
 ## Reporting

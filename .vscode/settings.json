@@ -1,5 +1,5 @@
 {
   "cmake.preferredGenerators": ["Ninja"],
-  "cmake.configurePreset": "msvc",
-  "cmake.buildPreset": "msvc"
+  "cmake.configurePreset": "osx-arm-base",
+  "cmake.buildPreset": "build_osx_arm_debug"
 }

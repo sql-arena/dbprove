@@ -15,10 +15,10 @@ std::string PrettyHumanCount(const size_t count) {
     result = std::to_string(count);
   } else if (count < 10'000'000'000) {
     result = std::to_string(count / 1'000'000) + "M";
-  } else if (count < 1000'000'000'000'000) {
-    result = std::to_string(count / 1000'000'000'000) + "B";
-  } else if (count < 1000'000'000'000'000'000) {
-    result = std::to_string(count / 1000'000'000'000'000) + "T";
+  } else if (count < 1'000'000'000'000) {
+    result = std::to_string(count / 1'000'000'000) + "B";
+  } else if (count < 1'000'000'000'000'000) {
+    result = std::to_string(count / 1'000'000'000'000) + "T";
   } else {
     // INF is a multi byte char, so can't just pad
     return "       ∞";

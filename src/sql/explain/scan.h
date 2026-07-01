@@ -19,6 +19,7 @@ public:
   const Strategy strategy;
   const std::string table_name;
   const std::string alias;
+  std::vector<std::string> explicit_columns;
 
 private:
   const std::string schema_name;

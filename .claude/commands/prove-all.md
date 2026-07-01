@@ -20,10 +20,9 @@ If no argument is given, run the default full suite: both `TPC-H` and `JOB` sele
 
 - Always run from `/Users/thomaskejser/source/dbprove-agent1/run`
 - Binary: `../out/build/osx-arm-base/src/dbprove/dbprove`
-- Compose project: `dbprove-managed`
-- Compose file: `/Users/thomaskejser/source/dbprove-agent1/docker/docker-compose.yml`
-- Container service names: postgresql→postgresql, clickhouse→clickhouse, trino→trino, datafusion→datafusion-iceberg
-- Start each non-DuckDB container before its run: `docker compose -p dbprove-managed -f .../docker-compose.yml up -d <service>`
+- **DuckDB**: no container, no `--docker` flag — run directly.
+- **Databricks**: no container. Always pass `--region us-east`.
+- **All other engines**: pass `--docker` and dbprove manages the container lifecycle itself. Do NOT manually run docker compose commands.
 - Use `timeout=600000` on each dbprove Bash call.
 
 When running the default full suite (no argument), run `TPC-H` first then `JOB` for each engine before moving to the next engine — i.e. complete one engine fully before starting the next.

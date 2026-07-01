@@ -1899,6 +1899,12 @@ bool isAcceptableLeaf(const ExpressionNode& leaf,
   if (to_lower(leaf_name).starts_with("__set_")) {
     return true;
   }
+  if (to_lower(leaf_name).starts_with("__lhs_") || to_lower(leaf_name).starts_with("__rhs_")) {
+    return true;
+  }
+  if (to_lower(leaf_name).starts_with("__join_result_")) {
+    return true;
+  }
   if (to_lower(leaf_name).starts_with("exists(")) {
     return true;
   }

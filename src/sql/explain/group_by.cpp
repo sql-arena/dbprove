@@ -74,10 +74,78 @@ std::string GroupBy::renderMuggle(size_t max_width) const {
   return result;
 }
 
+// Walk through single-child passthrough nodes to find the first GroupBy descendant.
+static const GroupBy* findFirstGroupByDescendant(const Node* node) {
+  while (node != nullptr) {
+    if (node->type == NodeType::GROUP_BY) {
+      return dynamic_cast<const GroupBy*>(node);
+    }
+    if (node->childCount() != 1) {
+      return nullptr;
+    }
+    node = node->firstChild();
+  }
+  return nullptr;
+}
+
 std::string GroupBy::treeSQLImpl(const size_t indent) const {
   const auto& group_keys_for_sql = synthetic_group_keys.empty() ? group_keys : synthetic_group_keys;
   const auto& aggregates_for_sql = synthetic_aggregates.empty() ? aggregates : synthetic_aggregates;
   const auto& aliases_for_sql = synthetic_aggregateAliases.empty() ? aggregateAliases : synthetic_aggregateAliases;
+
+  // For FINAL aggregates, check if the first GROUP BY descendant is a matching PARTIAL.
+  // If so, use pass-through SQL to avoid re-aggregating partial results on a single node.
+  // (Distributed PARTIAL/FINAL pairs compute the same result as a single-node GROUP BY.)
+  if ((strategy == Strategy::HASH || strategy == Strategy::SORT_MERGE) && childCount() > 0) {
+    const GroupBy* partial = findFirstGroupByDescendant(firstChild());
+    if (partial && partial->strategy == Strategy::PARTIAL) {
+      const auto& partial_keys = partial->synthetic_group_keys.empty()
+                                  ? partial->group_keys
+                                  : partial->synthetic_group_keys;
+      const auto& partial_aggs = partial->synthetic_aggregates.empty()
+                                  ? partial->aggregates
+                                  : partial->synthetic_aggregates;
+      const auto& partial_aliases = partial->synthetic_aggregateAliases.empty()
+                                     ? partial->aggregateAliases
+                                     : partial->synthetic_aggregateAliases;
+
+      // Keys must match in count and name
+      bool keys_match = group_keys_for_sql.size() == partial_keys.size();
+      for (size_t i = 0; keys_match && i < group_keys_for_sql.size(); ++i) {
+        keys_match = (group_keys_for_sql[i].name == partial_keys[i].name);
+      }
+
+      if (keys_match && aggregates_for_sql.size() == partial_aggs.size()) {
+        // Pass-through: rename partial aggregate outputs to final aggregate names.
+        std::string result = newline(indent);
+        result += "(SELECT ";
+        for (size_t i = 0; i < group_keys_for_sql.size(); ++i) {
+          if (i > 0) result += ", ";
+          result += group_keys_for_sql[i].name;
+        }
+        for (size_t i = 0; i < aggregates_for_sql.size(); ++i) {
+          result += ", ";
+          // Use the partial's aggregate alias as the input column name
+          const auto partial_alias_it = partial_aliases.find(partial_aggs[i]);
+          const std::string partial_col = (partial_alias_it != partial_aliases.end())
+                                           ? partial_alias_it->second
+                                           : partial_aggs[i].name;
+          const auto final_alias_it = aliases_for_sql.find(aggregates_for_sql[i]);
+          if (final_alias_it != aliases_for_sql.end()) {
+            result += partial_col + " AS " + final_alias_it->second;
+          } else {
+            result += partial_col;
+          }
+        }
+        result += newline(indent);
+        result += "FROM " + firstChild()->treeSQL(indent + 1);
+        result += newline(indent);
+        result += ") AS " + subquerySQLAlias();
+        return result;
+      }
+    }
+  }
+
   std::string result = newline(indent);
   result += "(SELECT ";
   for (size_t i = 0; i < group_keys_for_sql.size(); ++i) {

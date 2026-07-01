@@ -100,11 +100,15 @@ IF OBJECT_ID(N'tpch_sf1.lineitem', N'U') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'tpch_sf1.lineitem') AND name = N'ix_q17')
     CREATE INDEX ix_q17 ON tpch_sf1.lineitem (l_partkey);
 
+IF OBJECT_ID(N'tpch_sf1.orders', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'tpch_sf1.orders') AND name = N'orders_custkey_idx')
+    CREATE INDEX orders_custkey_idx ON tpch_sf1.orders (o_custkey);
+
 DECLARE table_cursor CURSOR FOR
 SELECT t.name
 FROM sys.tables t
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'tpch'
+WHERE s.name = 'tpch_sf1'
   AND t.name IN ('part', 'supplier', 'partsupp', 'customer', 'orders', 'lineitem', 'nation', 'region')
   AND NOT EXISTS (
       SELECT 1 FROM sys.indexes i
@@ -118,7 +122,7 @@ FETCH NEXT FROM table_cursor INTO @TableName;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    SET @SQL = 'CREATE CLUSTERED COLUMNSTORE INDEX cci_' + @TableName + ' ON [tpch].' + QUOTENAME(@TableName);
+    SET @SQL = 'CREATE CLUSTERED COLUMNSTORE INDEX cci_' + @TableName + ' ON [tpch_sf1].' + QUOTENAME(@TableName);
 
     PRINT 'Executing: ' + @SQL;
     EXEC sp_executesql @SQL;
@@ -138,7 +142,7 @@ DECLARE stats_cursor CURSOR FOR
 SELECT t.name, s.name
 FROM sys.tables t
 JOIN sys.schemas s ON t.schema_id = s.schema_id
-WHERE s.name = 'tpch'
+WHERE s.name = 'tpch_sf1'
   AND t.name IN ('part', 'supplier', 'partsupp', 'customer', 'orders', 'lineitem', 'nation', 'region');
 
 OPEN stats_cursor;

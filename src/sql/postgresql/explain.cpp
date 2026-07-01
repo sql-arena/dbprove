@@ -452,8 +452,8 @@ std::unique_ptr<Node> buildExplainNode(json& node_json, ExplainCtx& ctx) {
 
   auto node = createNodeFromPgType(node_json, ctx);
   const auto node_type = node_json["Node Type"].get<std::string>();
-  if (node == nullptr && (node_type == "BitmapAnd" || node_type == "Bitmap Index Scan" || node_type ==
-                          "Bitmap Heap Scan")) {
+  if (node == nullptr && (node_type == "BitmapAnd" || node_type == "BitmapOr" || node_type == "Bitmap Index Scan" ||
+                          node_type == "Bitmap Heap Scan")) {
     // We already handled the first bitmap operation.
     return nullptr;
   }

@@ -35,9 +35,10 @@ RowCount countRowsByNode(Node& node, const NodeType type) {
   double result = 0;
   for (const auto& n : node.depth_first()) {
     if (n.type == type) {
-      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
-          result += n.rows_actual;
+      if (std::isnan(n.rows_actual) || std::isinf(n.rows_actual)) {
+        return ROWS_UNKNOWN;
       }
+      result += n.rows_actual;
     }
   }
   return cutoff(result);
@@ -80,9 +81,10 @@ RowCount Plan::rowsAggregated() const {
       // The input of an aggregate is the amount of rows added to the aggregate.
       if (n.childCount() > 0) {
         double rows = n.firstChild()->rows_actual;
-        if (!std::isnan(rows) && !std::isinf(rows)) {
-            result += rows;
+        if (std::isnan(rows) || std::isinf(rows)) {
+          return ROWS_UNKNOWN;
         }
+        result += rows;
       }
     }
   }
@@ -99,11 +101,10 @@ RowCount Plan::rowsJoined() const {
       // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
       double probe_rows = n.lastChild()->rows_actual;
       double actual_rows = n.rows_actual;
-      double joined = std::max(std::isnan(probe_rows) ? 0.0 : probe_rows, 
-                               std::isnan(actual_rows) ? 0.0 : actual_rows);
-      if (!std::isinf(joined)) {
-          result += joined;
+      if (std::isnan(probe_rows) || std::isinf(probe_rows) || std::isnan(actual_rows) || std::isinf(actual_rows)) {
+        return ROWS_UNKNOWN;
       }
+      result += std::max(probe_rows, actual_rows);
     }
   }
   return cutoff(result);
@@ -116,14 +117,12 @@ RowCount Plan::rowsHashBuild() const {
       if (n.childCount() < 2) {
         throw ExplainException("Join nodes must have 2 children. The plan parsing must have failed");
       }
-      // The probe side of the join is the number of joined rows, unless we created more by cardinality increase
       double build_rows = n.firstChild()->rows_actual;
       double actual_rows = n.rows_actual;
-      double hash_rows = std::max(std::isnan(build_rows) ? 0.0 : build_rows,
-                                  std::isnan(actual_rows) ? 0.0 : actual_rows);
-      if (!std::isinf(hash_rows)) {
-          result += hash_rows;
+      if (std::isnan(build_rows) || std::isinf(build_rows) || std::isnan(actual_rows) || std::isinf(actual_rows)) {
+        return ROWS_UNKNOWN;
       }
+      result += std::max(build_rows, actual_rows);
     }
   }
   return cutoff(result);
@@ -146,9 +145,10 @@ RowCount Plan::rowsScanned() const {
   double result = 0;
   for (const auto& n : planTree().depth_first()) {
     if (n.type == NodeType::SCAN_MATERIALISED) {
-      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
-        result += n.rows_actual;
+      if (std::isnan(n.rows_actual) || std::isinf(n.rows_actual)) {
+        return ROWS_UNKNOWN;
       }
+      result += n.rows_actual;
       continue;
     }
     if (n.type != NodeType::SCAN) {
@@ -156,9 +156,10 @@ RowCount Plan::rowsScanned() const {
     }
     const auto& scan = reinterpret_cast<const Scan&>(n);
     if (scan.strategy == Scan::Strategy::SCAN) {
-      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
-        result += n.rows_actual;
+      if (std::isnan(n.rows_actual) || std::isinf(n.rows_actual)) {
+        return ROWS_UNKNOWN;
       }
+      result += n.rows_actual;
     }
   }
   return cutoff(result);
@@ -172,9 +173,10 @@ RowCount Plan::rowsSeeked() const {
     }
     const auto& scan = reinterpret_cast<const Scan&>(n);
     if (scan.strategy == Scan::Strategy::SEEK) {
-      if (!std::isnan(n.rows_actual) && !std::isinf(n.rows_actual)) {
-        result += n.rows_actual;
+      if (std::isnan(n.rows_actual) || std::isinf(n.rows_actual)) {
+        return ROWS_UNKNOWN;
       }
+      result += n.rows_actual;
     }
   }
   return cutoff(result);
@@ -192,9 +194,10 @@ RowCount Plan::rowsFiltered() const {
     }
     const auto output_rows = node.rows_actual;
     const auto input_rows = node.firstChild()->rows_actual;
-    if (!std::isnan(output_rows) && !std::isnan(input_rows) && !std::isinf(output_rows) && !std::isinf(input_rows)) {
-        result += std::max(0.0, input_rows - output_rows);
+    if (std::isnan(output_rows) || std::isinf(output_rows) || std::isnan(input_rows) || std::isinf(input_rows)) {
+      return ROWS_UNKNOWN;
     }
+    result += std::max(0.0, input_rows - output_rows);
   }
   return cutoff(result);
 }
@@ -234,7 +237,8 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
                    Operation::Sort,
                    Operation::Filter,
                    Operation::Scan,
-                   Operation::Hash}) {
+                   Operation::Hash,
+                   Operation::Distribute}) {
     (void)mis_estimation.insert({op, {}}).first;
     for (int8_t magnitude = MisEstimation::INFINITE_UNDER; magnitude <= MisEstimation::INFINITE_OVER; magnitude++) {
       mis_estimation[op].emplace(magnitude, MisEstimation{op, magnitude, 0});
@@ -269,6 +273,9 @@ std::vector<Plan::MisEstimation> Plan::misEstimations() const {
         break;
       case NodeType::FILTER:
         mis_estimation[Operation::Filter][magnitude].count++;
+        break;
+      case NodeType::DISTRIBUTE:
+        mis_estimation[Operation::Distribute][magnitude].count++;
         break;
       default:
         break;

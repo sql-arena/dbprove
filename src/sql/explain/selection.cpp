@@ -7,8 +7,17 @@ Selection::Selection(const std::string& filter_expression, const EngineDialect* 
 }
 
 std::string Selection::treeSQLImpl(const size_t indent) const {
+  std::string select_list;
+  if (explicit_columns.empty()) {
+    select_list = "*";
+  } else {
+    for (size_t i = 0; i < explicit_columns.size(); ++i) {
+      if (i > 0) select_list += ", ";
+      select_list += explicit_columns[i];
+    }
+  }
   std::string result = newline(indent);
-  result += "(SELECT * ";
+  result += "(SELECT " + select_list + " ";
   result += newline(indent);
   result += "FROM " + firstChild()->treeSQL(indent + 1);
   const auto filter = syntheticFilterCondition().empty() ? filterCondition() : syntheticFilterCondition();

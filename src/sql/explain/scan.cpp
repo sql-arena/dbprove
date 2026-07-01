@@ -56,7 +56,16 @@ std::string Scan::renderMuggle(size_t max_width) const {
 
 std::string Scan::treeSQLImpl(size_t indent) const {
   std::string full_table_name = schema_name.empty() ? table_name : schema_name + "." + table_name;
-  std::string result = "(SELECT * FROM " + full_table_name + " ";
+  std::string select_list;
+  if (explicit_columns.empty()) {
+    select_list = "*";
+  } else {
+    for (size_t i = 0; i < explicit_columns.size(); ++i) {
+      if (i > 0) select_list += ", ";
+      select_list += explicit_columns[i];
+    }
+  }
+  std::string result = "(SELECT " + select_list + " FROM " + full_table_name + " ";
   if (!alias.empty()) {
     result += "AS " + alias + " ";
   }

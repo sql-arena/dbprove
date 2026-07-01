@@ -104,21 +104,13 @@ void parseRowCount(Node* node, xml_node node_xml) {
   const auto runtime_info = node_xml.child("RunTimeInformation");
   if (runtime_info) {
     double total_actual_rows = 0;
-    double total_actual_rows_read = 0;
     double total_locally_aggregated_rows = 0;
     bool found_any = false;
-    bool found_any_read = false;
     bool found_any_locally_aggregated = false;
 
     for (auto per_thread : runtime_info.children("RunTimeCountersPerThread")) {
       total_actual_rows += per_thread.attribute("ActualRows").as_double();
       found_any = true;
-
-      const auto actual_rows_read = per_thread.attribute("ActualRowsRead");
-      if (actual_rows_read) {
-          total_actual_rows_read += actual_rows_read.as_double();
-          found_any_read = true;
-      }
 
       const auto locally_aggregated = per_thread.attribute("ActualLocallyAggregatedRows");
       if (locally_aggregated) {
@@ -131,12 +123,6 @@ void parseRowCount(Node* node, xml_node node_xml) {
     if (rowstore_batch) {
         total_actual_rows += rowstore_batch.attribute("ActualRows").as_double();
         found_any = true;
-
-        const auto actual_rows_read = rowstore_batch.attribute("ActualRowsRead");
-        if (actual_rows_read) {
-            total_actual_rows_read += actual_rows_read.as_double();
-            found_any_read = true;
-        }
     }
 
     // Sometimes SQL Server puts ActualRows directly in RunTimeInformation (e.g. for batch mode hash join)
@@ -144,12 +130,6 @@ void parseRowCount(Node* node, xml_node node_xml) {
     if (actual_rows) {
         total_actual_rows = actual_rows.as_double();
         found_any = true;
-    }
-
-    const auto actual_rows_read = runtime_info.attribute("ActualRowsRead");
-    if (actual_rows_read) {
-        total_actual_rows_read = actual_rows_read.as_double();
-        found_any_read = true;
     }
 
     if (found_any) {
@@ -161,11 +141,6 @@ void parseRowCount(Node* node, xml_node node_xml) {
           node->rows_actual = total_locally_aggregated_rows;
       }
 
-      // For scan nodes, we prefer to show the number of rows read if it's available and larger than rows produced.
-      // This is because SQL Server often does partial aggregation in the scan, but we want to know the table size.
-      if ((node->type == NodeType::SCAN || node->type == NodeType::SCAN_MATERIALISED) && found_any_read && total_actual_rows_read > node->rows_actual) {
-          node->rows_actual = total_actual_rows_read;
-      }
     }
   }
 }
@@ -745,7 +720,17 @@ std::unique_ptr<Node> handleJoin(const xml_node& node_xml, const MssqlExplainCtx
   if (physical_op == "Hash Match" || physical_op == "Adaptive Join") {
     const auto hash = node_xml.child(physical_op == "Hash Match" ? "Hash" : "AdaptiveJoin");
     std::string condition;
-    const auto logical_join_type = Join::typeFromString(logical_op);
+    const auto raw_join_type = Join::typeFromString(logical_op);
+    // SQL Server's Hash Join: "Left Outer Join" = build (firstChild) is the preserved outer side;
+    // "Right Outer Join" = probe (lastChild) is the preserved outer side.
+    // Our rendering puts firstChild on the right of JOIN and lastChild on the left (FROM clause),
+    // so LEFT_OUTER preserves lastChild and RIGHT_OUTER preserves firstChild — opposite of SQL Server.
+    auto flip_outer = [](Join::Type t) -> Join::Type {
+      if (t == Join::Type::LEFT_OUTER)  return Join::Type::RIGHT_OUTER;
+      if (t == Join::Type::RIGHT_OUTER) return Join::Type::LEFT_OUTER;
+      return t;
+    };
+    const auto logical_join_type = flip_outer(raw_join_type);
     std::vector<xml_node> join_relops;
     for (auto child : hash.children("RelOp")) {
       join_relops.push_back(child);

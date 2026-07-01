@@ -310,25 +310,18 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS company_id_movie_companies ON job.movie_companies(company_id);
 CREATE INDEX IF NOT EXISTS company_type_id_movie_companies ON job.movie_companies(company_type_id);
-CREATE INDEX IF NOT EXISTS country_code_company_name ON job.company_name(country_code);
 CREATE INDEX IF NOT EXISTS info_type_id_movie_info_idx ON job.movie_info_idx(info_type_id);
 CREATE INDEX IF NOT EXISTS info_type_id_movie_info ON job.movie_info(info_type_id);
 CREATE INDEX IF NOT EXISTS info_type_id_person_info ON job.person_info(info_type_id);
-CREATE INDEX IF NOT EXISTS info_info_type ON job.info_type(info);
 CREATE INDEX IF NOT EXISTS keyword_id_movie_keyword ON job.movie_keyword(keyword_id);
-CREATE INDEX IF NOT EXISTS keyword_id_movie_id_movie_keyword ON job.movie_keyword(keyword_id, movie_id);
-CREATE INDEX IF NOT EXISTS keyword_keyword ON job.keyword(keyword);
 CREATE INDEX IF NOT EXISTS kind_id_aka_title ON job.aka_title(kind_id);
 CREATE INDEX IF NOT EXISTS kind_id_title ON job.title(kind_id);
-CREATE INDEX IF NOT EXISTS kind_company_type ON job.company_type(kind);
 CREATE INDEX IF NOT EXISTS linked_movie_id_movie_link ON job.movie_link(linked_movie_id);
 CREATE INDEX IF NOT EXISTS link_type_id_movie_link ON job.movie_link(link_type_id);
 CREATE INDEX IF NOT EXISTS movie_id_aka_title ON job.aka_title(movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_cast_info ON job.cast_info(movie_id);
-CREATE INDEX IF NOT EXISTS person_id_movie_id_cast_info ON job.cast_info(person_id, movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_complete_cast ON job.complete_cast(movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_movie_companies ON job.movie_companies(movie_id);
-CREATE INDEX IF NOT EXISTS company_id_movie_id_movie_companies ON job.movie_companies(company_id, movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_movie_info_idx ON job.movie_info_idx(movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_movie_keyword ON job.movie_keyword(movie_id);
 CREATE INDEX IF NOT EXISTS movie_id_movie_link ON job.movie_link(movie_id);
@@ -337,14 +330,7 @@ CREATE INDEX IF NOT EXISTS person_id_aka_name ON job.aka_name(person_id);
 CREATE INDEX IF NOT EXISTS person_id_cast_info ON job.cast_info(person_id);
 CREATE INDEX IF NOT EXISTS person_id_person_info ON job.person_info(person_id);
 CREATE INDEX IF NOT EXISTS person_role_id_cast_info ON job.cast_info(person_role_id);
-CREATE INDEX IF NOT EXISTS production_year_title ON job.title(production_year);
-CREATE INDEX IF NOT EXISTS episode_nr_title ON job.title(episode_nr);
-CREATE INDEX IF NOT EXISTS role_role_type ON job.role_type(role);
 CREATE INDEX IF NOT EXISTS role_id_cast_info ON job.cast_info(role_id);
-CREATE INDEX IF NOT EXISTS name_company_name_pattern ON job.company_name(name text_pattern_ops);
-CREATE INDEX IF NOT EXISTS name_name_pattern ON job.name(name text_pattern_ops);
-CREATE INDEX IF NOT EXISTS link_link_type_pattern ON job.link_type(link text_pattern_ops);
-CREATE INDEX IF NOT EXISTS note_movie_companies ON job.movie_companies(note);
 
 DO $$
 DECLARE

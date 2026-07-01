@@ -133,6 +133,13 @@ namespace sql::databricks
             if (last_space != std::string::npos) {
                 table = name.substr(last_space + 1);
             }
+            // Strip catalog/schema prefix — Databricks uses fully-qualified names like
+            // "sql-arena.imdb.char_name"; take only the last dot-separated component so
+            // hyphenated catalog names don't bleed through as "sql - char_name".
+            size_t last_dot = table.find_last_of('.');
+            if (last_dot != std::string::npos) {
+                table = table.substr(last_dot + 1);
+            }
         }
         auto node = std::make_unique<Scan>(table);
         node->rows_actual = extractActualRows(node_json);
@@ -825,14 +832,33 @@ namespace sql::databricks
 
                 bool join_build_right = false;
                 if (node && node->type == NodeType::JOIN) {
-                    if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
-                        for (const auto& meta : node_json["metaData"]) {
-                            if (!meta.is_object()) continue;
-                            if (safeGetString(meta, "key") == "JOIN_BUILD_SIDE") {
-                                join_build_right = (safeGetString(meta, "value") == "Right");
-                                PLOGD << "Join node " << id << " JOIN_BUILD_SIDE=" << safeGetString(meta, "value")
-                                      << " join_build_right=" << join_build_right;
-                                break;
+                    const auto* join_node = static_cast<const Join*>(node.get());
+                    if (join_node->type == Join::Type::LEFT_OUTER ||
+                        join_node->type == Join::Type::LEFT_SEMI_INNER ||
+                        join_node->type == Join::Type::LEFT_ANTI) {
+                        // Graph edges follow Spark text-plan order [left/probe, right/build].
+                        // For left-preserving joins the build side is always right, so always swap.
+                        // JOIN_BUILD_SIDE metadata describes the preserved/outer side for outer joins,
+                        // not the hash-build side, so we do not consult it here.
+                        join_build_right = true;
+                        PLOGD << "Join node " << id << " left-type join, forcing join_build_right=true";
+                    } else if (join_node->type == Join::Type::RIGHT_OUTER ||
+                               join_node->type == Join::Type::RIGHT_SEMI_INNER ||
+                               join_node->type == Join::Type::RIGHT_ANTI) {
+                        // Right-preserving joins: build side is always left (already first in graph order).
+                        join_build_right = false;
+                        PLOGD << "Join node " << id << " right-type join, forcing join_build_right=false";
+                    } else {
+                        // Inner / full joins: consult JOIN_BUILD_SIDE metadata.
+                        if (node_json.contains("metaData") && node_json["metaData"].is_array()) {
+                            for (const auto& meta : node_json["metaData"]) {
+                                if (!meta.is_object()) continue;
+                                if (safeGetString(meta, "key") == "JOIN_BUILD_SIDE") {
+                                    join_build_right = (safeGetString(meta, "value") == "Right");
+                                    PLOGD << "Join node " << id << " JOIN_BUILD_SIDE=" << safeGetString(meta, "value")
+                                          << " join_build_right=" << join_build_right;
+                                    break;
+                                }
                             }
                         }
                     }

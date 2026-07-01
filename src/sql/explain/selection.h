@@ -27,6 +27,9 @@ public:
     return result;
   }
 
+public:
+  std::vector<std::string> explicit_columns;
+
 protected:
   std::string treeSQLImpl(size_t indent) const override;
 };

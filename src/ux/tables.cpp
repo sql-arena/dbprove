@@ -16,8 +16,8 @@ void RowStatTable(std::ostream& out, const std::vector<RowStats>& rows) {
   table.set_border_style(FT_SOLID_ROUND_STYLE);
 
   table << header << "Operation" << "Rows" << endr;
-  for (const auto& [name, rows] : rows) {
-    table << name << rows << endr;
+  for (const auto& [name, row_count] : rows) {
+    table << name << PrettyRows(row_count) << endr;
   }
   table[0].set_cell_text_style(text_style::bold);
 

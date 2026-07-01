@@ -1,3 +1,5 @@
+SET memory_limit='80%';
+
 BEGIN TRANSACTION;
 
 DROP TABLE IF EXISTS job.aka_name__old;
